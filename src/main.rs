@@ -52,6 +52,8 @@ enum Ast {
     Symbol(String),
 }
 
+type Program = Vec<Ast>;
+
 #[derive(Debug)]
 enum Value {
     Integer(i32),
@@ -66,10 +68,10 @@ fn main() {
         .and_then(tokenize)
         .and_then(parse)
         .and_then(show_ast)
-        .and_then(|ast| eval(&ast))
+        .and_then(|ast| eval_program(&ast))
         .unwrap_or_else(|err| {
             println!("{:?}", err);
-            Value::Nil
+            vec![Value::Nil]
         });
 
     println!("{:?}", result);
@@ -198,8 +200,20 @@ fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
     }
 }
 
-fn parse(tokens: Vec<Token>) -> Result<Ast, Error> {
-    parse_value(&tokens[..])
+fn parse_program(tokens: &[Token]) -> ParseResult<Program> {
+    if tokens.is_empty() {
+        Ok((Vec::new(), tokens))
+    } else {
+        let (value, rest) = parse_value(tokens)?;
+        let mut result = vec![value];
+        let (mut values, rest) = parse_program(rest)?;
+        result.append(&mut values);
+        Ok((result, rest))
+    }
+}
+
+fn parse(tokens: Vec<Token>) -> Result<Program, Error> {
+    parse_program(&tokens[..])
         .and_then(|(ast, tokens)| {
             if !tokens.is_empty() {
                 Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0])))
@@ -210,21 +224,20 @@ fn parse(tokens: Vec<Token>) -> Result<Ast, Error> {
         .map(|(ast, _)| ast)
 }
 
-fn eval(ast: &Ast) -> Result<Value, Error> {
+fn eval_ast(ast: &Ast) -> Result<Value, Error> {
     match ast {
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
-                let first = eval(first)?;
+                let first = eval_ast(first)?;
                 match first {
                     Value::Symbol(func_name) => {
                         let func_name = func_name.as_str();
+                        let args = rest
+                            .iter()
+                            .map(|arg| eval_ast(arg))
+                            .collect::<Result<Vec<Value>, Error>>()?;
                         match func_name {
                             "sum" => {
-                                let args =
-                                    rest.iter()
-                                        .map(|arg| eval(arg))
-                                        .collect::<Result<Vec<Value>, Error>>()?;
-
                                 let args = args
                                     .iter()
                                     .map(|arg| {
@@ -242,6 +255,12 @@ fn eval(ast: &Ast) -> Result<Value, Error> {
                                 let sum = args.iter().sum();
                                 Ok(Value::Integer(sum))
                             }
+                            "print" => {
+                                for arg in args {
+                                    println!("{:?}", arg);
+                                }
+                                Ok(Value::Nil)
+                            }
                             _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
                         }
                     }
@@ -256,7 +275,13 @@ fn eval(ast: &Ast) -> Result<Value, Error> {
     }
 }
 
-fn show_ast(ast: Ast) -> Result<Ast, Error> {
+fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
+    asts.iter()
+        .map(eval_ast)
+        .collect::<Result<Vec<Value>, Error>>()
+}
+
+fn show_ast(ast: Program) -> Result<Program, Error> {
     println!("{:?}", ast);
     Ok(ast)
 }
