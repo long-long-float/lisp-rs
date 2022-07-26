@@ -92,6 +92,25 @@ where
     }
 }
 
+pub trait CharExt {
+    fn is_identifier_head(&self) -> bool;
+    fn is_identifier(&self) -> bool;
+}
+
+impl CharExt for char {
+    fn is_identifier_head(&self) -> bool {
+        match *self {
+            c if c.is_ascii_alphabetic() => true,
+            '+' | '-' | '*' | '/' | '@' | '$' | '^' | '&' | '_' | '=' | '<' | '>' | '~' | '.' => true,
+            _ => false,
+        }
+    }
+
+    fn is_identifier(&self) -> bool {
+        self.is_identifier_head() || self.is_ascii_digit()
+    }
+}
+
 fn take_while(program: &Vec<char>, index: &mut usize, pred: fn(&char) -> bool) -> Vec<String> {
     let mut buf = Vec::new();
     while let Some(ch) = program.get(*index) {
@@ -127,9 +146,12 @@ fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
                 let value = buf.join("").parse::<i32>()?;
                 result.push(Token::IntegerLiteral(value));
             }
-            c if c.is_alphabetic() => {
-                let buf = take_while(&program, &mut i, |c| c.is_alphabetic());
-                let value = buf.join("");
+            c if c.is_identifier_head() => {
+                i += 1;
+                let mut chars = vec![c.to_string()];
+                let mut rest = take_while(&program, &mut i, |c| c.is_identifier());
+                chars.append(&mut rest);
+                let value = chars.join("");
                 result.push(Token::Identifier(value));
             }
             _ => {
@@ -237,7 +259,7 @@ fn eval_ast(ast: &Ast) -> Result<Value, Error> {
                             .map(|arg| eval_ast(arg))
                             .collect::<Result<Vec<Value>, Error>>()?;
                         match func_name {
-                            "sum" => {
+                            "+" | "-" | "*" => {
                                 let args = args
                                     .iter()
                                     .map(|arg| {
@@ -252,7 +274,29 @@ fn eval_ast(ast: &Ast) -> Result<Value, Error> {
                                     })
                                     .collect::<Result<Vec<i32>, Error>>()?;
 
-                                let sum = args.iter().sum();
+                                let sum = match func_name {
+                                    "+" => args.iter().sum(),
+                                    "-" => {
+                                        if args.len() >= 1 {
+                                            let (head, args) = args.split_first().unwrap();
+                                            let mut res = *head;
+                                            for arg in args {
+                                                res -= arg;
+                                            }
+                                            res
+                                        }
+                                        else {
+                                            0
+                                        }
+                                    },
+                                    "*" => args.iter().fold(1, |acc, arg| acc * arg),
+                                    _ => {
+                                        return Err(Error::Eval(format!(
+                                            "Unknown function: {}",
+                                            func_name
+                                        )))
+                                    }
+                                };
                                 Ok(Value::Integer(sum))
                             }
                             "print" => {
@@ -264,7 +308,7 @@ fn eval_ast(ast: &Ast) -> Result<Value, Error> {
                             _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
                         }
                     }
-                    _ => Err(Error::Eval(format!("{:?} is not function", first))),
+                    _ => Err(Error::Eval(format!("{:?} is not a function", first))),
                 }
             } else {
                 Ok(Value::Nil)
