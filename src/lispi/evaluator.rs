@@ -1,26 +1,43 @@
+use std::{collections::HashMap};
+
 use super::{error::*, parser::*};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Integer(i32),
     Symbol(String),
     Nil,
 }
 
-fn eval_ast(ast: &Ast) -> Result<Value, Error> {
+struct Environment {
+    variables: HashMap<String, Value>,
+}
+
+impl Environment {
+    fn insert_variable_as_symbol(&mut self, name: &str) {
+        let name = name.to_string();
+        self.variables.insert(name.clone(), Value::Symbol(name));
+    }
+}
+
+fn eval_asts(asts: &[Ast], env: &mut Environment) -> Result<Vec<Value>, Error> {
+    asts.iter()
+                                .map(|arg| eval_ast(arg, env))
+                                .collect::<Result<Vec<Value>, Error>>()
+}
+
+fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
     match ast {
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
-                let first = eval_ast(first)?;
+                let first = eval_ast(first, env)?;
                 match first {
                     Value::Symbol(func_name) => {
                         let func_name = func_name.as_str();
-                        let args = rest
-                            .iter()
-                            .map(|arg| eval_ast(arg))
-                            .collect::<Result<Vec<Value>, Error>>()?;
+                        let raw_args = rest;
                         match func_name {
                             "+" | "-" | "*" => {
+                                let args = eval_asts(raw_args, env)?;
                                 let args = args
                                     .iter()
                                     .map(|arg| {
@@ -59,7 +76,21 @@ fn eval_ast(ast: &Ast) -> Result<Value, Error> {
                                 };
                                 Ok(Value::Integer(sum))
                             }
+                            "setq" => {
+                                if let (Some(Ast::Symbol(name)), Some(value)) =
+                                    (raw_args.get(0), raw_args.get(1))
+                                {
+                                    let value = eval_ast(value, env)?;
+                                    env.variables.insert(name.clone(), value.clone());
+                                    Ok(Value::Nil)
+                                } else {
+                                    Err(Error::Eval(
+                                        "'setq' is formed as (setq symbol value)".to_string(),
+                                    ))
+                                }
+                            }
                             "print" => {
+                                let args = eval_asts(raw_args, env)?;
                                 for arg in args {
                                     println!("{:?}", arg);
                                 }
@@ -75,12 +106,29 @@ fn eval_ast(ast: &Ast) -> Result<Value, Error> {
             }
         }
         Ast::Integer(value) => Ok(Value::Integer(*value)),
-        Ast::Symbol(value) => Ok(Value::Symbol(value.clone())),
+        Ast::Symbol(value) => {
+            // println!("{:#?}", env.variables);
+            if let Some(value) = env.variables.get(value) {
+                Ok(value.clone())
+            } else {
+                Err(Error::Eval(format!("{:?} is not defined", value)))
+            }
+        }
     }
 }
 
 pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
+    let mut env = Environment {
+        variables: HashMap::new(),
+    };
+    // Pre-defined functions
+    env.insert_variable_as_symbol("print");
+    env.insert_variable_as_symbol("+");
+    env.insert_variable_as_symbol("-");
+    env.insert_variable_as_symbol("*");
+    env.insert_variable_as_symbol("setq");
+
     asts.iter()
-        .map(eval_ast)
+        .map(|ast| eval_ast(ast, &mut env))
         .collect::<Result<Vec<Value>, Error>>()
 }

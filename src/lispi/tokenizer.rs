@@ -3,7 +3,7 @@ use std::num::ParseIntError;
 use super::error::*;
 
 impl From<ParseIntError> for Error {
-    fn from(err: ParseIntError) -> Self {
+    fn from(_err: ParseIntError) -> Self {
         Error::Tokenize("Parse int error".to_string())
     }
 }
