@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use super::{error::*, parser::*};
 
@@ -6,6 +6,7 @@ use super::{error::*, parser::*};
 pub enum Value {
     Integer(i32),
     Symbol(String),
+    List(Vec<Box<Value>>),
     Nil,
 }
 
@@ -22,8 +23,8 @@ impl Environment {
 
 fn eval_asts(asts: &[Ast], env: &mut Environment) -> Result<Vec<Value>, Error> {
     asts.iter()
-                                .map(|arg| eval_ast(arg, env))
-                                .collect::<Result<Vec<Value>, Error>>()
+        .map(|arg| eval_ast(arg, env))
+        .collect::<Result<Vec<Value>, Error>>()
 }
 
 fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
@@ -113,6 +114,19 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
             } else {
                 Err(Error::Eval(format!("{:?} is not defined", value)))
             }
+        }
+        Ast::Quoted(value) => Ok(ast_to_value(&**value)),
+    }
+}
+
+fn ast_to_value(node: &Ast) -> Value {
+    match node {
+        Ast::Integer(v) => Value::Integer(*v),
+        Ast::Symbol(v) => Value::Symbol(v.clone()),
+        Ast::Quoted(v) => ast_to_value(&*v),
+        Ast::List(vs) => {
+            let vs = vs.iter().map(|v| Box::new(ast_to_value(v))).collect();
+            Value::List(vs)
         }
     }
 }

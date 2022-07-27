@@ -12,6 +12,7 @@ impl From<ParseIntError> for Error {
 pub enum Token {
     LeftParen,
     RightParen,
+    Quote,
     IntegerLiteral(i32),
     Identifier(String),
 }
@@ -83,6 +84,10 @@ pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
             }
             ')' => {
                 result.push(Token::RightParen);
+                i += 1;
+            }
+            '\'' => {
+                result.push(Token::Quote);
                 i += 1;
             }
             c if c.is_ascii_digit() => {

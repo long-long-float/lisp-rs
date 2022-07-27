@@ -3,6 +3,7 @@ use super::{error::*, tokenizer::*};
 #[derive(Debug)]
 pub enum Ast {
     List(Vec<Ast>),
+    Quoted(Box<Ast>),
     Integer(i32),
     Symbol(String),
 }
@@ -61,6 +62,10 @@ fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
             Token::Identifier(value) => Ok((Ast::Symbol(value.clone()), rest)),
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value), rest)),
             Token::LeftParen => parse_list(tokens),
+            Token::Quote => {
+                let (value, rest) = parse_value(rest)?;
+                Ok((Ast::Quoted(Box::new(value)), rest))
+            }
             _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0]))),
         }
     } else {
