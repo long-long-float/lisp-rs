@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{error::*, parser::*};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Value {
     Integer(i32),
     Symbol(String),
