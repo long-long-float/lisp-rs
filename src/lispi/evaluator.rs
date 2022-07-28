@@ -90,6 +90,35 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                                     ))
                                 }
                             }
+                            "car" => {
+                                let args = eval_asts(raw_args, env)?;
+                                if let Some(Value::List(vs)) = args.get(0) {
+                                    let first = vs.first().map(|v| (**v).clone());
+                                    Ok(first.unwrap_or(Value::Nil))
+                                } else {
+                                    Err(Error::Eval(
+                                        "'car' is formed as (car list_value)".to_string(),
+                                    ))
+                                }
+                            }
+                            "cdr" => {
+                                let args = eval_asts(raw_args, env)?;
+                                if let Some(Value::List(vs)) = args.get(0) {
+                                    if let Some((_, rest)) = vs.split_first() {
+                                        if rest.is_empty() {
+                                            Ok(Value::Nil)
+                                        } else {
+                                            Ok(Value::List(rest.to_vec()))
+                                        }
+                                    } else {
+                                        Ok(Value::Nil)
+                                    }
+                                } else {
+                                    Err(Error::Eval(
+                                        "'cdr' is formed as (cdr list_value)".to_string(),
+                                    ))
+                                }
+                            }
                             "print" => {
                                 let args = eval_asts(raw_args, env)?;
                                 for arg in args {
@@ -136,10 +165,13 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
         variables: HashMap::new(),
     };
     // Pre-defined functions
+    // TODO: Add function symbols with its definition
     env.insert_variable_as_symbol("print");
     env.insert_variable_as_symbol("+");
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
+    env.insert_variable_as_symbol("car");
+    env.insert_variable_as_symbol("cdr");
     env.insert_variable_as_symbol("setq");
 
     asts.iter()

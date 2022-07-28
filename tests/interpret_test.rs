@@ -20,6 +20,14 @@ fn build_list(vs: Vec<i32>) -> Value {
     Value::List(vs)
 }
 
+fn build_sym_list(vs: Vec<&str>) -> Value {
+    let vs = vs
+        .iter()
+        .map(|v| Box::new(Value::Symbol((*v).to_owned())))
+        .collect();
+    Value::List(vs)
+}
+
 #[test]
 fn arithmetic_test() {
     assert_eq!(Ok(Value::Integer(3)), interp("(+ 1 2)"));
@@ -37,10 +45,15 @@ fn undefined_function_test() {
 
 #[test]
 fn variable_test() {
-    assert_eq!(Ok(Value::Integer(3)), interp(r#"
+    assert_eq!(
+        Ok(Value::Integer(3)),
+        interp(
+            r#"
 (setq x 1)
 (setq y 2)
-(+ x y)"#));
+(+ x y)"#
+        )
+    );
 }
 
 #[test]
@@ -51,7 +64,25 @@ fn setq_error_test() {
 #[test]
 fn list_test() {
     assert_eq!(Ok(build_list(vec![1, 2, 3])), interp("'(1 2 3)"));
-    assert_eq!(Ok(build_list(vec![1, 2, 3])), interp(r#"
+    assert_eq!(
+        Ok(build_list(vec![1, 2, 3])),
+        interp(
+            r#"
 (setq xs '(1 2 3))
-xs"#));
+xs"#
+        )
+    );
+    assert_eq!(
+        Ok(build_sym_list(vec!["a", "b"])),
+        interp("(car '((a b) (c d) (e f)))")
+    );
+    assert_eq!(
+        Ok(Value::List(vec![
+            Box::new(build_sym_list(vec!["c", "d"])),
+            Box::new(build_sym_list(vec!["e", "f"])),
+        ])),
+        interp("(cdr '((a b) (c d) (e f)))")
+    );
+
+    assert_eq!(Ok(Value::Nil), interp("(cdr '(a))"));
 }
