@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, LinkedList};
 
 use super::{error::*, parser::*};
 
@@ -7,18 +7,60 @@ pub enum Value {
     Integer(i32),
     Symbol(String),
     List(Vec<Box<Value>>),
+    Function {
+        name: String,
+        args: Vec<String>,
+        body: Vec<Ast>,
+    },
     Nil,
 }
 
 struct Environment {
-    variables: HashMap<String, Value>,
+    local_stack: Vec<Local>,
 }
 
 impl Environment {
+    fn new() -> Environment {
+        let mut env = Environment {
+            local_stack: Vec::new(),
+        };
+        env.push_local();
+        env
+    }
+
+    fn insert_var(&mut self, name: String, value: Value) {
+        // local_stack must have least one local
+        let mut local = self.local_stack.last_mut().unwrap();
+        local.variables.insert(name, value);
+    }
+
+    fn find_var(&self, name: &String) -> Option<&Value> {
+        for local in self.local_stack.iter().rev() {
+            if let Some(value) = local.variables.get(name) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
     fn insert_variable_as_symbol(&mut self, name: &str) {
         let name = name.to_string();
-        self.variables.insert(name.clone(), Value::Symbol(name));
+        self.insert_var(name.clone(), Value::Symbol(name));
     }
+
+    fn push_local(&mut self) {
+        self.local_stack.push(Local {
+            variables: HashMap::new(),
+        });
+    }
+
+    fn pop_local(&mut self) {
+        self.local_stack.pop();
+    }
+}
+
+struct Local {
+    variables: HashMap<String, Value>,
 }
 
 fn eval_asts(asts: &[Ast], env: &mut Environment) -> Result<Vec<Value>, Error> {
@@ -82,7 +124,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                                     (raw_args.get(0), raw_args.get(1))
                                 {
                                     let value = eval_ast(value, env)?;
-                                    env.variables.insert(name.clone(), value.clone());
+                                    env.insert_var(name.clone(), value);
                                     Ok(Value::Nil)
                                 } else {
                                     Err(Error::Eval(
@@ -119,6 +161,39 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                                     ))
                                 }
                             }
+                            "defun" => {
+                                if let (Some(Ast::Symbol(name)), Some(Ast::List(args)), (_, body)) =
+                                    (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
+                                {
+                                    let args = args
+                                        .iter()
+                                        .map(|arg| {
+                                            if let Ast::Symbol(v) = arg {
+                                                Ok(v.clone())
+                                            } else {
+                                                Err(Error::Eval(format!(
+                                                    "{:?} is not an symbol.",
+                                                    arg
+                                                )))
+                                            }
+                                        })
+                                        .collect::<Result<Vec<String>, Error>>()?;
+
+                                    let func = Value::Function {
+                                        name: name.clone(),
+                                        args: args,
+                                        body: body.to_vec(),
+                                    };
+                                    env.insert_var(name.clone(), func);
+
+                                    Ok(Value::Nil)
+                                } else {
+                                    Err(Error::Eval(
+                                        "'defun' is formed as (defun name (arg ...) body ...)"
+                                            .to_string(),
+                                    ))
+                                }
+                            }
                             "print" => {
                                 let args = eval_asts(raw_args, env)?;
                                 for arg in args {
@@ -129,6 +204,26 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                             _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
                         }
                     }
+                    Value::Function {
+                        name,
+                        args: arg_names,
+                        body,
+                    } => {
+                        let args = eval_asts(rest, env)?;
+
+                        env.push_local();
+
+                        for (name, value) in arg_names.iter().zip(args) {
+                            env.insert_var(name.clone(), value);
+                        }
+
+                        let result = eval_asts(&body[..], env);
+
+                        env.pop_local();
+
+                        let result = result?;
+                        Ok(result.last().unwrap_or(&Value::Nil).clone())
+                    }
                     _ => Err(Error::Eval(format!("{:?} is not a function", first))),
                 }
             } else {
@@ -138,7 +233,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
         Ast::Integer(value) => Ok(Value::Integer(*value)),
         Ast::Symbol(value) => {
             // println!("{:#?}", env.variables);
-            if let Some(value) = env.variables.get(value) {
+            if let Some(value) = env.find_var(value) {
                 Ok(value.clone())
             } else {
                 Err(Error::Eval(format!("{:?} is not defined", value)))
@@ -161,9 +256,8 @@ fn ast_to_value(node: &Ast) -> Value {
 }
 
 pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
-    let mut env = Environment {
-        variables: HashMap::new(),
-    };
+    let mut env = Environment::new();
+
     // Pre-defined functions
     // TODO: Add function symbols with its definition
     env.insert_variable_as_symbol("print");
@@ -172,9 +266,8 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
     env.insert_variable_as_symbol("*");
     env.insert_variable_as_symbol("car");
     env.insert_variable_as_symbol("cdr");
+    env.insert_variable_as_symbol("defun");
     env.insert_variable_as_symbol("setq");
 
-    asts.iter()
-        .map(|ast| eval_ast(ast, &mut env))
-        .collect::<Result<Vec<Value>, Error>>()
+    eval_asts(asts, &mut env)
 }

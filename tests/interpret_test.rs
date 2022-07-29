@@ -59,6 +59,7 @@ fn variable_test() {
 #[test]
 fn setq_error_test() {
     assert_eq!(true, has_eval_error(&interp("(setq 1 2)")));
+    assert_eq!(true, has_eval_error(&interp("(setq x 2 'err)")));
 }
 
 #[test]
@@ -85,4 +86,37 @@ xs"#
     );
 
     assert_eq!(Ok(Value::Nil), interp("(cdr '(a))"));
+}
+
+#[test]
+fn funcion_test() {
+    assert_eq!(
+        Ok(Value::Integer(25)),
+        interp(
+            r#"
+(defun square (x) (* x x))
+(square 5)"#
+        )
+    );
+
+    assert_eq!(
+        Ok(Value::Integer(25)),
+        interp(
+            r#"
+(setq x 10)
+(defun square (x) (* x x))
+(square 5)"#
+        )
+    );
+
+    assert_eq!(
+        Ok(Value::Integer(10)),
+        interp(
+            r#"
+(setq x 10)
+(defun square (x) (* x x))
+(square 5)
+x"#
+        )
+    );
 }

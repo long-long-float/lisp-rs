@@ -1,6 +1,6 @@
 use super::{error::*, tokenizer::*};
 
-#[derive(Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
     List(Vec<Ast>),
     Quoted(Box<Ast>),
