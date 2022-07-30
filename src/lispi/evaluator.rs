@@ -48,8 +48,8 @@ impl Value {
 
     fn get_type(&self) -> Type {
         match self {
-            Value::Integer(_) => Type::scala("int"),
-            Value::Symbol(_) => Type::scala("symbol"),
+            Value::Integer(_) => Type::int(),
+            Value::Symbol(_) => Type::symbol(),
             Value::List(_) => Type::list(),
             Value::Function {
                 name: _,
@@ -77,13 +77,23 @@ impl Environment {
         env
     }
 
-    fn insert_var(&mut self, name: String, value: Value) {
-        // local_stack must have least one local
-        let local = self.local_stack.last_mut().unwrap();
-        local.variables.insert(name, value);
+    fn update_or_insert_var(&mut self, name: String, value: Value) {
+        if let Some(found) = self.find_var_mut(&name) {
+            // TODO: Check type
+            found.value = value;
+        } else {
+            let t = value.get_type();
+            self.insert_var(name, value, t);
+        }
     }
 
-    fn find_var(&self, name: &String) -> Option<&Value> {
+    fn insert_var(&mut self, name: String, value: Value, type_: Type) {
+        // local_stack must have least one local
+        let local = self.local_stack.last_mut().unwrap();
+        local.variables.insert(name, ValueWithType { value, type_ });
+    }
+
+    fn find_var(&self, name: &String) -> Option<&ValueWithType> {
         for local in self.local_stack.iter().rev() {
             if let Some(value) = local.variables.get(name) {
                 return Some(value);
@@ -92,9 +102,23 @@ impl Environment {
         None
     }
 
+    fn find_var_mut(&mut self, name: &String) -> Option<&mut ValueWithType> {
+        for local in self.local_stack.iter_mut().rev() {
+            if let Some(value) = local.variables.get_mut(name) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn insert_function(&mut self, name: &str, type_: Type) {
+        let name = name.to_string();
+        self.insert_var(name.clone(), Value::Symbol(name), type_);
+    }
+
     fn insert_variable_as_symbol(&mut self, name: &str) {
         let name = name.to_string();
-        self.insert_var(name.clone(), Value::Symbol(name));
+        self.insert_var(name.clone(), Value::Symbol(name), Type::symbol());
     }
 
     fn push_local(&mut self) {
@@ -108,8 +132,13 @@ impl Environment {
     }
 }
 
+struct ValueWithType {
+    value: Value,
+    type_: Type,
+}
+
 struct Local {
-    variables: HashMap<String, Value>,
+    variables: HashMap<String, ValueWithType>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -129,6 +158,14 @@ enum Type {
 impl Type {
     fn scala(name: &str) -> Type {
         Type::Scala(name.to_string())
+    }
+
+    fn int() -> Type {
+        Type::scala("int")
+    }
+
+    fn symbol() -> Type {
+        Type::scala("symbol")
     }
 
     fn list() -> Type {
@@ -207,7 +244,7 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Res
             "setq" => {
                 if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
                     let value = eval_ast(value, env)?;
-                    env.insert_var(name.clone(), value);
+                    env.update_or_insert_var(name.clone(), value);
                     Ok(Value::Nil)
                 } else {
                     Err(Error::Eval(
@@ -230,12 +267,13 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Res
                         })
                         .collect::<Result<Vec<String>, Error>>()?;
 
+                    let arg_types = args.iter().map(|_| Type::Any).collect();
                     let func = Value::Function {
                         name: name.clone(),
                         args: args,
                         body: body.to_vec(),
                     };
-                    env.insert_var(name.clone(), func);
+                    env.insert_var(name.clone(), func, Type::function(arg_types, Type::Any));
 
                     Ok(Value::Nil)
                 } else {
@@ -243,13 +281,6 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Res
                         "'defun' is formed as (defun name (arg ...) body ...)".to_string(),
                     ))
                 }
-            }
-            "print" => {
-                let args = eval_asts(raw_args, env)?;
-                for arg in args {
-                    println!("{:?}", arg);
-                }
-                Ok(Value::Nil)
             }
             "if" => {
                 if let (Some(cond), Some(then_ast)) = (raw_args.get(0), raw_args.get(1)) {
@@ -277,14 +308,28 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Res
 }
 
 fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<Value, Error> {
-    let first = eval_ast(name, env)?;
-    match first {
+    let name = eval_ast(name, env)?;
+    let args = eval_asts(raw_args, env)?;
+
+    match name {
         Value::Symbol(func_name) => {
             let func_name = func_name.as_str();
+
+            let var = env
+                .find_var(&func_name.to_string())
+                .ok_or(Error::Eval(format!("Unknown function: {}", func_name)))?;
+            if let Type::Function {
+                args: arg_types,
+                result,
+            } = &var.type_
+            {
+                let arg_types = arg_types.iter().map(|a| *a.clone()).collect();
+                check_arg_types(func_name, &args, &arg_types)?;
+            }
+
             match func_name {
                 // Functions
                 "+" | "-" | "*" => {
-                    let args = eval_asts(raw_args, env)?;
                     let args = args
                         .iter()
                         .map(|arg| {
@@ -316,9 +361,6 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
                     Ok(Value::Integer(sum))
                 }
                 "evenp" => {
-                    let args = eval_asts(raw_args, env)?;
-                    check_arg_types(func_name, &args, &vec![Type::scala("int")])?;
-
                     match_args!(args, Value::Integer(v), {
                         let ret = if v % 2 == 0 {
                             Value::Symbol("T".to_string())
@@ -329,18 +371,12 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
                     })
                 }
                 "car" => {
-                    let args = eval_asts(raw_args, env)?;
-                    check_arg_types(func_name, &args, &vec![Type::list()])?;
-
                     match_args!(args, Value::List(vs), {
                         let first = vs.first().map(|v| (**v).clone());
                         Ok(first.unwrap_or(Value::Nil))
                     })
                 }
                 "cdr" => {
-                    let args = eval_asts(raw_args, env)?;
-                    check_arg_types(func_name, &args, &vec![Type::list()])?;
-
                     match_args!(args, Value::List(vs), {
                         if let Some((_, rest)) = vs.split_first() {
                             if rest.is_empty() {
@@ -353,6 +389,13 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
                         }
                     })
                 }
+                "print" => {
+                    let args = eval_asts(raw_args, env)?;
+                    for arg in args {
+                        println!("{:?}", arg);
+                    }
+                    Ok(Value::Nil)
+                }
                 _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
             }
         }
@@ -361,12 +404,11 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
             args: arg_names,
             body,
         } => {
-            let args = eval_asts(raw_args, env)?;
-
             env.push_local();
 
             for (name, value) in arg_names.iter().zip(args) {
-                env.insert_var(name.clone(), value);
+                let t = value.get_type();
+                env.insert_var(name.clone(), value, t);
             }
 
             let result = eval_asts(&body, env);
@@ -376,7 +418,7 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
             let result = result?;
             Ok(result.last().unwrap_or(&Value::Nil).clone())
         }
-        _ => Err(Error::Eval(format!("{:?} is not a function", first))),
+        _ => Err(Error::Eval(format!("{:?} is not a function", name))),
     }
 }
 
@@ -395,8 +437,8 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
         }
         Ast::Symbol(value) => {
             // println!("{:#?}", env.variables);
-            if let Some(value) = env.find_var(value) {
-                Ok(value.clone())
+            if let Some(var) = env.find_var(value) {
+                Ok(var.value.clone())
             } else {
                 Err(Error::Eval(format!("{:?} is not defined", value)))
             }
@@ -421,18 +463,16 @@ fn ast_to_value(node: &Ast) -> Value {
 pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
     let mut env = Environment::new();
 
-    // Pre-defined functions
+    // Pre-defined functions and special forms
     // TODO: Add function symbols with its definition
+    env.insert_function("evenp", Type::function(vec![Type::int()], Type::Any));
+    env.insert_function("car", Type::function(vec![Type::list()], Type::Any));
+    env.insert_function("cdr", Type::function(vec![Type::list()], Type::Any));
+
     env.insert_variable_as_symbol("print");
-    env.insert_variable_as_symbol("evenp");
     env.insert_variable_as_symbol("+");
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
-    env.insert_variable_as_symbol("car");
-    env.insert_variable_as_symbol("cdr");
-    env.insert_variable_as_symbol("defun");
-    env.insert_variable_as_symbol("setq");
-    env.insert_variable_as_symbol("if");
 
     // Pre-defined symbols
     env.insert_variable_as_symbol("T");

@@ -149,4 +149,17 @@ fn funcion_test() {
 x"#
         )
     );
+
+    assert_eq!(
+        Ok(Value::Integer(5)),
+        interp(
+            r#"
+(setq y 10)
+(defun set-y (x) 
+    (setq y x))
+(set-y 5)
+y
+"#
+        )
+    );
 }
