@@ -1,4 +1,4 @@
-use std::collections::{HashMap, LinkedList};
+use std::collections::HashMap;
 
 use super::{error::*, parser::*};
 
@@ -13,6 +13,12 @@ pub enum Value {
         body: Vec<Ast>,
     },
     Nil,
+}
+
+impl Value {
+    fn is_true(&self) -> bool {
+        *self != Value::Nil
+    }
 }
 
 struct Environment {
@@ -132,6 +138,21 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                                     ))
                                 }
                             }
+                            "evenp" => {
+                                let args = eval_asts(raw_args, env)?;
+                                if let Some(Value::Integer(v)) = args.get(0) {
+                                    let ret = if v % 2 == 0 {
+                                        Value::Symbol("T".to_string())
+                                    } else {
+                                        Value::Nil
+                                    };
+                                    Ok(ret)
+                                } else {
+                                    Err(Error::Eval(
+                                        "'car' is formed as (car list_value)".to_string(),
+                                    ))
+                                }
+                            }
                             "car" => {
                                 let args = eval_asts(raw_args, env)?;
                                 if let Some(Value::List(vs)) = args.get(0) {
@@ -201,6 +222,26 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                                 }
                                 Ok(Value::Nil)
                             }
+                            "if" => {
+                                if let (Some(cond), Some(then_ast)) =
+                                    (raw_args.get(0), raw_args.get(1))
+                                {
+                                    let cond = eval_ast(cond, env)?;
+                                    if cond.is_true() {
+                                        eval_ast(then_ast, env)
+                                    } else {
+                                        if let Some(else_ast) = raw_args.get(2) {
+                                            eval_ast(else_ast, env)
+                                        } else {
+                                            Ok(Value::Nil)
+                                        }
+                                    }
+                                } else {
+                                    Err(Error::Eval(
+                                        "'if' is formed as (if cond then else)".to_string(),
+                                    ))
+                                }
+                            }
                             _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
                         }
                     }
@@ -230,7 +271,6 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                 Ok(Value::Nil)
             }
         }
-        Ast::Integer(value) => Ok(Value::Integer(*value)),
         Ast::Symbol(value) => {
             // println!("{:#?}", env.variables);
             if let Some(value) = env.find_var(value) {
@@ -239,7 +279,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                 Err(Error::Eval(format!("{:?} is not defined", value)))
             }
         }
-        Ast::Quoted(value) => Ok(ast_to_value(&**value)),
+        _ => Ok(ast_to_value(ast)),
     }
 }
 
@@ -252,6 +292,7 @@ fn ast_to_value(node: &Ast) -> Value {
             let vs = vs.iter().map(|v| Box::new(ast_to_value(v))).collect();
             Value::List(vs)
         }
+        Ast::Nil => Value::Nil,
     }
 }
 
@@ -261,6 +302,7 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
     // Pre-defined functions
     // TODO: Add function symbols with its definition
     env.insert_variable_as_symbol("print");
+    env.insert_variable_as_symbol("evenp");
     env.insert_variable_as_symbol("+");
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
@@ -268,6 +310,10 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
     env.insert_variable_as_symbol("cdr");
     env.insert_variable_as_symbol("defun");
     env.insert_variable_as_symbol("setq");
+    env.insert_variable_as_symbol("if");
+
+    // Pre-defined symbols
+    env.insert_variable_as_symbol("T");
 
     eval_asts(asts, &mut env)
 }

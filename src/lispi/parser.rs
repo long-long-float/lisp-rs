@@ -6,6 +6,7 @@ pub enum Ast {
     Quoted(Box<Ast>),
     Integer(i32),
     Symbol(String),
+    Nil,
 }
 
 pub type Program = Vec<Ast>;
@@ -59,7 +60,14 @@ fn parse_list(tokens: &[Token]) -> ParseResult<Ast> {
 fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
     if let Some((first, rest)) = tokens.split_first() {
         match first {
-            Token::Identifier(value) => Ok((Ast::Symbol(value.clone()), rest)),
+            Token::Identifier(value) => {
+                let ret = if value == "Nil" {
+                    Ast::Nil
+                } else {
+                    Ast::Symbol(value.clone())
+                };
+                Ok((ret, rest))
+            }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value), rest)),
             Token::LeftParen => parse_list(tokens),
             Token::Quote => {

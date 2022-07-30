@@ -63,6 +63,20 @@ fn setq_error_test() {
 }
 
 #[test]
+fn if_test() {
+    assert_eq!(Ok(Value::Integer(3)), interp("(if 1 (+ 1 2) (+ 3 4))"));
+    assert_eq!(Ok(Value::Integer(3)), interp("(if T (+ 1 2) (+ 3 4))"));
+    assert_eq!(Ok(Value::Integer(7)), interp("(if Nil (+ 1 2) (+ 3 4))"));
+
+    assert_eq!(Ok(Value::Integer(2)), interp("(if 1 2 3)"));
+    assert_eq!(Ok(Value::Integer(2)), interp("(if (evenp 2) 2 3)"));
+    assert_eq!(Ok(Value::Integer(3)), interp("(if (evenp 1) 2 3)"));
+
+    assert_eq!(Ok(Value::Integer(3)), interp("(if 1 (+ 1 2))"));
+    assert_eq!(Ok(Value::Nil), interp("(if Nil (+ 1 2))"));
+}
+
+#[test]
 fn list_test() {
     assert_eq!(Ok(build_list(vec![1, 2, 3])), interp("'(1 2 3)"));
     assert_eq!(
