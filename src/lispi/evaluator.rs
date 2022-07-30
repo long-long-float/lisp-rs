@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::format};
+use std::collections::HashMap;
 
 use super::{error::*, parser::*};
 
@@ -200,194 +200,194 @@ fn eval_asts(asts: &[Ast], env: &mut Environment) -> Result<Vec<Value>, Error> {
         .collect::<Result<Vec<Value>, Error>>()
 }
 
+fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<Value, Error> {
+    if let Ast::Symbol(name) = name {
+        let name = name.as_str();
+        match name {
+            "setq" => {
+                if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
+                    let value = eval_ast(value, env)?;
+                    env.insert_var(name.clone(), value);
+                    Ok(Value::Nil)
+                } else {
+                    Err(Error::Eval(
+                        "'setq' is formed as (setq symbol value)".to_string(),
+                    ))
+                }
+            }
+            "defun" => {
+                if let (Some(Ast::Symbol(name)), Some(Ast::List(args)), (_, body)) =
+                    (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
+                {
+                    let args = args
+                        .iter()
+                        .map(|arg| {
+                            if let Ast::Symbol(v) = arg {
+                                Ok(v.clone())
+                            } else {
+                                Err(Error::Eval(format!("{:?} is not an symbol.", arg)))
+                            }
+                        })
+                        .collect::<Result<Vec<String>, Error>>()?;
+
+                    let func = Value::Function {
+                        name: name.clone(),
+                        args: args,
+                        body: body.to_vec(),
+                    };
+                    env.insert_var(name.clone(), func);
+
+                    Ok(Value::Nil)
+                } else {
+                    Err(Error::Eval(
+                        "'defun' is formed as (defun name (arg ...) body ...)".to_string(),
+                    ))
+                }
+            }
+            "print" => {
+                let args = eval_asts(raw_args, env)?;
+                for arg in args {
+                    println!("{:?}", arg);
+                }
+                Ok(Value::Nil)
+            }
+            "if" => {
+                if let (Some(cond), Some(then_ast)) = (raw_args.get(0), raw_args.get(1)) {
+                    let cond = eval_ast(cond, env)?;
+                    if cond.is_true() {
+                        eval_ast(then_ast, env)
+                    } else {
+                        if let Some(else_ast) = raw_args.get(2) {
+                            eval_ast(else_ast, env)
+                        } else {
+                            Ok(Value::Nil)
+                        }
+                    }
+                } else {
+                    Err(Error::Eval(
+                        "'if' is formed as (if cond then else)".to_string(),
+                    ))
+                }
+            }
+            _ => Err(Error::DoNothing),
+        }
+    } else {
+        Err(Error::DoNothing)
+    }
+}
+
+fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<Value, Error> {
+    let first = eval_ast(name, env)?;
+    match first {
+        Value::Symbol(func_name) => {
+            let func_name = func_name.as_str();
+            match func_name {
+                // Functions
+                "+" | "-" | "*" => {
+                    let args = eval_asts(raw_args, env)?;
+                    let args = args
+                        .iter()
+                        .map(|arg| {
+                            if let Value::Integer(v) = arg {
+                                Ok(*v)
+                            } else {
+                                Err(Error::Eval(format!("{:?} is not an integer.", arg)))
+                            }
+                        })
+                        .collect::<Result<Vec<i32>, Error>>()?;
+
+                    let sum = match func_name {
+                        "+" => args.iter().sum(),
+                        "-" => {
+                            if args.len() >= 1 {
+                                let (head, args) = args.split_first().unwrap();
+                                let mut res = *head;
+                                for arg in args {
+                                    res -= arg;
+                                }
+                                res
+                            } else {
+                                0
+                            }
+                        }
+                        "*" => args.iter().fold(1, |acc, arg| acc * arg),
+                        _ => return Err(Error::Eval(format!("Unknown function: {}", func_name))),
+                    };
+                    Ok(Value::Integer(sum))
+                }
+                "evenp" => {
+                    let args = eval_asts(raw_args, env)?;
+                    check_arg_types(func_name, &args, &vec![Type::scala("int")])?;
+
+                    match_args!(args, Value::Integer(v), {
+                        let ret = if v % 2 == 0 {
+                            Value::Symbol("T".to_string())
+                        } else {
+                            Value::Nil
+                        };
+                        Ok(ret)
+                    })
+                }
+                "car" => {
+                    let args = eval_asts(raw_args, env)?;
+                    check_arg_types(func_name, &args, &vec![Type::list()])?;
+
+                    match_args!(args, Value::List(vs), {
+                        let first = vs.first().map(|v| (**v).clone());
+                        Ok(first.unwrap_or(Value::Nil))
+                    })
+                }
+                "cdr" => {
+                    let args = eval_asts(raw_args, env)?;
+                    check_arg_types(func_name, &args, &vec![Type::list()])?;
+
+                    match_args!(args, Value::List(vs), {
+                        if let Some((_, rest)) = vs.split_first() {
+                            if rest.is_empty() {
+                                Ok(Value::Nil)
+                            } else {
+                                Ok(Value::List(rest.to_vec()))
+                            }
+                        } else {
+                            Ok(Value::Nil)
+                        }
+                    })
+                }
+                _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
+            }
+        }
+        Value::Function {
+            name: _,
+            args: arg_names,
+            body,
+        } => {
+            let args = eval_asts(raw_args, env)?;
+
+            env.push_local();
+
+            for (name, value) in arg_names.iter().zip(args) {
+                env.insert_var(name.clone(), value);
+            }
+
+            let result = eval_asts(&body, env);
+
+            env.pop_local();
+
+            let result = result?;
+            Ok(result.last().unwrap_or(&Value::Nil).clone())
+        }
+        _ => Err(Error::Eval(format!("{:?} is not a function", first))),
+    }
+}
+
 fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
     match ast {
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
-                let first = eval_ast(first, env)?;
-                match first {
-                    Value::Symbol(func_name) => {
-                        let func_name = func_name.as_str();
-                        let raw_args = rest;
-                        match func_name {
-                            // Functions
-                            "+" | "-" | "*" => {
-                                let args = eval_asts(raw_args, env)?;
-                                let args = args
-                                    .iter()
-                                    .map(|arg| {
-                                        if let Value::Integer(v) = arg {
-                                            Ok(*v)
-                                        } else {
-                                            Err(Error::Eval(format!(
-                                                "{:?} is not an integer.",
-                                                arg
-                                            )))
-                                        }
-                                    })
-                                    .collect::<Result<Vec<i32>, Error>>()?;
-
-                                let sum = match func_name {
-                                    "+" => args.iter().sum(),
-                                    "-" => {
-                                        if args.len() >= 1 {
-                                            let (head, args) = args.split_first().unwrap();
-                                            let mut res = *head;
-                                            for arg in args {
-                                                res -= arg;
-                                            }
-                                            res
-                                        } else {
-                                            0
-                                        }
-                                    }
-                                    "*" => args.iter().fold(1, |acc, arg| acc * arg),
-                                    _ => {
-                                        return Err(Error::Eval(format!(
-                                            "Unknown function: {}",
-                                            func_name
-                                        )))
-                                    }
-                                };
-                                Ok(Value::Integer(sum))
-                            }
-                            "evenp" => {
-                                let args = eval_asts(raw_args, env)?;
-                                check_arg_types(func_name, &args, &vec![Type::scala("int")])?;
-
-                                match_args!(args, Value::Integer(v), {
-                                    let ret = if v % 2 == 0 {
-                                        Value::Symbol("T".to_string())
-                                    } else {
-                                        Value::Nil
-                                    };
-                                    Ok(ret)
-                                })
-                            }
-                            "car" => {
-                                let args = eval_asts(raw_args, env)?;
-                                check_arg_types(func_name, &args, &vec![Type::list()])?;
-
-                                match_args!(args, Value::List(vs), {
-                                    let first = vs.first().map(|v| (**v).clone());
-                                    Ok(first.unwrap_or(Value::Nil))
-                                })
-                            }
-                            "cdr" => {
-                                let args = eval_asts(raw_args, env)?;
-                                check_arg_types(func_name, &args, &vec![Type::list()])?;
-
-                                match_args!(args, Value::List(vs), {
-                                    if let Some((_, rest)) = vs.split_first() {
-                                        if rest.is_empty() {
-                                            Ok(Value::Nil)
-                                        } else {
-                                            Ok(Value::List(rest.to_vec()))
-                                        }
-                                    } else {
-                                        Ok(Value::Nil)
-                                    }
-                                })
-                            }
-
-                            // Special forms
-                            "setq" => {
-                                if let (Some(Ast::Symbol(name)), Some(value)) =
-                                    (raw_args.get(0), raw_args.get(1))
-                                {
-                                    let value = eval_ast(value, env)?;
-                                    env.insert_var(name.clone(), value);
-                                    Ok(Value::Nil)
-                                } else {
-                                    Err(Error::Eval(
-                                        "'setq' is formed as (setq symbol value)".to_string(),
-                                    ))
-                                }
-                            }
-                            "defun" => {
-                                if let (Some(Ast::Symbol(name)), Some(Ast::List(args)), (_, body)) =
-                                    (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
-                                {
-                                    let args = args
-                                        .iter()
-                                        .map(|arg| {
-                                            if let Ast::Symbol(v) = arg {
-                                                Ok(v.clone())
-                                            } else {
-                                                Err(Error::Eval(format!(
-                                                    "{:?} is not an symbol.",
-                                                    arg
-                                                )))
-                                            }
-                                        })
-                                        .collect::<Result<Vec<String>, Error>>()?;
-
-                                    let func = Value::Function {
-                                        name: name.clone(),
-                                        args: args,
-                                        body: body.to_vec(),
-                                    };
-                                    env.insert_var(name.clone(), func);
-
-                                    Ok(Value::Nil)
-                                } else {
-                                    Err(Error::Eval(
-                                        "'defun' is formed as (defun name (arg ...) body ...)"
-                                            .to_string(),
-                                    ))
-                                }
-                            }
-                            "print" => {
-                                let args = eval_asts(raw_args, env)?;
-                                for arg in args {
-                                    println!("{:?}", arg);
-                                }
-                                Ok(Value::Nil)
-                            }
-                            "if" => {
-                                if let (Some(cond), Some(then_ast)) =
-                                    (raw_args.get(0), raw_args.get(1))
-                                {
-                                    let cond = eval_ast(cond, env)?;
-                                    if cond.is_true() {
-                                        eval_ast(then_ast, env)
-                                    } else {
-                                        if let Some(else_ast) = raw_args.get(2) {
-                                            eval_ast(else_ast, env)
-                                        } else {
-                                            Ok(Value::Nil)
-                                        }
-                                    }
-                                } else {
-                                    Err(Error::Eval(
-                                        "'if' is formed as (if cond then else)".to_string(),
-                                    ))
-                                }
-                            }
-                            _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
-                        }
-                    }
-                    Value::Function {
-                        name: _,
-                        args: arg_names,
-                        body,
-                    } => {
-                        let args = eval_asts(rest, env)?;
-
-                        env.push_local();
-
-                        for (name, value) in arg_names.iter().zip(args) {
-                            env.insert_var(name.clone(), value);
-                        }
-
-                        let result = eval_asts(&body[..], env);
-
-                        env.pop_local();
-
-                        let result = result?;
-                        Ok(result.last().unwrap_or(&Value::Nil).clone())
-                    }
-                    _ => Err(Error::Eval(format!("{:?} is not a function", first))),
+                let result = eval_special_form(first, rest, env);
+                match result {
+                    Err(Error::DoNothing) => eval_function(first, rest, env),
+                    _ => result,
                 }
             } else {
                 Ok(Value::Nil)

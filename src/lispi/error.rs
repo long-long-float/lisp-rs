@@ -5,4 +5,7 @@ pub enum Error {
     Parse(String),
     Eval(String),
     Type(String),
+
+    // For non-local exists
+    DoNothing,
 }

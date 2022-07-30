@@ -17,24 +17,6 @@ pub enum Token {
     Identifier(String),
 }
 
-impl Token {
-    fn is_integer(&self) -> bool {
-        if let Token::IntegerLiteral(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn is_identifier(&self) -> bool {
-        if let Token::Identifier(_) = self {
-            true
-        } else {
-            false
-        }
-    }
-}
-
 trait CharExt {
     fn is_identifier_head(&self) -> bool;
     fn is_identifier(&self) -> bool;

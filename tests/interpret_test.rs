@@ -69,6 +69,7 @@ fn variable_test() {
 #[test]
 fn type_test() {
     assert_error!(&interp("(car 1)"), Error::Type(_));
+    assert_error!(&interp("(car '(1 2) 1)"), Error::Type(_));
 }
 
 #[test]
