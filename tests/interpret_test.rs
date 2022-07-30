@@ -1,4 +1,5 @@
 use lisp_rs::lispi::{error::Error, evaluator::*, parser::*, tokenizer::*};
+use std::stringify;
 
 fn interp(program: &str) -> Result<Value, Error> {
     let lines = program.split('\n').map(|l| l.to_string()).collect();
@@ -8,11 +9,20 @@ fn interp(program: &str) -> Result<Value, Error> {
     Ok(result.last().unwrap().clone())
 }
 
-fn has_eval_error(value: &Result<Value, Error>) -> bool {
-    match value {
-        Err(Error::Eval(_)) => true,
-        _ => false,
-    }
+macro_rules! assert_error {
+    ( $value:expr, $p:pat ) => {
+        let has_error = match $value {
+            Err($p) => true,
+            _ => false,
+        };
+        assert_eq!(
+            true,
+            has_error,
+            "{} must have an error {}",
+            stringify!($value),
+            stringify!($p)
+        );
+    };
 }
 
 fn build_list(vs: Vec<i32>) -> Value {
@@ -39,8 +49,8 @@ fn arithmetic_test() {
 
 #[test]
 fn undefined_function_test() {
-    assert_eq!(true, has_eval_error(&interp("(x 1 2)")));
-    assert_eq!(true, has_eval_error(&interp("(** 1 2)")));
+    assert_error!(&interp("(x 1 2)"), Error::Eval(_));
+    assert_error!(&interp("(** 1 2)"), Error::Eval(_));
 }
 
 #[test]
@@ -57,9 +67,14 @@ fn variable_test() {
 }
 
 #[test]
+fn type_test() {
+    assert_error!(&interp("(car 1)"), Error::Type(_));
+}
+
+#[test]
 fn setq_error_test() {
-    assert_eq!(true, has_eval_error(&interp("(setq 1 2)")));
-    assert_eq!(true, has_eval_error(&interp("(setq x 2 'err)")));
+    assert_error!(&interp("(setq 1 2)"), Error::Eval(_));
+    assert_error!(&interp("(setq x 2 'err)"), Error::Eval(_));
 }
 
 #[test]

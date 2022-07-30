@@ -4,4 +4,5 @@ pub enum Error {
     Tokenize(String),
     Parse(String),
     Eval(String),
+    Type(String),
 }

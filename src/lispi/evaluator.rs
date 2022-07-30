@@ -1,6 +1,32 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::format};
 
 use super::{error::*, parser::*};
+
+macro_rules! match_args {
+    ( $args:expr, $p:pat, $b:block, $index:expr ) => {
+        #[allow(unused_must_use)]
+        if let Some($p) = $args.get($index) {
+            $b
+        }
+        else {
+            Err(())
+        }
+    };
+
+    ( $args:expr, $p:pat, $( $ps:pat ),*, $b:block, $index:expr ) => {
+        if let Some($p) = $args.get($index) {
+            match_args!($args, $( $ps ),*, $b, ($index + 1))
+        }
+        else {
+            Err(())
+        }
+    };
+
+    ( $args:expr, $( $ps:pat ),+, $b:block ) => {
+        // Patterns must be matched because args are passed type checking
+        Ok(match_args!($args, $( $ps ),+, $b, 0).unwrap())
+    };
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value {
@@ -19,6 +45,23 @@ impl Value {
     fn is_true(&self) -> bool {
         *self != Value::Nil
     }
+
+    fn get_type(&self) -> Type {
+        match self {
+            Value::Integer(_) => Type::scala("int"),
+            Value::Symbol(_) => Type::scala("symbol"),
+            Value::List(_) => Type::list(),
+            Value::Function {
+                name: _,
+                args: _,
+                body: _,
+            } => {
+                // TODO: Return concrete type
+                Type::Any
+            }
+            Value::Nil => Type::Any,
+        }
+    }
 }
 
 struct Environment {
@@ -36,7 +79,7 @@ impl Environment {
 
     fn insert_var(&mut self, name: String, value: Value) {
         // local_stack must have least one local
-        let mut local = self.local_stack.last_mut().unwrap();
+        let local = self.local_stack.last_mut().unwrap();
         local.variables.insert(name, value);
     }
 
@@ -69,6 +112,88 @@ struct Local {
     variables: HashMap<String, Value>,
 }
 
+#[derive(Clone, PartialEq, Debug)]
+enum Type {
+    Scala(String),
+    Composite {
+        name: String,
+        inner: Vec<Box<Type>>,
+    },
+    Function {
+        args: Vec<Box<Type>>,
+        result: Box<Type>,
+    },
+    Any,
+}
+
+impl Type {
+    fn scala(name: &str) -> Type {
+        Type::Scala(name.to_string())
+    }
+
+    fn list() -> Type {
+        Type::Composite {
+            name: "list".to_string(),
+            inner: Vec::new(),
+        }
+    }
+
+    fn function(args: Vec<Type>, result: Type) -> Type {
+        Type::Function {
+            args: args.iter().map(|a| Box::new(a.clone())).collect(),
+            result: Box::new(result),
+        }
+    }
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Type::Scala(name) => write!(f, "{}", name),
+            Type::Composite { name, inner } => {
+                let inner = inner
+                    .iter()
+                    .map(|t| format!("{}", *t))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{}({})", name, inner)
+            }
+            Type::Function { args, result } => {
+                let args = args
+                    .iter()
+                    .map(|t| format!("{}", *t))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "({}) -> {}", args, *result)
+            }
+            Type::Any => write!(f, "any"),
+        }
+    }
+}
+
+fn check_arg_types(func_name: &str, args: &Vec<Value>, types: &Vec<Type>) -> Result<(), Error> {
+    if args.len() != types.len() {
+        return Err(Error::Type(format!(
+            "{} arguments are expected, but {} arguments are specified.",
+            types.len(),
+            args.len()
+        )));
+    }
+
+    for (i, (a, t)) in args.iter().zip(types).enumerate() {
+        match (a.get_type(), t) {
+            (Type::Any, _) | (_, Type::Any) => (), // Pass-through
+            (actual, expected) => {
+                if actual != *expected {
+                    return Err(Error::Type(format!("Expected the type {} , but the type {} is specified in {}th argument in {} function", expected, actual, i, func_name)));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn eval_asts(asts: &[Ast], env: &mut Environment) -> Result<Vec<Value>, Error> {
     asts.iter()
         .map(|arg| eval_ast(arg, env))
@@ -85,6 +210,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                         let func_name = func_name.as_str();
                         let raw_args = rest;
                         match func_name {
+                            // Functions
                             "+" | "-" | "*" => {
                                 let args = eval_asts(raw_args, env)?;
                                 let args = args
@@ -125,6 +251,46 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                                 };
                                 Ok(Value::Integer(sum))
                             }
+                            "evenp" => {
+                                let args = eval_asts(raw_args, env)?;
+                                check_arg_types(func_name, &args, &vec![Type::scala("int")])?;
+
+                                match_args!(args, Value::Integer(v), {
+                                    let ret = if v % 2 == 0 {
+                                        Value::Symbol("T".to_string())
+                                    } else {
+                                        Value::Nil
+                                    };
+                                    Ok(ret)
+                                })
+                            }
+                            "car" => {
+                                let args = eval_asts(raw_args, env)?;
+                                check_arg_types(func_name, &args, &vec![Type::list()])?;
+
+                                match_args!(args, Value::List(vs), {
+                                    let first = vs.first().map(|v| (**v).clone());
+                                    Ok(first.unwrap_or(Value::Nil))
+                                })
+                            }
+                            "cdr" => {
+                                let args = eval_asts(raw_args, env)?;
+                                check_arg_types(func_name, &args, &vec![Type::list()])?;
+
+                                match_args!(args, Value::List(vs), {
+                                    if let Some((_, rest)) = vs.split_first() {
+                                        if rest.is_empty() {
+                                            Ok(Value::Nil)
+                                        } else {
+                                            Ok(Value::List(rest.to_vec()))
+                                        }
+                                    } else {
+                                        Ok(Value::Nil)
+                                    }
+                                })
+                            }
+
+                            // Special forms
                             "setq" => {
                                 if let (Some(Ast::Symbol(name)), Some(value)) =
                                     (raw_args.get(0), raw_args.get(1))
@@ -135,50 +301,6 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                                 } else {
                                     Err(Error::Eval(
                                         "'setq' is formed as (setq symbol value)".to_string(),
-                                    ))
-                                }
-                            }
-                            "evenp" => {
-                                let args = eval_asts(raw_args, env)?;
-                                if let Some(Value::Integer(v)) = args.get(0) {
-                                    let ret = if v % 2 == 0 {
-                                        Value::Symbol("T".to_string())
-                                    } else {
-                                        Value::Nil
-                                    };
-                                    Ok(ret)
-                                } else {
-                                    Err(Error::Eval(
-                                        "'car' is formed as (car list_value)".to_string(),
-                                    ))
-                                }
-                            }
-                            "car" => {
-                                let args = eval_asts(raw_args, env)?;
-                                if let Some(Value::List(vs)) = args.get(0) {
-                                    let first = vs.first().map(|v| (**v).clone());
-                                    Ok(first.unwrap_or(Value::Nil))
-                                } else {
-                                    Err(Error::Eval(
-                                        "'car' is formed as (car list_value)".to_string(),
-                                    ))
-                                }
-                            }
-                            "cdr" => {
-                                let args = eval_asts(raw_args, env)?;
-                                if let Some(Value::List(vs)) = args.get(0) {
-                                    if let Some((_, rest)) = vs.split_first() {
-                                        if rest.is_empty() {
-                                            Ok(Value::Nil)
-                                        } else {
-                                            Ok(Value::List(rest.to_vec()))
-                                        }
-                                    } else {
-                                        Ok(Value::Nil)
-                                    }
-                                } else {
-                                    Err(Error::Eval(
-                                        "'cdr' is formed as (cdr list_value)".to_string(),
                                     ))
                                 }
                             }
@@ -246,7 +368,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> Result<Value, Error> {
                         }
                     }
                     Value::Function {
-                        name,
+                        name: _,
                         args: arg_names,
                         body,
                     } => {
