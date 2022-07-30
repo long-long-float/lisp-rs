@@ -70,7 +70,7 @@ fn take_while(program: &Vec<char>, index: &mut usize, pred: fn(&char) -> bool) -
 }
 
 pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
-    let program = lines.join(" ");
+    let program = lines.join("\n");
     let program: Vec<char> = program.chars().collect();
 
     let mut result = Vec::new();
@@ -88,6 +88,10 @@ pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
             }
             '\'' => {
                 result.push(Token::Quote);
+                i += 1;
+            }
+            ';' => {
+                let _ = take_while(&program, &mut i, |&c| c != '\n');
                 i += 1;
             }
             c if c.is_ascii_digit() => {
