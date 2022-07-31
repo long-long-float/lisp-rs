@@ -162,4 +162,18 @@ y
 "#
         )
     );
+
+    assert_eq!(
+        Ok(Value::Integer(24)),
+        interp(
+            r#"
+(defun fact (x)
+  (if (zerop x)
+      1
+    (* x (fact (- x 1)))))
+
+(fact 4)
+"#
+        )
+    );
 }

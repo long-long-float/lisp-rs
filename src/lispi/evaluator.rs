@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, f32::consts::E, fmt::format, os::macos::raw};
 
 use super::{error::*, parser::*};
 
@@ -42,6 +42,15 @@ pub enum Value {
 }
 
 impl Value {
+    // TODO: Use From trait
+    fn from_bool(value: bool) -> Value {
+        if value {
+            Value::Symbol("T".to_string())
+        } else {
+            Value::Nil
+        }
+    }
+
     fn is_true(&self) -> bool {
         *self != Value::Nil
     }
@@ -284,10 +293,11 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Res
             }
             "if" => {
                 if let (Some(cond), Some(then_ast)) = (raw_args.get(0), raw_args.get(1)) {
-                    let cond = eval_ast(cond, env)?;
-                    if cond.is_true() {
+                    let cond = eval_ast(cond, env)?.is_true();
+                    if cond {
                         eval_ast(then_ast, env)
                     } else {
+                        println!("{:?}", raw_args.get(2));
                         if let Some(else_ast) = raw_args.get(2) {
                             eval_ast(else_ast, env)
                         } else {
@@ -299,6 +309,45 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Res
                         "'if' is formed as (if cond then else)".to_string(),
                     ))
                 }
+            }
+            "when" | "unless" => {
+                let invert = name == "unless";
+                if let Some((cond, forms)) = raw_args.split_first() {
+                    let cond = eval_ast(cond, env)?.is_true();
+                    let cond = if invert { !cond } else { cond };
+                    if cond {
+                        let result = eval_asts(forms, env)?;
+                        Ok(result.last().unwrap_or(&Value::Nil).clone())
+                    } else {
+                        Ok(Value::Nil)
+                    }
+                } else {
+                    Err(Error::Eval(format!(
+                        "'{}' is formed as (if cond then else)",
+                        name
+                    )))
+                }
+            }
+            "cond" => {
+                let err = "'cond' is formed as (cond (cond body ...) ...)";
+
+                for arg in raw_args {
+                    if let Ast::List(arm) = arg {
+                        if let Some((cond, body)) = arm.split_first() {
+                            let cond = eval_ast(cond, env)?;
+                            if cond.is_true() {
+                                let result = eval_asts(body, env)?;
+                                return Ok(result.last().unwrap_or(&Value::Nil).clone());
+                            }
+                        } else {
+                            return Err(Error::Eval(err.to_string()));
+                        }
+                    } else {
+                        return Err(Error::Eval(err.to_string()));
+                    }
+                }
+
+                Ok(Value::Nil)
             }
             _ => Err(Error::DoNothing),
         }
@@ -360,14 +409,22 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
                     };
                     Ok(Value::Integer(sum))
                 }
+                ">" => {
+                    match_args!(args, Value::Integer(x), Value::Integer(y), {
+                        Ok(Value::from_bool(x > y))
+                    })
+                }
                 "evenp" => {
                     match_args!(args, Value::Integer(v), {
-                        let ret = if v % 2 == 0 {
-                            Value::Symbol("T".to_string())
-                        } else {
-                            Value::Nil
-                        };
-                        Ok(ret)
+                        Ok(Value::from_bool(v % 2 == 0))
+                    })
+                }
+                "zerop" => {
+                    match_args!(args, Value::Integer(v), { Ok(Value::from_bool(*v == 0)) })
+                }
+                "mod" => {
+                    match_args!(args, Value::Integer(num), Value::Integer(divisor), {
+                        Ok(Value::Integer(num % divisor))
                     })
                 }
                 "car" => {
@@ -468,6 +525,16 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
     env.insert_function("evenp", Type::function(vec![Type::int()], Type::Any));
     env.insert_function("car", Type::function(vec![Type::list()], Type::Any));
     env.insert_function("cdr", Type::function(vec![Type::list()], Type::Any));
+    // TODO: Make zerop and mod to accept number
+    env.insert_function("zerop", Type::function(vec![Type::int()], Type::Any));
+    env.insert_function(
+        "mod",
+        Type::function(vec![Type::int(), Type::int()], Type::int()),
+    );
+    env.insert_function(
+        ">",
+        Type::function(vec![Type::int(), Type::int()], Type::Any),
+    );
 
     env.insert_variable_as_symbol("print");
     env.insert_variable_as_symbol("+");
