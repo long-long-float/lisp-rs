@@ -38,19 +38,13 @@ pub enum Value {
         args: Vec<String>,
         body: Vec<Ast>,
     },
+    NativeFunction {
+        func: fn(Vec<Value>) -> Result<Value, Error>,
+    },
     Nil,
 }
 
 impl Value {
-    // TODO: Use From trait
-    fn from_bool(value: bool) -> Value {
-        if value {
-            Value::Symbol("T".to_string())
-        } else {
-            Value::Nil
-        }
-    }
-
     fn is_true(&self) -> bool {
         *self != Value::Nil
     }
@@ -68,7 +62,21 @@ impl Value {
                 // TODO: Return concrete type
                 Type::Any
             }
+            Value::NativeFunction { func } => {
+                // TODO: Return concrete type
+                Type::Any
+            }
             Value::Nil => Type::Any,
+        }
+    }
+}
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        if value {
+            Value::Symbol("T".to_string())
+        } else {
+            Value::Nil
         }
     }
 }
@@ -120,9 +128,14 @@ impl Environment {
         None
     }
 
-    fn insert_function(&mut self, name: &str, type_: Type) {
+    fn insert_function(
+        &mut self,
+        name: &str,
+        type_: Type,
+        func: fn(Vec<Value>) -> Result<Value, Error>,
+    ) {
         let name = name.to_string();
-        self.insert_var(name.clone(), Value::Symbol(name), type_);
+        self.insert_var(name.clone(), Value::NativeFunction { func }, type_);
     }
 
     fn insert_variable_as_symbol(&mut self, name: &str) {
@@ -409,45 +422,7 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
                     };
                     Ok(Value::Integer(sum))
                 }
-                ">" => {
-                    match_args!(args, Value::Integer(x), Value::Integer(y), {
-                        Ok(Value::from_bool(x > y))
-                    })
-                }
-                "evenp" => {
-                    match_args!(args, Value::Integer(v), {
-                        Ok(Value::from_bool(v % 2 == 0))
-                    })
-                }
-                "zerop" => {
-                    match_args!(args, Value::Integer(v), { Ok(Value::from_bool(*v == 0)) })
-                }
-                "mod" => {
-                    match_args!(args, Value::Integer(num), Value::Integer(divisor), {
-                        Ok(Value::Integer(num % divisor))
-                    })
-                }
-                "car" => {
-                    match_args!(args, Value::List(vs), {
-                        let first = vs.first().map(|v| (**v).clone());
-                        Ok(first.unwrap_or(Value::Nil))
-                    })
-                }
-                "cdr" => {
-                    match_args!(args, Value::List(vs), {
-                        if let Some((_, rest)) = vs.split_first() {
-                            if rest.is_empty() {
-                                Ok(Value::Nil)
-                            } else {
-                                Ok(Value::List(rest.to_vec()))
-                            }
-                        } else {
-                            Ok(Value::Nil)
-                        }
-                    })
-                }
                 "print" => {
-                    let args = eval_asts(raw_args, env)?;
                     for arg in args {
                         println!("{:?}", arg);
                     }
@@ -475,6 +450,7 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
             let result = result?;
             Ok(result.last().unwrap_or(&Value::Nil).clone())
         }
+        Value::NativeFunction { func } => func(args),
         _ => Err(Error::Eval(format!("{:?} is not a function", name))),
     }
 }
@@ -522,18 +498,61 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
 
     // Pre-defined functions and special forms
     // TODO: Add function symbols with its definition
-    env.insert_function("evenp", Type::function(vec![Type::int()], Type::Any));
-    env.insert_function("car", Type::function(vec![Type::list()], Type::Any));
-    env.insert_function("cdr", Type::function(vec![Type::list()], Type::Any));
+    env.insert_function(
+        "evenp",
+        Type::function(vec![Type::int()], Type::Any),
+        |args| match_args!(args, Value::Integer(v), { Ok(Value::from(v % 2 == 0)) }),
+    );
+    env.insert_function(
+        "car",
+        Type::function(vec![Type::list()], Type::Any),
+        |args| {
+            match_args!(args, Value::List(vs), {
+                if let Some((_, rest)) = vs.split_first() {
+                    if rest.is_empty() {
+                        Ok(Value::Nil)
+                    } else {
+                        Ok(Value::List(rest.to_vec()))
+                    }
+                } else {
+                    Ok(Value::Nil)
+                }
+            })
+        },
+    );
+    env.insert_function(
+        "cdr",
+        Type::function(vec![Type::list()], Type::Any),
+        |args| {
+            match_args!(args, Value::List(vs), {
+                let first = vs.first().map(|v| (**v).clone());
+                Ok(first.unwrap_or(Value::Nil))
+            })
+        },
+    );
     // TODO: Make zerop and mod to accept number
-    env.insert_function("zerop", Type::function(vec![Type::int()], Type::Any));
+    env.insert_function(
+        "zerop",
+        Type::function(vec![Type::int()], Type::Any),
+        |args| match_args!(args, Value::Integer(v), { Ok(Value::from(*v == 0)) }),
+    );
     env.insert_function(
         "mod",
         Type::function(vec![Type::int(), Type::int()], Type::int()),
+        |args| {
+            match_args!(args, Value::Integer(num), Value::Integer(divisor), {
+                Ok(Value::Integer(num % divisor))
+            })
+        },
     );
     env.insert_function(
         ">",
         Type::function(vec![Type::int(), Type::int()], Type::Any),
+        |args| {
+            match_args!(args, Value::Integer(x), Value::Integer(y), {
+                Ok(Value::from(x > y))
+            })
+        },
     );
 
     env.insert_variable_as_symbol("print");
