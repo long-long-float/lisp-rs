@@ -6,7 +6,7 @@ fn interp(program: &str) -> Result<Value, Error> {
     let result = tokenize(lines)
         .and_then(parse)
         .and_then(|ast| eval_program(&ast))?;
-    Ok(result.last().unwrap().clone())
+    Ok(result.last().unwrap().clone().value)
 }
 
 macro_rules! assert_error {
@@ -26,14 +26,14 @@ macro_rules! assert_error {
 }
 
 fn build_list(vs: Vec<i32>) -> Value {
-    let vs = vs.iter().map(|v| Box::new(Value::Integer(*v))).collect();
+    let vs = vs.iter().map(|v| Value::Integer(*v).with_type()).collect();
     Value::List(vs)
 }
 
 fn build_sym_list(vs: Vec<&str>) -> Value {
     let vs = vs
         .iter()
-        .map(|v| Box::new(Value::Symbol((*v).to_owned())))
+        .map(|v| Value::Symbol((*v).to_owned()).with_type())
         .collect();
     Value::List(vs)
 }
@@ -127,8 +127,8 @@ xs"#
     );
     assert_eq!(
         Ok(Value::List(vec![
-            Box::new(build_sym_list(vec!["c", "d"])),
-            Box::new(build_sym_list(vec!["e", "f"])),
+            build_sym_list(vec!["c", "d"]).with_type(),
+            build_sym_list(vec!["e", "f"]).with_type(),
         ])),
         interp("(cdr '((a b) (c d) (e f)))")
     );

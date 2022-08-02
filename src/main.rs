@@ -16,7 +16,7 @@ fn main() {
         .and_then(|ast| eval_program(&ast))
         .unwrap_or_else(|err| {
             println!("{:?}", err);
-            vec![Value::Nil]
+            vec![Value::Nil.with_type()]
         });
 
     println!("{:?}", result);
