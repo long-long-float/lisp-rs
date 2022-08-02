@@ -48,6 +48,24 @@ fn arithmetic_test() {
 }
 
 #[test]
+fn mapcar_test() {
+    assert_eq!(
+        Ok(build_list(vec![11, 22, 33])),
+        interp("(mapcar #'+ '(1 2 3) '(10 20 30))")
+    );
+
+    assert_eq!(
+        Ok(build_list(vec![1, 9, 16])),
+        interp(
+            r#"
+(defun square (x) (* x x))
+(mapcar #'square '(1 3 4))
+"#
+        )
+    );
+}
+
+#[test]
 fn undefined_function_test() {
     assert_error!(&interp("(x 1 2)"), Error::Eval(_));
     assert_error!(&interp("(** 1 2)"), Error::Eval(_));

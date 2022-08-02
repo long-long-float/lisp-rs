@@ -6,6 +6,8 @@ pub enum Error {
     Eval(String),
     Type(String),
 
+    Bug { file: &'static str, line: u32 },
+
     // For non-local exists
     DoNothing,
 }

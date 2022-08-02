@@ -13,6 +13,7 @@ pub enum Token {
     LeftParen,
     RightParen,
     Quote,
+    Hash,
     IntegerLiteral(i32),
     Identifier(String),
 }
@@ -70,6 +71,10 @@ pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
             }
             '\'' => {
                 result.push(Token::Quote);
+                i += 1;
+            }
+            '#' => {
+                result.push(Token::Hash);
                 i += 1;
             }
             ';' => {

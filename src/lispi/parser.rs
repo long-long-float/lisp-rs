@@ -74,6 +74,13 @@ fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
                 let (value, rest) = parse_value(rest)?;
                 Ok((Ast::Quoted(Box::new(value)), rest))
             }
+            Token::Hash => {
+                let (value, rest) = parse_value(rest)?;
+                Ok((
+                    Ast::List(vec![Ast::Symbol("function".to_string()), value]),
+                    rest,
+                ))
+            }
             _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0]))),
         }
     } else {

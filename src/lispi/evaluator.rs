@@ -2,6 +2,15 @@ use std::{collections::HashMap, f32::consts::E, fmt::format, os::macos::raw};
 
 use super::{error::*, parser::*};
 
+macro_rules! bug {
+    () => {
+        Error::Bug {
+            file: file!(),
+            line: line!(),
+        }
+    }
+}
+
 macro_rules! match_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
         #[allow(unused_must_use)]
@@ -9,7 +18,7 @@ macro_rules! match_args {
             $b
         }
         else {
-            Err(())
+            Err(bug!())
         }
     };
 
@@ -18,7 +27,7 @@ macro_rules! match_args {
             match_args!($args, $( $ps ),*, $b, ($index + 1))
         }
         else {
-            Err(())
+            Err(bug!())
         }
     };
 
@@ -230,7 +239,7 @@ impl std::fmt::Display for Type {
     }
 }
 
-fn check_arg_types(func_name: &str, args: &Vec<Value>, types: &Vec<Type>) -> Result<(), Error> {
+fn check_arg_types(func_name: &str, args: &[Value], types: &[Type]) -> Result<(), Error> {
     if args.len() != types.len() {
         return Err(Error::Type(format!(
             "{} arguments are expected, but {} arguments are specified.",
@@ -362,6 +371,20 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Res
 
                 Ok(Value::Nil)
             }
+            "function" => {
+                if let Some(func) = raw_args.first() {
+                    let result = eval_ast(func, env)?;
+                    if let Value::Symbol(name) = result {
+                        Ok(eval_ast(&Ast::Symbol(name), env)?)
+                    } else {
+                        Ok(result)
+                    }
+                } else {
+                    Err(Error::Eval(
+                        "'function' is formed as (function name)".to_string(),
+                    ))
+                }
+            }
             _ => Err(Error::DoNothing),
         }
     } else {
@@ -369,10 +392,14 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Res
     }
 }
 
-fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<Value, Error> {
+fn eval_function(name: &Ast, args: &[Ast], env: &mut Environment) -> Result<Value, Error> {
     let name = eval_ast(name, env)?;
-    let args = eval_asts(raw_args, env)?;
+    let args = eval_asts(args, env)?;
 
+    apply_function(&name, &args, env)
+}
+
+fn apply_function(name: &Value, args: &[Value], env: &mut Environment) -> Result<Value, Error> {
     match name {
         Value::Symbol(func_name) => {
             let func_name = func_name.as_str();
@@ -385,8 +412,8 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
                 result,
             } = &var.type_
             {
-                let arg_types = arg_types.iter().map(|a| *a.clone()).collect();
-                check_arg_types(func_name, &args, &arg_types)?;
+                let arg_types = arg_types.iter().map(|a| *a.clone()).collect::<Vec<Type>>();
+                check_arg_types(func_name, args, &arg_types)?;
             }
 
             match func_name {
@@ -428,7 +455,42 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
                     }
                     Ok(Value::Nil)
                 }
-                _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
+                "mapcar" => {
+                    let err = "'mapcar' is formed as (mapcar function list ...)";
+
+                    if let Some((func, lists)) = args.split_first() {
+                        let lists = lists
+                            .iter()
+                            .map(|list| {
+                                if let Value::List(elements) = list {
+                                    Ok(elements)
+                                } else {
+                                    Err(Error::Eval(err.to_string()))
+                                }
+                            })
+                            .collect::<Result<Vec<_>, Error>>()?;
+
+                        if lists.len() == 0 {
+                            return Err(Error::Eval(err.to_string()));
+                        }
+
+                        let mut result = Vec::new();
+                        let list0_len = lists.get(0).unwrap().len();
+                        for idx in 0..list0_len {
+                            let mut args = Vec::new();
+                            for list in &lists {
+                                args.push(list.get(idx).map(|v| *v.clone()).unwrap_or(Value::Nil));
+                            }
+
+                            result.push(Box::new(apply_function(func, &args, env)?));
+                        }
+
+                        Ok(Value::List(result))
+                    } else {
+                        Err(Error::Eval(err.to_string()))
+                    }
+                }
+                _ => Err(bug!()),
             }
         }
         Value::Function {
@@ -440,7 +502,7 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
 
             for (name, value) in arg_names.iter().zip(args) {
                 let t = value.get_type();
-                env.insert_var(name.clone(), value, t);
+                env.insert_var(name.clone(), value.clone(), t);
             }
 
             let result = eval_asts(&body, env);
@@ -450,7 +512,7 @@ fn eval_function(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Result<
             let result = result?;
             Ok(result.last().unwrap_or(&Value::Nil).clone())
         }
-        Value::NativeFunction { func } => func(args),
+        Value::NativeFunction { func } => func(args.to_vec()),
         _ => Err(Error::Eval(format!("{:?} is not a function", name))),
     }
 }
@@ -508,6 +570,16 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
         Type::function(vec![Type::list()], Type::Any),
         |args| {
             match_args!(args, Value::List(vs), {
+                let first = vs.first().map(|v| (**v).clone());
+                Ok(first.unwrap_or(Value::Nil))
+            })
+        },
+    );
+    env.insert_function(
+        "cdr",
+        Type::function(vec![Type::list()], Type::Any),
+        |args| {
+            match_args!(args, Value::List(vs), {
                 if let Some((_, rest)) = vs.split_first() {
                     if rest.is_empty() {
                         Ok(Value::Nil)
@@ -517,16 +589,6 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
                 } else {
                     Ok(Value::Nil)
                 }
-            })
-        },
-    );
-    env.insert_function(
-        "cdr",
-        Type::function(vec![Type::list()], Type::Any),
-        |args| {
-            match_args!(args, Value::List(vs), {
-                let first = vs.first().map(|v| (**v).clone());
-                Ok(first.unwrap_or(Value::Nil))
             })
         },
     );
@@ -559,6 +621,7 @@ pub fn eval_program(asts: &Program) -> Result<Vec<Value>, Error> {
     env.insert_variable_as_symbol("+");
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
+    env.insert_variable_as_symbol("mapcar");
 
     // Pre-defined symbols
     env.insert_variable_as_symbol("T");
