@@ -42,7 +42,6 @@ type EvalResult = Result<ValueWithType, Error>;
 pub enum Value {
     Integer(i32),
     Symbol(String),
-    // List(Vec<Box<ValueWithType>>),
     List(Vec<ValueWithType>),
     Function {
         name: String,
@@ -50,6 +49,7 @@ pub enum Value {
         body: Vec<Ast>,
     },
     NativeFunction {
+        name: String,
         func: fn(Vec<ValueWithType>) -> EvalResult,
     },
     Nil,
@@ -73,7 +73,7 @@ impl Value {
                 // TODO: Return concrete type
                 Type::Any
             }
-            Value::NativeFunction { func } => {
+            Value::NativeFunction { name: _, func } => {
                 // TODO: Return concrete type
                 Type::Any
             }
@@ -110,21 +110,20 @@ impl Environment {
         env
     }
 
-    fn update_or_insert_var(&mut self, name: String, value: Value) {
+    fn update_or_insert_var(&mut self, name: String, value: ValueWithType) {
         if let Some(found) = self.find_var_mut(&name) {
             // TODO: Check type
-            found.value = value;
+            found.value = value.value;
         } else {
-            let t = value.get_type();
-            self.insert_var(name, value, t);
+            self.insert_var(name, value);
         }
     }
 
     // TODO: Take ValueWithType
-    fn insert_var(&mut self, name: String, value: Value, type_: Type) {
+    fn insert_var(&mut self, name: String, value: ValueWithType) {
         // local_stack must have least one local
         let local = self.local_stack.last_mut().unwrap();
-        local.variables.insert(name, ValueWithType { value, type_ });
+        local.variables.insert(name, value);
     }
 
     fn find_var(&self, name: &String) -> Option<&ValueWithType> {
@@ -152,12 +151,18 @@ impl Environment {
         func: fn(Vec<ValueWithType>) -> EvalResult,
     ) {
         let name = name.to_string();
-        self.insert_var(name.clone(), Value::NativeFunction { func }, type_);
+        self.insert_var(
+            name.clone(),
+            ValueWithType {
+                value: Value::NativeFunction { name, func },
+                type_,
+            },
+        );
     }
 
     fn insert_variable_as_symbol(&mut self, name: &str) {
         let name = name.to_string();
-        self.insert_var(name.clone(), Value::Symbol(name), Type::symbol());
+        self.insert_var(name.clone(), Value::Symbol(name).with_type());
     }
 
     fn push_local(&mut self) {
@@ -284,7 +289,7 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
             "setq" => {
                 if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
                     let value = eval_ast(value, env)?;
-                    env.update_or_insert_var(name.clone(), value.value);
+                    env.update_or_insert_var(name.clone(), value);
                     Ok(Value::Nil.with_type())
                 } else {
                     Err(Error::Eval(
@@ -313,7 +318,13 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
                         args: args,
                         body: body.to_vec(),
                     };
-                    env.insert_var(name.clone(), func, Type::function(arg_types, Type::Any));
+                    env.insert_var(
+                        name.clone(),
+                        ValueWithType {
+                            value: func,
+                            type_: Type::function(arg_types, Type::Any),
+                        },
+                    );
 
                     Ok(Value::Nil.with_type())
                 } else {
@@ -416,13 +427,29 @@ fn apply_function(
     args: &[ValueWithType],
     env: &mut Environment,
 ) -> EvalResult {
-    if let Type::Function {
-        args: arg_types,
-        result,
-    } = &func.type_
+    if let ValueWithType {
+        value,
+        type_: Type::Function {
+            args: arg_types,
+            result: _,
+        },
+    } = &func
     {
+        let name = match value {
+            Value::Symbol(name) => name,
+            Value::Function {
+                name,
+                args: _,
+                body: _,
+            } => name,
+            Value::NativeFunction { name, func: _ } => name,
+            _ => {
+                println!("{:?}", value);
+                return Err(bug!());
+            }
+        };
         let arg_types = arg_types.iter().map(|a| *a.clone()).collect::<Vec<Type>>();
-        check_arg_types("", args, &arg_types)?;
+        check_arg_types(name, args, &arg_types)?;
     }
 
     match &func.value {
@@ -518,8 +545,7 @@ fn apply_function(
             env.push_local();
 
             for (name, value) in arg_names.iter().zip(args) {
-                let t = value.type_.clone();
-                env.insert_var(name.clone(), value.value.clone(), t);
+                env.insert_var(name.clone(), value.clone());
             }
 
             let result = eval_asts(&body, env);
@@ -529,7 +555,7 @@ fn apply_function(
             let result = result?;
             Ok(result.last().unwrap_or(&Value::Nil.with_type()).clone())
         }
-        Value::NativeFunction { func } => func(args.to_vec()),
+        Value::NativeFunction { name: _, func } => func(args.to_vec()),
         _ => Err(Error::Eval(format!("{:?} is not a function", func.value))),
     }
 }
