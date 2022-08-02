@@ -282,6 +282,19 @@ fn eval_asts(asts: &[Ast], env: &mut Environment) -> Result<Vec<ValueWithType>, 
         .collect::<Result<Vec<ValueWithType>, Error>>()
 }
 
+fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<String>, Error> {
+    symbols
+        .iter()
+        .map(|symbol| {
+            if let Ast::Symbol(v) = symbol {
+                Ok(v.clone())
+            } else {
+                Err(Error::Eval(format!("{:?} is not an symbol.", symbol)))
+            }
+        })
+        .collect()
+}
+
 fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> EvalResult {
     if let Ast::Symbol(name) = name {
         let name = name.as_str();
@@ -301,16 +314,7 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
                 if let (Some(Ast::Symbol(name)), Some(Ast::List(args)), (_, body)) =
                     (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
                 {
-                    let args = args
-                        .iter()
-                        .map(|arg| {
-                            if let Ast::Symbol(v) = arg {
-                                Ok(v.clone())
-                            } else {
-                                Err(Error::Eval(format!("{:?} is not an symbol.", arg)))
-                            }
-                        })
-                        .collect::<Result<Vec<String>, Error>>()?;
+                    let args = get_symbol_values(args)?;
 
                     let arg_types = args.iter().map(|_| Type::Any).collect();
                     let func = Value::Function {
@@ -330,6 +334,29 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
                 } else {
                     Err(Error::Eval(
                         "'defun' is formed as (defun name (arg ...) body ...)".to_string(),
+                    ))
+                }
+            }
+            "lambda" => {
+                if let Some((Ast::List(args), body)) = raw_args.split_first() {
+                    let name = "lambda".to_string();
+
+                    let args = get_symbol_values(args)?;
+
+                    let arg_types = args.iter().map(|_| Type::Any).collect();
+                    let func = Value::Function {
+                        name: name.clone(),
+                        args: args,
+                        body: body.to_vec(),
+                    };
+
+                    Ok(ValueWithType {
+                        value: func,
+                        type_: Type::function(arg_types, Type::Any),
+                    })
+                } else {
+                    Err(Error::Eval(
+                        "'lambda' is formed as (lambda (arg ...) body ...)".to_string(),
                     ))
                 }
             }

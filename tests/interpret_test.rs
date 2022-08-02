@@ -195,3 +195,17 @@ y
         )
     );
 }
+
+#[test]
+fn lambda_test() {
+    assert_eq!(Ok(Value::Integer(25)), interp("((lambda (x) (* x x)) 5)"));
+
+    assert_eq!(
+        Ok(Value::Integer(25)),
+        interp(
+            r#"
+(setq x 10)
+((lambda (x) (* x x)) 5)"#
+        )
+    );
+}
