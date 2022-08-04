@@ -16,10 +16,12 @@ fn main() {
         .and_then(|ast| eval_program(&ast))
         .unwrap_or_else(|err| {
             println!("{:?}", err);
-            vec![Value::Nil.with_type()]
+            vec![]
         });
 
-    println!("{:?}", result);
+    if let Some(result) = result.last() {
+        println!("{}: {}", result.value, result.type_);
+    }
 }
 
 fn read_lines<P>(filename: P) -> Result<Vec<String>, Error>

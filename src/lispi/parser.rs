@@ -1,4 +1,4 @@
-use super::{error::*, tokenizer::*};
+use super::{error::*, evaluator::Value, tokenizer::*};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
@@ -7,6 +7,45 @@ pub enum Ast {
     Integer(i32),
     Symbol(String),
     Nil,
+}
+
+// For evaluating macros
+impl From<Value> for Ast {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Integer(v) => Ast::Integer(v),
+            Value::Symbol(v) => Ast::Symbol(v),
+            Value::List(vs) => {
+                if vs.len() == 0 {
+                    Ast::Nil
+                } else {
+                    let vs = vs.into_iter().map(|v| v.value.into()).collect();
+                    Ast::List(vs)
+                }
+            }
+            Value::Function {
+                name,
+                args,
+                body,
+                is_macro: _,
+            } => {
+                if name == "" {
+                    // Function created by lambda
+                    let mut elem = vec![
+                        Ast::Symbol("lambda".to_string()),
+                        Ast::List(args.into_iter().map(|a| Ast::Symbol(a)).collect()),
+                    ];
+                    elem.append(&mut body.into_iter().map(|v| v.into()).collect());
+                    Ast::List(elem)
+                } else {
+                    // Named function should be referenced
+                    Ast::Symbol(name)
+                }
+            }
+            Value::NativeFunction { name, func: _ } => Ast::Symbol(name),
+            Value::RawAst(ast) => ast,
+        }
+    }
 }
 
 pub type Program = Vec<Ast>;
@@ -61,7 +100,7 @@ fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
     if let Some((first, rest)) = tokens.split_first() {
         match first {
             Token::Identifier(value) => {
-                let ret = if value == "Nil" {
+                let ret = if value.to_lowercase() == "nil" {
                     Ast::Nil
                 } else {
                     Ast::Symbol(value.clone())

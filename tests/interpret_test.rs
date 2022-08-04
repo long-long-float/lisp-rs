@@ -107,7 +107,7 @@ fn if_test() {
     assert_eq!(Ok(Value::Integer(3)), interp("(if (evenp 1) 2 3)"));
 
     assert_eq!(Ok(Value::Integer(3)), interp("(if 1 (+ 1 2))"));
-    assert_eq!(Ok(Value::Nil), interp("(if Nil (+ 1 2))"));
+    assert_eq!(Ok(Value::nil()), interp("(if Nil (+ 1 2))"));
 }
 
 #[test]
@@ -133,7 +133,7 @@ xs"#
         interp("(cdr '((a b) (c d) (e f)))")
     );
 
-    assert_eq!(Ok(Value::Nil), interp("(cdr '(a))"));
+    assert_eq!(Ok(Value::nil()), interp("(cdr '(a))"));
 }
 
 #[test]
@@ -206,6 +206,25 @@ fn lambda_test() {
             r#"
 (setq x 10)
 ((lambda (x) (* x x)) 5)"#
+        )
+    );
+}
+
+#[test]
+fn macro_test() {
+    assert_eq!(
+        Ok(build_list(vec![20, 10])),
+        interp(
+            r#"
+(defmacro my-push (item place)
+  (list 'setq
+        place
+        (list 'cons item place)))
+
+(setq stack nil)
+(my-push 10 stack)
+(my-push 20 stack)
+stack"#
         )
     );
 }

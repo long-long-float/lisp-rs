@@ -1,10 +1,19 @@
-use std::{collections::HashMap, f32::consts::E, fmt::format, os::macos::raw};
+use std::{
+    collections::HashMap,
+    f32::consts::E,
+    fmt::{format, write},
+    os::macos::raw,
+};
 
 use super::{error::*, parser::*};
 
 macro_rules! bug {
     () => {
+        bug!("".to_string())
+    };
+    ( $msg:expr ) => {
         Error::Bug {
+            message: $msg,
             file: file!(),
             line: line!(),
         }
@@ -17,7 +26,7 @@ macro_rules! match_args {
             $b
         }
         else {
-            Err(bug!())
+            Err(bug!(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
         }
     };
 
@@ -26,7 +35,7 @@ macro_rules! match_args {
             match_args!($args, $( $ps ),*, $b, ($index + 1))
         }
         else {
-            Err(bug!())
+            Err(bug!(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
         }
     };
 
@@ -47,17 +56,28 @@ pub enum Value {
         name: String,
         args: Vec<String>,
         body: Vec<Ast>,
+        is_macro: bool,
     },
     NativeFunction {
         name: String,
         func: fn(Vec<ValueWithType>) -> EvalResult,
     },
-    Nil,
+
+    // For macro expansion
+    RawAst(Ast),
 }
 
 impl Value {
+    pub fn nil() -> Value {
+        Value::List(Vec::new())
+    }
+
     fn is_true(&self) -> bool {
-        *self != Value::Nil
+        if let Value::List(vs) = self {
+            vs.len() != 0
+        } else {
+            true
+        }
     }
 
     fn get_type(&self) -> Type {
@@ -69,15 +89,16 @@ impl Value {
                 name: _,
                 args: _,
                 body: _,
+                is_macro: _,
             } => {
                 // TODO: Return concrete type
                 Type::Any
             }
-            Value::NativeFunction { name: _, func } => {
+            Value::NativeFunction { name: _, func: _ } => {
                 // TODO: Return concrete type
                 Type::Any
             }
-            Value::Nil => Type::list(),
+            Value::RawAst(_) => Type::Any,
         }
     }
 
@@ -87,12 +108,52 @@ impl Value {
     }
 }
 
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Value::Integer(v) => write!(f, "{}", v),
+            Value::Symbol(v) => write!(f, "{}", v),
+            Value::List(vs) => {
+                if vs.len() == 0 {
+                    write!(f, "Nil")
+                } else {
+                    write!(f, "(")?;
+                    for (i, v) in vs.iter().enumerate() {
+                        write!(f, "{}", v.value)?;
+                        if i < vs.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, ")")?;
+                    Ok(())
+                }
+            }
+            Value::Function {
+                name,
+                args: _,
+                body: _,
+                is_macro,
+            } => {
+                if *is_macro {
+                    write!(f, "MACRO {}", name)
+                } else {
+                    write!(f, "FUNCTION {}", name)
+                }
+            }
+            Value::NativeFunction { name, func: _ } => {
+                write!(f, "FUNCTION {}", name)
+            }
+            Value::RawAst(ast) => write!(f, "AST {:?}", ast),
+        }
+    }
+}
+
 impl From<bool> for Value {
     fn from(value: bool) -> Self {
         if value {
             Value::Symbol("T".to_string())
         } else {
-            Value::Nil
+            Value::nil()
         }
     }
 }
@@ -295,42 +356,45 @@ fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<String>, Error> {
         .collect()
 }
 
-fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> EvalResult {
-    if let Ast::Symbol(name) = name {
+fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) -> EvalResult {
+    if let Ast::Symbol(name) = name_ast {
         let name = name.as_str();
         match name {
             "setq" => {
                 if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
                     let value = eval_ast(value, env)?;
                     env.update_or_insert_var(name.clone(), value);
-                    Ok(Value::Nil.with_type())
+                    Ok(Value::nil().with_type())
                 } else {
                     Err(Error::Eval(
                         "'setq' is formed as (setq symbol value)".to_string(),
                     ))
                 }
             }
-            "defun" => {
-                if let (Some(Ast::Symbol(name)), Some(Ast::List(args)), (_, body)) =
+            "defun" | "defmacro" => {
+                if let (Some(Ast::Symbol(fun_name)), Some(Ast::List(args)), (_, body)) =
                     (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
                 {
+                    let is_macro = name == "defmacro";
+
                     let args = get_symbol_values(args)?;
 
                     let arg_types = args.iter().map(|_| Type::Any).collect();
                     let func = Value::Function {
-                        name: name.clone(),
+                        name: fun_name.clone(),
                         args: args,
                         body: body.to_vec(),
+                        is_macro,
                     };
                     env.insert_var(
-                        name.clone(),
+                        fun_name.clone(),
                         ValueWithType {
                             value: func,
                             type_: Type::function(arg_types, Type::Any),
                         },
                     );
 
-                    Ok(Value::Nil.with_type())
+                    Ok(Value::nil().with_type())
                 } else {
                     Err(Error::Eval(
                         "'defun' is formed as (defun name (arg ...) body ...)".to_string(),
@@ -339,15 +403,14 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
             }
             "lambda" => {
                 if let Some((Ast::List(args), body)) = raw_args.split_first() {
-                    let name = "lambda".to_string();
-
                     let args = get_symbol_values(args)?;
 
                     let arg_types = args.iter().map(|_| Type::Any).collect();
                     let func = Value::Function {
-                        name: name.clone(),
+                        name: "".to_string(),
                         args: args,
                         body: body.to_vec(),
+                        is_macro: false,
                     };
 
                     Ok(ValueWithType {
@@ -370,7 +433,7 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
                         if let Some(else_ast) = raw_args.get(2) {
                             eval_ast(else_ast, env)
                         } else {
-                            Ok(Value::Nil.with_type())
+                            Ok(Value::nil().with_type())
                         }
                     }
                 } else {
@@ -386,9 +449,9 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
                     let cond = if invert { !cond } else { cond };
                     if cond {
                         let result = eval_asts(forms, env)?;
-                        Ok(result.last().unwrap_or(&Value::Nil.with_type()).clone())
+                        Ok(result.last().unwrap_or(&Value::nil().with_type()).clone())
                     } else {
-                        Ok(Value::Nil.with_type())
+                        Ok(Value::nil().with_type())
                     }
                 } else {
                     Err(Error::Eval(format!(
@@ -408,7 +471,7 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
                                 let result = eval_asts(body, env)?;
                                 return Ok(result
                                     .last()
-                                    .unwrap_or(&Value::Nil.with_type())
+                                    .unwrap_or(&Value::nil().with_type())
                                     .clone());
                             }
                         } else {
@@ -419,7 +482,7 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
                     }
                 }
 
-                Ok(Value::Nil.with_type())
+                Ok(Value::nil().with_type())
             }
             "function" => {
                 if let Some(func) = raw_args.first() {
@@ -435,7 +498,34 @@ fn eval_special_form(name: &Ast, raw_args: &[Ast], env: &mut Environment) -> Eva
                     ))
                 }
             }
-            _ => Err(Error::DoNothing),
+            _ => {
+                let mac = eval_ast(name_ast, env)?;
+                if let Value::Function {
+                    name: _,
+                    args,
+                    body,
+                    is_macro: true,
+                } = mac.value
+                {
+                    env.push_local();
+
+                    for (name, value) in args.iter().zip(raw_args) {
+                        env.insert_var(name.clone(), Value::RawAst(value.clone()).with_type());
+                    }
+
+                    let result = eval_asts(&body, env);
+
+                    env.pop_local();
+
+                    let result = result?.last().unwrap_or(&Value::nil().with_type()).clone();
+
+                    let result_ast: Ast = result.value.into();
+                    println!("expaned = {:#?}", result_ast);
+                    eval_ast(&result_ast, env)
+                } else {
+                    Err(Error::DoNothing)
+                }
+            }
         }
     } else {
         Err(Error::DoNothing)
@@ -468,6 +558,7 @@ fn apply_function(
                 name,
                 args: _,
                 body: _,
+                is_macro: _,
             } => name,
             Value::NativeFunction { name, func: _ } => name,
             _ => {
@@ -518,10 +609,11 @@ fn apply_function(
                 }
                 "print" => {
                     for arg in args {
-                        println!("{:?}", arg);
+                        println!("{}", arg.value);
                     }
-                    Ok(Value::Nil.with_type())
+                    Ok(Value::nil().with_type())
                 }
+                "list" => Ok(Value::List(args.to_vec()).with_type()),
                 "mapcar" => {
                     let err = "'mapcar' is formed as (mapcar function list ...)";
 
@@ -549,7 +641,7 @@ fn apply_function(
                                 args.push(
                                     list.get(idx)
                                         .map(|v| v.clone())
-                                        .unwrap_or(Value::Nil.with_type()),
+                                        .unwrap_or(Value::nil().with_type()),
                                 );
                             }
 
@@ -568,6 +660,7 @@ fn apply_function(
             name: _,
             args: arg_names,
             body,
+            is_macro: false,
         } => {
             env.push_local();
 
@@ -579,8 +672,8 @@ fn apply_function(
 
             env.pop_local();
 
-            let result = result?;
-            Ok(result.last().unwrap_or(&Value::Nil.with_type()).clone())
+            let result = result?.last().unwrap_or(&Value::nil().with_type()).clone();
+            Ok(result)
         }
         Value::NativeFunction { name: _, func } => func(args.to_vec()),
         _ => Err(Error::Eval(format!("{:?} is not a function", func.value))),
@@ -597,7 +690,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> EvalResult {
                     _ => result,
                 }
             } else {
-                Ok(Value::Nil.with_type())
+                Ok(Value::nil().with_type())
             }
         }
         Ast::Symbol(value) => {
@@ -621,7 +714,7 @@ fn ast_to_value(node: &Ast) -> Value {
             let vs = vs.iter().map(|v| ast_to_value(v).with_type()).collect();
             Value::List(vs)
         }
-        Ast::Nil => Value::Nil,
+        Ast::Nil => Value::nil(),
     }
 }
 
@@ -645,7 +738,7 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
         |args| {
             match_args!(args, Value::List(vs), {
                 let first = vs.first().map(|v| (*v).clone());
-                Ok(first.unwrap_or(Value::Nil.with_type()))
+                Ok(first.unwrap_or(Value::nil().with_type()))
             })
         },
     );
@@ -656,12 +749,12 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
             match_args!(args, Value::List(vs), {
                 if let Some((_, rest)) = vs.split_first() {
                     if rest.is_empty() {
-                        Ok(Value::Nil.with_type())
+                        Ok(Value::nil().with_type())
                     } else {
                         Ok(Value::List(rest.to_vec()).with_type())
                     }
                 } else {
-                    Ok(Value::Nil.with_type())
+                    Ok(Value::nil().with_type())
                 }
             })
         },
@@ -694,8 +787,20 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
             })
         },
     );
+    env.insert_function(
+        "cons",
+        Type::function(vec![Type::Any, Type::list()], Type::list()),
+        |args| {
+            match_args!(args, v, Value::List(vs), {
+                let mut vs = vs.clone();
+                vs.insert(0, v.clone().with_type());
+                Ok(Value::List(vs).with_type())
+            })
+        },
+    );
 
     env.insert_variable_as_symbol("print");
+    env.insert_variable_as_symbol("list");
     env.insert_variable_as_symbol("+");
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
