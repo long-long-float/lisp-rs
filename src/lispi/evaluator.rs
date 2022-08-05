@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    f32::consts::E,
-    fmt::{format, write},
-    os::macos::raw,
-};
+use std::collections::HashMap;
 
 use super::{error::*, parser::*};
 
@@ -50,6 +45,7 @@ type EvalResult = Result<ValueWithType, Error>;
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value {
     Integer(i32),
+    Float(f32),
     Symbol(String),
     List(Vec<ValueWithType>),
     Function {
@@ -83,6 +79,7 @@ impl Value {
     fn get_type(&self) -> Type {
         match self {
             Value::Integer(_) => Type::int(),
+            Value::Float(_) => Type::float(),
             Value::Symbol(_) => Type::symbol(),
             Value::List(_) => Type::list(),
             Value::Function {
@@ -112,6 +109,7 @@ impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Value::Integer(v) => write!(f, "{}", v),
+            Value::Float(v) => write!(f, "{}", v),
             Value::Symbol(v) => write!(f, "{}", v),
             Value::List(vs) => {
                 if vs.len() == 0 {
@@ -268,6 +266,10 @@ impl Type {
 
     fn int() -> Type {
         Type::scala("int")
+    }
+
+    fn float() -> Type {
+        Type::scala("float")
     }
 
     fn symbol() -> Type {
@@ -708,6 +710,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> EvalResult {
 fn ast_to_value(node: &Ast) -> Value {
     match node {
         Ast::Integer(v) => Value::Integer(*v),
+        Ast::Float(v) => Value::Float(*v),
         Ast::Symbol(v) => Value::Symbol(v.clone()),
         Ast::Quoted(v) => ast_to_value(&*v),
         Ast::List(vs) => {

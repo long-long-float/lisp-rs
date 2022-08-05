@@ -39,6 +39,12 @@ fn build_sym_list(vs: Vec<&str>) -> Value {
 }
 
 #[test]
+fn literal_test() {
+    assert_eq!(Ok(Value::Integer(3)), interp("3"));
+    assert_eq!(Ok(Value::Float(3.14)), interp("3.14"));
+}
+
+#[test]
 fn arithmetic_test() {
     assert_eq!(Ok(Value::Integer(3)), interp("(+ 1 2)"));
     assert_eq!(Ok(Value::Integer(-1)), interp("(- 1 2)"));

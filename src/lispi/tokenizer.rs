@@ -1,10 +1,16 @@
-use std::num::ParseIntError;
+use std::num::{ParseFloatError, ParseIntError};
 
 use super::error::*;
 
 impl From<ParseIntError> for Error {
     fn from(_err: ParseIntError) -> Self {
         Error::Tokenize("Parse int error".to_string())
+    }
+}
+
+impl From<ParseFloatError> for Error {
+    fn from(_err: ParseFloatError) -> Self {
+        Error::Tokenize("Parse float error".to_string())
     }
 }
 
@@ -15,6 +21,7 @@ pub enum Token {
     Quote,
     Hash,
     IntegerLiteral(i32),
+    FloatLiteral(f32),
     Identifier(String),
 }
 
@@ -82,9 +89,19 @@ pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
                 i += 1;
             }
             c if c.is_ascii_digit() => {
-                let buf = take_while(&program, &mut i, |c| c.is_ascii_digit());
-                let value = buf.join("").parse::<i32>()?;
-                result.push(Token::IntegerLiteral(value));
+                let int = take_while(&program, &mut i, |c| c.is_ascii_digit());
+                let int = int.join("");
+
+                if let Some('.') = program.get(i) {
+                    i += 1;
+                    let decimal = take_while(&program, &mut i, |c| c.is_ascii_digit());
+                    let decimal = decimal.join("");
+                    let float = (int + "." + &decimal).parse::<f32>()?;
+                    result.push(Token::FloatLiteral(float));
+                } else {
+                    let int = int.parse::<i32>()?;
+                    result.push(Token::IntegerLiteral(int));
+                }
             }
             c if c.is_identifier_head() => {
                 i += 1;
@@ -108,4 +125,22 @@ pub fn show_tokens(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
         println!("{:?}", token);
     }
     Ok(tokens)
+}
+
+mod tests {
+    use super::*;
+
+    fn toknenize_single(value: &str) -> Token {
+        tokenize(vec![value.to_string()])
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_tokenize_float() {
+        assert_eq!(toknenize_single("3.14"), Token::FloatLiteral(3.14));
+        assert_eq!(toknenize_single("3.0"), Token::FloatLiteral(3.0));
+    }
 }

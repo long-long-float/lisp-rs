@@ -5,6 +5,7 @@ pub enum Ast {
     List(Vec<Ast>),
     Quoted(Box<Ast>),
     Integer(i32),
+    Float(f32),
     Symbol(String),
     Nil,
 }
@@ -14,6 +15,7 @@ impl From<Value> for Ast {
     fn from(value: Value) -> Self {
         match value {
             Value::Integer(v) => Ast::Integer(v),
+            Value::Float(v) => Ast::Float(v),
             Value::Symbol(v) => Ast::Symbol(v),
             Value::List(vs) => {
                 if vs.len() == 0 {
@@ -108,6 +110,7 @@ fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
                 Ok((ret, rest))
             }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value), rest)),
+            Token::FloatLiteral(value) => Ok((Ast::Float(*value), rest)),
             Token::LeftParen => parse_list(tokens),
             Token::Quote => {
                 let (value, rest) = parse_value(rest)?;
