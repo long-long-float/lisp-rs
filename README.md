@@ -1,7 +1,7 @@
 lisp-rs
 =========
 
-This is a lisp interpreter, follows a subset of Common Lisp, and written in Rust.
+This is a lisp interpreter, follows a subset of Scheme, and written in Rust.
 
 ```shell
 $ cargo run examples/fizzbuzz.lisp
