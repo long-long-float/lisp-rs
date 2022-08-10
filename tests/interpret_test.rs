@@ -54,7 +54,7 @@ fn arithmetic_test() {
 }
 
 #[test]
-fn mapcar_test() {
+fn map_test() {
     assert_eq!(
         Ok(build_list(vec![11, 22, 33])),
         interp("(map + '(1 2 3) '(10 20 30))")
@@ -97,7 +97,7 @@ fn type_test() {
 }
 
 #[test]
-fn setq_error_test() {
+fn define_error_test() {
     assert_error!(&interp("(define 1 2)"), Error::Eval(_));
     assert_error!(&interp("(define x 2 'err)"), Error::Eval(_));
 }
@@ -143,7 +143,7 @@ xs"#
 }
 
 #[test]
-fn funcion_test() {
+fn function_test() {
     assert_eq!(
         Ok(Value::Integer(25)),
         interp(
@@ -175,7 +175,7 @@ x"#
     );
 
     assert_eq!(
-        Ok(Value::Integer(5)),
+        Ok(Value::Integer(10)),
         interp(
             r#"
 (define y 10)

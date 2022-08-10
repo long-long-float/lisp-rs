@@ -34,9 +34,8 @@ impl CharExt for char {
     fn is_identifier_head(&self) -> bool {
         match *self {
             c if c.is_ascii_alphabetic() => true,
-            '+' | '-' | '*' | '/' | '@' | '$' | '^' | '&' | '_' | '=' | '<' | '>' | '~' | '.' => {
-                true
-            }
+            '+' | '-' | '*' | '/' | '@' | '$' | '^' | '&' | '_' | '=' | '<' | '>' | '~' | '.'
+            | '!' => true,
             _ => false,
         }
     }

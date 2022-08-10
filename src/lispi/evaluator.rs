@@ -178,7 +178,6 @@ impl Environment {
         }
     }
 
-    // TODO: Take ValueWithType
     fn insert_var(&mut self, name: String, value: ValueWithType) {
         // local_stack must have least one local
         let local = self.local_stack.last_mut().unwrap();
@@ -362,10 +361,11 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
     if let Ast::Symbol(name) = name_ast {
         let name = name.as_str();
         match name {
-            "setq" => {
+            "set!" => {
                 if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
                     let value = eval_ast(value, env)?;
-                    env.update_or_insert_var(name.clone(), value);
+                    // TODO: Error handling with undefined variable
+                    env.insert_var(name.clone(), value);
                     Ok(Value::nil().with_type())
                 } else {
                     Err(Error::Eval(
@@ -373,11 +373,24 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                     ))
                 }
             }
-            "defun" | "defmacro" => {
+            "define" => {
+                if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
+                    let value = eval_ast(value, env)?;
+
+                    env.insert_var(name.clone(), value);
+
+                    Ok(Value::nil().with_type())
+                } else {
+                    Err(Error::Eval(
+                        "'define' is formed as (define name (arg ...) body ...)".to_string(),
+                    ))
+                }
+            }
+            "define-macro" => {
                 if let (Some(Ast::Symbol(fun_name)), Some(Ast::List(args)), (_, body)) =
                     (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
                 {
-                    let is_macro = name == "defmacro";
+                    let is_macro = name == "define-macro";
 
                     let args = get_symbol_values(args)?;
 
@@ -399,7 +412,7 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                     Ok(Value::nil().with_type())
                 } else {
                     Err(Error::Eval(
-                        "'defun' is formed as (defun name (arg ...) body ...)".to_string(),
+                        "'define' is formed as (define name (arg ...) body ...)".to_string(),
                     ))
                 }
             }
@@ -616,8 +629,8 @@ fn apply_function(
                     Ok(Value::nil().with_type())
                 }
                 "list" => Ok(Value::List(args.to_vec()).with_type()),
-                "mapcar" => {
-                    let err = "'mapcar' is formed as (mapcar function list ...)";
+                "map" => {
+                    let err = "'map' is formed as (mapcar function list ...)";
 
                     if let Some((func, lists)) = args.split_first() {
                         let lists = lists
@@ -727,13 +740,18 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
     // Pre-defined functions and special forms
     // TODO: Add function symbols with its definition
     env.insert_function(
-        "evenp",
+        "even?",
         Type::function(vec![Type::int()], Type::Any),
         |args| {
             match_args!(args, Value::Integer(v), {
                 Ok(Value::from(v % 2 == 0).with_type())
             })
         },
+    );
+    env.insert_function(
+        "=",
+        Type::function(vec![Type::Any, Type::Any], Type::Any),
+        |args| match_args!(args, v1, v2, { Ok(Value::from(v1 == v2).with_type()) }),
     );
     env.insert_function(
         "car",
@@ -762,16 +780,7 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
             })
         },
     );
-    // TODO: Make zerop and mod to accept number
-    env.insert_function(
-        "zerop",
-        Type::function(vec![Type::int()], Type::Any),
-        |args| {
-            match_args!(args, Value::Integer(v), {
-                Ok(Value::from(*v == 0).with_type())
-            })
-        },
-    );
+    // TODO: Make mod to accept number
     env.insert_function(
         "mod",
         Type::function(vec![Type::int(), Type::int()], Type::int()),
@@ -807,7 +816,7 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
     env.insert_variable_as_symbol("+");
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
-    env.insert_variable_as_symbol("mapcar");
+    env.insert_variable_as_symbol("map");
 
     // Pre-defined symbols
     env.insert_variable_as_symbol("T");
