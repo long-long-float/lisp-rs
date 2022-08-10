@@ -57,15 +57,15 @@ fn arithmetic_test() {
 fn mapcar_test() {
     assert_eq!(
         Ok(build_list(vec![11, 22, 33])),
-        interp("(mapcar #'+ '(1 2 3) '(10 20 30))")
+        interp("(map + '(1 2 3) '(10 20 30))")
     );
 
     assert_eq!(
         Ok(build_list(vec![1, 9, 16])),
         interp(
             r#"
-(defun square (x) (* x x))
-(mapcar #'square '(1 3 4))
+(define square (lambda (x) (* x x)))
+(map square '(1 3 4))
 "#
         )
     );
@@ -83,8 +83,8 @@ fn variable_test() {
         Ok(Value::Integer(3)),
         interp(
             r#"
-(setq x 1)
-(setq y 2)
+(define x 1)
+(define y 2)
 (+ x y)"#
         )
     );
@@ -98,22 +98,22 @@ fn type_test() {
 
 #[test]
 fn setq_error_test() {
-    assert_error!(&interp("(setq 1 2)"), Error::Eval(_));
-    assert_error!(&interp("(setq x 2 'err)"), Error::Eval(_));
+    assert_error!(&interp("(define 1 2)"), Error::Eval(_));
+    assert_error!(&interp("(define x 2 'err)"), Error::Eval(_));
 }
 
 #[test]
 fn if_test() {
     assert_eq!(Ok(Value::Integer(3)), interp("(if 1 (+ 1 2) (+ 3 4))"));
-    assert_eq!(Ok(Value::Integer(3)), interp("(if T (+ 1 2) (+ 3 4))"));
-    assert_eq!(Ok(Value::Integer(7)), interp("(if Nil (+ 1 2) (+ 3 4))"));
+    assert_eq!(Ok(Value::Integer(3)), interp("(if #t (+ 1 2) (+ 3 4))"));
+    assert_eq!(Ok(Value::Integer(7)), interp("(if #f (+ 1 2) (+ 3 4))"));
 
     assert_eq!(Ok(Value::Integer(2)), interp("(if 1 2 3)"));
-    assert_eq!(Ok(Value::Integer(2)), interp("(if (evenp 2) 2 3)"));
-    assert_eq!(Ok(Value::Integer(3)), interp("(if (evenp 1) 2 3)"));
+    assert_eq!(Ok(Value::Integer(2)), interp("(if (even? 2) 2 3)"));
+    assert_eq!(Ok(Value::Integer(3)), interp("(if (even? 1) 2 3)"));
 
     assert_eq!(Ok(Value::Integer(3)), interp("(if 1 (+ 1 2))"));
-    assert_eq!(Ok(Value::nil()), interp("(if Nil (+ 1 2))"));
+    assert_eq!(Ok(Value::nil()), interp("(if #f (+ 1 2))"));
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn list_test() {
         Ok(build_list(vec![1, 2, 3])),
         interp(
             r#"
-(setq xs '(1 2 3))
+(define xs '(1 2 3))
 xs"#
         )
     );
@@ -148,7 +148,7 @@ fn funcion_test() {
         Ok(Value::Integer(25)),
         interp(
             r#"
-(defun square (x) (* x x))
+(define square (lambda (x) (* x x)))
 (square 5)"#
         )
     );
@@ -157,8 +157,8 @@ fn funcion_test() {
         Ok(Value::Integer(25)),
         interp(
             r#"
-(setq x 10)
-(defun square (x) (* x x))
+(define x 10)
+(define square (lambda (x) (* x x)))
 (square 5)"#
         )
     );
@@ -167,8 +167,8 @@ fn funcion_test() {
         Ok(Value::Integer(10)),
         interp(
             r#"
-(setq x 10)
-(defun square (x) (* x x))
+(define x 10)
+(define square (lambda (x) (* x x)))
 (square 5)
 x"#
         )
@@ -178,9 +178,9 @@ x"#
         Ok(Value::Integer(5)),
         interp(
             r#"
-(setq y 10)
-(defun set-y (x) 
-    (setq y x))
+(define y 10)
+(define set-y (lambda (x) 
+    (set! y x)))
 (set-y 5)
 y
 "#
@@ -191,10 +191,10 @@ y
         Ok(Value::Integer(24)),
         interp(
             r#"
-(defun fact (x)
-  (if (zerop x)
+(define fact (lambda (x)
+  (if (= x 0)
       1
-    (* x (fact (- x 1)))))
+    (* x (fact (- x 1))))))
 
 (fact 4)
 "#
@@ -210,7 +210,7 @@ fn lambda_test() {
         Ok(Value::Integer(25)),
         interp(
             r#"
-(setq x 10)
+(define x 10)
 ((lambda (x) (* x x)) 5)"#
         )
     );
@@ -222,12 +222,12 @@ fn macro_test() {
         Ok(build_list(vec![20, 10])),
         interp(
             r#"
-(defmacro my-push (item place)
-  (list 'setq
+(define-macro my-push (item place)
+  (list 'set!
         place
         (list 'cons item place)))
 
-(setq stack nil)
+(define stack '())
 (my-push 10 stack)
 (my-push 20 stack)
 stack"#
