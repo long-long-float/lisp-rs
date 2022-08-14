@@ -7,6 +7,8 @@ pub enum Ast {
     Integer(i32),
     Float(f32),
     Symbol(String),
+    Boolean(bool),
+    Char(char),
     Nil,
 }
 
@@ -17,6 +19,8 @@ impl From<Value> for Ast {
             Value::Integer(v) => Ast::Integer(v),
             Value::Float(v) => Ast::Float(v),
             Value::Symbol(v) => Ast::Symbol(v),
+            Value::Boolean(v) => Ast::Boolean(v),
+            Value::Char(v) => Ast::Char(v),
             Value::List(vs) => {
                 if vs.len() == 0 {
                     Ast::Nil
@@ -116,13 +120,8 @@ fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
                 let (value, rest) = parse_value(rest)?;
                 Ok((Ast::Quoted(Box::new(value)), rest))
             }
-            Token::Hash => {
-                let (value, rest) = parse_value(rest)?;
-                Ok((
-                    Ast::List(vec![Ast::Symbol("function".to_string()), value]),
-                    rest,
-                ))
-            }
+            Token::BooleanLiteral(value) => Ok((Ast::Boolean(*value), rest)),
+            Token::CharLiteral(value) => Ok((Ast::Char(*value), rest)),
             _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0]))),
         }
     } else {

@@ -46,6 +46,8 @@ type EvalResult = Result<ValueWithType, Error>;
 pub enum Value {
     Integer(i32),
     Float(f32),
+    Boolean(bool),
+    Char(char),
     Symbol(String),
     List(Vec<ValueWithType>),
     Function {
@@ -69,10 +71,9 @@ impl Value {
     }
 
     fn is_true(&self) -> bool {
-        if let Value::List(vs) = self {
-            vs.len() != 0
-        } else {
-            true
+        match self {
+            Value::Boolean(false) => false,
+            _ => true,
         }
     }
 
@@ -81,6 +82,8 @@ impl Value {
             Value::Integer(_) => Type::int(),
             Value::Float(_) => Type::float(),
             Value::Symbol(_) => Type::symbol(),
+            Value::Boolean(_) => Type::scala("boolean"),
+            Value::Char(_) => Type::scala("char"),
             Value::List(_) => Type::list(),
             Value::Function {
                 name: _,
@@ -111,6 +114,8 @@ impl std::fmt::Display for Value {
             Value::Integer(v) => write!(f, "{}", v),
             Value::Float(v) => write!(f, "{}", v),
             Value::Symbol(v) => write!(f, "{}", v),
+            Value::Boolean(v) => write!(f, "{}", v),
+            Value::Char(v) => write!(f, "{}", v),
             Value::List(vs) => {
                 if vs.len() == 0 {
                     write!(f, "Nil")
@@ -146,13 +151,27 @@ impl std::fmt::Display for Value {
     }
 }
 
+impl From<&Ast> for Value {
+    fn from(ast: &Ast) -> Self {
+        match ast {
+            Ast::Integer(v) => Value::Integer(*v),
+            Ast::Float(v) => Value::Float(*v),
+            Ast::Boolean(v) => Value::Boolean(*v),
+            Ast::Char(v) => Value::Char(*v),
+            Ast::Symbol(v) => Value::Symbol(v.clone()),
+            Ast::Quoted(v) => (&**v).into(),
+            Ast::List(vs) => {
+                let vs = vs.iter().map(|v| Value::from(v).with_type()).collect();
+                Value::List(vs)
+            }
+            Ast::Nil => Value::nil(),
+        }
+    }
+}
+
 impl From<bool> for Value {
     fn from(value: bool) -> Self {
-        if value {
-            Value::Symbol("T".to_string())
-        } else {
-            Value::nil()
-        }
+        Value::Boolean(value)
     }
 }
 
@@ -716,21 +735,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> EvalResult {
                 Err(Error::Eval(format!("{:?} is not defined", value)))
             }
         }
-        _ => Ok(ast_to_value(ast).with_type()),
-    }
-}
-
-fn ast_to_value(node: &Ast) -> Value {
-    match node {
-        Ast::Integer(v) => Value::Integer(*v),
-        Ast::Float(v) => Value::Float(*v),
-        Ast::Symbol(v) => Value::Symbol(v.clone()),
-        Ast::Quoted(v) => ast_to_value(&*v),
-        Ast::List(vs) => {
-            let vs = vs.iter().map(|v| ast_to_value(v).with_type()).collect();
-            Value::List(vs)
-        }
-        Ast::Nil => Value::nil(),
+        _ => Ok(Value::from(ast).with_type()),
     }
 }
 
@@ -817,9 +822,6 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
     env.insert_variable_as_symbol("map");
-
-    // Pre-defined symbols
-    env.insert_variable_as_symbol("T");
 
     eval_asts(asts, &mut env)
 }

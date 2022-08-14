@@ -19,10 +19,11 @@ pub enum Token {
     LeftParen,
     RightParen,
     Quote,
-    Hash,
     IntegerLiteral(i32),
     FloatLiteral(f32),
     Identifier(String),
+    BooleanLiteral(bool),
+    CharLiteral(char),
 }
 
 trait CharExt {
@@ -34,8 +35,8 @@ impl CharExt for char {
     fn is_identifier_head(&self) -> bool {
         match *self {
             c if c.is_ascii_alphabetic() => true,
-            '+' | '-' | '*' | '/' | '@' | '$' | '^' | '&' | '_' | '=' | '<' | '>' | '~' | '.'
-            | '!' => true,
+            '!' | '$' | '%' | '&' | '*' | '/' | ':' | '<' | '=' | '>' | '?' | '@' | '^' | '_'
+            | '~' | '+' | '-' | '.' => true,
             _ => false,
         }
     }
@@ -80,7 +81,21 @@ pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
                 i += 1;
             }
             '#' => {
-                result.push(Token::Hash);
+                i += 1;
+                let ret = match program.get(i) {
+                    Some('t') => Token::BooleanLiteral(true),
+                    Some('f') => Token::BooleanLiteral(false),
+                    Some('\\') => {
+                        i += 1;
+                        let c = program
+                            .get(i)
+                            .ok_or(Error::Tokenize("Unexpected EOF".to_string()))?;
+                        Token::CharLiteral(*c)
+                    }
+                    Some(c) => Err(Error::Tokenize(format!("Unexpected charactor {}", c)))?,
+                    None => Err(Error::Tokenize("Unexpected EOF".to_string()))?,
+                };
+                result.push(ret);
                 i += 1;
             }
             ';' => {

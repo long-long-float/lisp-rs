@@ -19,5 +19,5 @@ $ cargo test
 
 # Reference
 
-* http://www.lispworks.com/documentation/HyperSpec
-* http://www.nct9.ne.jp/m_hiroi/clisp/abcl04.html
+* https://schemers.org/Documents/Standards/R5RS/HTML/
+* https://cs61a.org/articles/scheme-spec/
