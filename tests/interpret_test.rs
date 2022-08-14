@@ -234,3 +234,68 @@ stack"#
         )
     );
 }
+
+#[test]
+fn let_test() {
+    assert_eq!(
+        Ok(Value::Integer(6)),
+        interp("(let ((a 1) (b 2) (c 3)) (+ a b c))")
+    );
+
+    assert_eq!(
+        Ok(Value::Integer(0)),
+        interp(
+            r#"
+(define a 0)
+(let ((a 1) (b 2) (c 3))
+    (+ a b c)
+    (setq! a 9))
+a"#
+        )
+    );
+
+    assert_error!(
+        interp("(let ((a 1) (b a) (c b)) (+ a b c))"),
+        Error::Eval(_)
+    );
+}
+
+#[test]
+fn let_star_test() {
+    assert_eq!(
+        Ok(Value::Integer(6)),
+        interp("(let* ((a 1) (b 2) (c 3)) (+ a b c))")
+    );
+
+    assert_eq!(
+        Ok(Value::Integer(0)),
+        interp(
+            r#"
+(define a 0)
+(let* ((a 1) (b 2) (c 3))
+    (+ a b c)
+    (setq! a 9))
+a"#
+        )
+    );
+
+    assert_eq!(
+        Ok(Value::Integer(6)),
+        interp("(let* ((a 1) (b a) (c b)) (+ a b c))")
+    );
+}
+
+#[test]
+fn named_let_test() {
+    assert_eq!(
+        Ok(Value::Integer(10)),
+        interp(
+            r#"
+(define a 0)
+(let loop ((i 0)) (if (< i 10)
+    (setq! (+ a 1))
+    (loop (+ i 1))))
+a"#
+        )
+    );
+}
