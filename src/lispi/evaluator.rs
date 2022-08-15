@@ -363,6 +363,13 @@ fn eval_asts(asts: &[Ast], env: &mut Environment) -> Result<Vec<ValueWithType>, 
         .collect::<Result<Vec<ValueWithType>, Error>>()
 }
 
+fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
+    results
+        .into_iter()
+        .last()
+        .unwrap_or(Value::nil().with_type())
+}
+
 fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<String>, Error> {
     symbols
         .iter()
@@ -457,6 +464,50 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                     ))
                 }
             }
+            "let" | "let*" => {
+                let err = Err(Error::Eval(
+                    "'let' is formed as (let ([id expr] ...) body ...)".to_string(),
+                ));
+
+                let sequence = name == "let*";
+
+                if let Some((Ast::List(vars), body)) = raw_args.split_first() {
+                    env.push_local();
+
+                    let mut exprs = Vec::new();
+
+                    for var in vars {
+                        if let Ast::List(var) = var {
+                            if let (Some(Ast::Symbol(id)), Some(expr)) = (var.get(0), var.get(1)) {
+                                let expr = eval_ast(expr, env)?;
+                                if sequence {
+                                    env.insert_var(id.clone(), expr);
+                                } else {
+                                    exprs.push((id, expr));
+                                }
+                            } else {
+                                return err;
+                            }
+                        } else {
+                            return err;
+                        }
+                    }
+
+                    if !sequence {
+                        for (id, expr) in exprs {
+                            env.insert_var(id.clone(), expr);
+                        }
+                    }
+
+                    let result = eval_asts(body, env);
+
+                    env.pop_local();
+
+                    Ok(get_last_result(result?))
+                } else {
+                    err
+                }
+            }
             "if" => {
                 if let (Some(cond), Some(then_ast)) = (raw_args.get(0), raw_args.get(1)) {
                     let cond = eval_ast(cond, env)?.value.is_true();
@@ -482,8 +533,7 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                     let cond = eval_ast(cond, env)?.value.is_true();
                     let cond = if invert { !cond } else { cond };
                     if cond {
-                        let result = eval_asts(forms, env)?;
-                        Ok(result.last().unwrap_or(&Value::nil().with_type()).clone())
+                        Ok(get_last_result(eval_asts(forms, env)?))
                     } else {
                         Ok(Value::nil().with_type())
                     }
@@ -502,11 +552,7 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                         if let Some((cond, body)) = arm.split_first() {
                             let cond = eval_ast(cond, env)?;
                             if cond.value.is_true() {
-                                let result = eval_asts(body, env)?;
-                                return Ok(result
-                                    .last()
-                                    .unwrap_or(&Value::nil().with_type())
-                                    .clone());
+                                return Ok(get_last_result(eval_asts(body, env)?));
                             }
                         } else {
                             return Err(Error::Eval(err.to_string()));
@@ -551,11 +597,8 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
 
                     env.pop_local();
 
-                    let result = result?.last().unwrap_or(&Value::nil().with_type()).clone();
-
-                    let result_ast: Ast = result.value.into();
-                    println!("expaned = {:#?}", result_ast);
-                    eval_ast(&result_ast, env)
+                    let result = get_last_result(result?);
+                    eval_ast(&Ast::from(result.value), env)
                 } else {
                     Err(Error::DoNothing)
                 }
@@ -706,8 +749,7 @@ fn apply_function(
 
             env.pop_local();
 
-            let result = result?.last().unwrap_or(&Value::nil().with_type()).clone();
-            Ok(result)
+            Ok(get_last_result(result?))
         }
         Value::NativeFunction { name: _, func } => func(args.to_vec()),
         _ => Err(Error::Eval(format!("{:?} is not a function", func.value))),
