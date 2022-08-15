@@ -730,6 +730,12 @@ fn apply_function(
                     }
                     Ok(Value::nil().with_type())
                 }
+                "display" => {
+                    for arg in args {
+                        print!("{}", arg.value);
+                    }
+                    Ok(Value::nil().with_type())
+                }
                 "list" => Ok(Value::List(args.to_vec()).with_type()),
                 "map" => {
                     let err = "'map' is formed as (mapcar function list ...)";
