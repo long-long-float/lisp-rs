@@ -188,12 +188,13 @@ impl Environment {
         env
     }
 
-    fn update_or_insert_var(&mut self, name: String, value: ValueWithType) {
+    fn update_var(&mut self, name: String, value: ValueWithType) -> Result<(), Error> {
         if let Some(found) = self.find_var_mut(&name) {
             // TODO: Check type
             found.value = value.value;
+            Ok(())
         } else {
-            self.insert_var(name, value);
+            Err(Error::Eval(format!("{} is not defined.", name)))
         }
     }
 
@@ -390,12 +391,11 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
             "set!" => {
                 if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
                     let value = eval_ast(value, env)?;
-                    // TODO: Error handling with undefined variable
-                    env.insert_var(name.clone(), value);
+                    env.update_var(name.clone(), value)?;
                     Ok(Value::nil().with_type())
                 } else {
                     Err(Error::Eval(
-                        "'setq' is formed as (setq symbol value)".to_string(),
+                        "'set!' is formed as (set! symbol value)".to_string(),
                     ))
                 }
             }
@@ -466,7 +466,7 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
             }
             "let" | "let*" => {
                 let err = Err(Error::Eval(
-                    "'let' is formed as (let ([id expr] ...) body ...)".to_string(),
+                    "'let' is formed as (let ([id expr] ...) body ...) or named let (let proc-id ([id expr] ...) body ...)".to_string(),
                 ));
 
                 let sequence = name == "let*";
@@ -504,10 +504,50 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                     env.pop_local();
 
                     Ok(get_last_result(result?))
+                } else if let (Some(Ast::Symbol(proc_id)), Some(Ast::List(args)), (_, body)) =
+                    (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
+                {
+                    let mut arg_exprs = Vec::new();
+                    for arg in args {
+                        if let Ast::List(var) = arg {
+                            if let (Some(Ast::Symbol(id)), Some(expr)) = (var.get(0), var.get(1)) {
+                                arg_exprs.push((id.clone(), expr.clone()));
+                            } else {
+                                println!("{}", line!());
+                                return err;
+                            }
+                        } else {
+                            println!("{}", line!());
+                            return err;
+                        }
+                    }
+                    let (args, exprs): (_, Vec<Ast>) = arg_exprs.into_iter().unzip();
+
+                    let func = Value::Function {
+                        name: proc_id.clone(),
+                        args,
+                        body: body.to_vec(),
+                        is_macro: false,
+                    };
+
+                    env.push_local();
+                    env.insert_var(proc_id.clone(), func.with_type());
+
+                    let mut call_args = vec![Ast::Symbol(proc_id.clone())];
+                    let mut exprs = exprs;
+                    call_args.append(&mut exprs);
+
+                    let result = eval_asts(&vec![Ast::List(call_args)], env);
+
+                    env.pop_local();
+
+                    Ok(get_last_result(result?))
                 } else {
+                    println!("{}", line!());
                     err
                 }
             }
+            "begin" => Ok(get_last_result(eval_asts(raw_args, env)?)),
             "if" => {
                 if let (Some(cond), Some(then_ast)) = (raw_args.get(0), raw_args.get(1)) {
                     let cond = eval_ast(cond, env)?.value.is_true();
@@ -843,6 +883,15 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
         |args| {
             match_args!(args, Value::Integer(x), Value::Integer(y), {
                 Ok(Value::from(x > y).with_type())
+            })
+        },
+    );
+    env.insert_function(
+        "<",
+        Type::function(vec![Type::int(), Type::int()], Type::Any),
+        |args| {
+            match_args!(args, Value::Integer(x), Value::Integer(y), {
+                Ok(Value::from(x < y).with_type())
             })
         },
     );

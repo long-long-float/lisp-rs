@@ -180,6 +180,7 @@ x"#
             r#"
 (define y 10)
 (define set-y (lambda (x) 
+    (define y 0)
     (set! y x)))
 (set-y 5)
 y
@@ -293,8 +294,9 @@ fn named_let_test() {
             r#"
 (define a 0)
 (let loop ((i 0)) (if (< i 10)
-    (set! (+ a 1))
-    (loop (+ i 1))))
+    (begin
+        (set! a (+ a 1))
+        (loop (+ i 1)))))
 a"#
         )
     );
