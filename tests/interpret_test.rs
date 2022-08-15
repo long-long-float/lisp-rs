@@ -240,7 +240,7 @@ stack"#
 fn let_test() {
     assert_eq!(
         Ok(Value::Integer(6)),
-        interp("(let ((a 1) (b 2) (c 3)) (+ a b c))")
+        interp("(let ([a 1] [b 2] [c 3]) (+ a b c))")
     );
 
     assert_eq!(
@@ -248,7 +248,7 @@ fn let_test() {
         interp(
             r#"
 (define a 0)
-(let ((a 1) (b 2) (c 3))
+(let ([a 1] [b 2] [c 3])
     (+ a b c)
     (set! a 9))
 a"#
@@ -256,7 +256,7 @@ a"#
     );
 
     assert_error!(
-        interp("(let ((a 1) (b a) (c b)) (+ a b c))"),
+        interp("(let ([a 1] [b a] [c b]) (+ a b c))"),
         Error::Eval(_)
     );
 }

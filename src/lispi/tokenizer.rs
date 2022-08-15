@@ -18,6 +18,8 @@ impl From<ParseFloatError> for Error {
 pub enum Token {
     LeftParen,
     RightParen,
+    LeftSquareBracket,
+    RightSquareBracket,
     Quote,
     IntegerLiteral(i32),
     FloatLiteral(f32),
@@ -74,6 +76,14 @@ pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
             }
             ')' => {
                 result.push(Token::RightParen);
+                i += 1;
+            }
+            '[' => {
+                result.push(Token::LeftSquareBracket);
+                i += 1;
+            }
+            ']' => {
+                result.push(Token::RightSquareBracket);
                 i += 1;
             }
             '\'' => {

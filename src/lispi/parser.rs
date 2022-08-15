@@ -73,11 +73,14 @@ fn consume<'a>(tokens: &'a [Token], expected: &Token) -> Result<&'a [Token], Err
     }
 }
 
-fn consume_while(
+fn consume_while<F>(
     tokens: &[Token],
-    pred: fn(&Token) -> bool,
+    pred: F,
     consumer: fn(&[Token]) -> ParseResult<Ast>,
-) -> Result<(&[Token], Vec<Ast>), Error> {
+) -> Result<(&[Token], Vec<Ast>), Error>
+where
+    F: Fn(&Token) -> bool,
+{
     if let Some((first, _)) = tokens.split_first() {
         if pred(first) {
             let (first, rest) = consumer(tokens)?;
@@ -96,9 +99,14 @@ fn consume_while(
 }
 
 fn parse_list(tokens: &[Token]) -> ParseResult<Ast> {
-    let tokens = consume(tokens, &Token::LeftParen)?;
-    let (tokens, items) = consume_while(tokens, |token| token != &Token::RightParen, parse_value)?;
-    let tokens = consume(tokens, &&Token::RightParen)?;
+    let (left_token, right_token) = if let Some(&Token::LeftSquareBracket) = tokens.first() {
+        (&Token::LeftSquareBracket, &Token::RightSquareBracket)
+    } else {
+        (&Token::LeftParen, &Token::RightParen)
+    };
+    let tokens = consume(tokens, left_token)?;
+    let (tokens, items) = consume_while(tokens, |token| token != right_token, parse_value)?;
+    let tokens = consume(tokens, &right_token)?;
     Ok((Ast::List(items), tokens))
 }
 
@@ -115,7 +123,7 @@ fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
             }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value), rest)),
             Token::FloatLiteral(value) => Ok((Ast::Float(*value), rest)),
-            Token::LeftParen => parse_list(tokens),
+            Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens),
             Token::Quote => {
                 let (value, rest) = parse_value(rest)?;
                 Ok((Ast::Quoted(Box::new(value)), rest))
