@@ -15,13 +15,30 @@ macro_rules! assert_error {
             Err($p) => true,
             _ => false,
         };
-        assert_eq!(
-            true,
+        assert!(
             has_error,
             "{} must have an error {}",
             stringify!($value),
             stringify!($p)
         );
+    };
+}
+
+static EPS: f32 = 0.0001;
+
+macro_rules! assert_eq_eps {
+    ( $expected:expr, $actual:expr) => {
+        if let Ok(Value::Float(v)) = $actual {
+            assert!(
+                (v - $expected).abs() <= EPS,
+                "|{} - {}| <= {}",
+                v,
+                $expected,
+                EPS
+            );
+        } else {
+            assert!(false, "{:?} must be a float value", $actual);
+        }
     };
 }
 
@@ -51,6 +68,24 @@ fn arithmetic_test() {
     assert_eq!(Ok(Value::Integer(6)), interp("(* 2 3)"));
     assert_eq!(Ok(Value::Integer(60)), interp("(+ 10 20 30)"));
     assert_eq!(Ok(Value::Integer(1)), interp("(+ (* 1 2) (- 3 4))"));
+
+    assert_eq!(Ok(Value::Integer(0)), interp("(+)"));
+    assert_eq_eps!(2.2, interp("(+ 1 1.2)"));
+    assert_eq_eps!(6.0, interp("(+ 1 2 3.0)"));
+    assert_eq_eps!(3.3, interp("(+ 1.1 2.2)"));
+
+    assert_eq!(Ok(Value::Integer(-1)), interp("(- 1)"));
+    assert_eq_eps!(-0.2, interp("(- 1 1.2)"));
+    assert_eq_eps!(-4.0, interp("(- 1 2 3.0)"));
+    assert_eq_eps!(-1.1, interp("(- 1.1 2.2)"));
+
+    assert_eq!(Ok(Value::Integer(1)), interp("(*)"));
+    assert_eq!(Ok(Value::Integer(2)), interp("(* 1 2)"));
+    assert_eq_eps!(2.0, interp("(* 1 2.0)"));
+
+    assert_eq_eps!(0.5, interp("(/ 2.0)"));
+    assert_eq!(Ok(Value::Integer(0)), interp("(/ 1 2)"));
+    assert_eq_eps!(0.5, interp("(/ 1 2.0)"));
 }
 
 #[test]

@@ -693,36 +693,73 @@ fn apply_function(
 
             match func_name {
                 // Functions
-                "+" | "-" | "*" => {
+                "+" | "-" | "*" | "/" => {
+                    enum Number {
+                        Int(i32),
+                        Float(f32),
+                    }
+
+                    let mut has_float_arg = false;
                     let args = args
                         .iter()
-                        .map(|arg| {
-                            if let Value::Integer(v) = arg.value {
-                                Ok(v)
-                            } else {
-                                Err(Error::Eval(format!("{:?} is not an integer.", arg)))
+                        .map(|arg| match arg.value {
+                            Value::Integer(v) => Ok(Number::Int(v)),
+                            Value::Float(v) => {
+                                has_float_arg = true;
+                                Ok(Number::Float(v))
                             }
+                            _ => Err(Error::Eval(format!("{:?} is not an integer.", arg))),
                         })
-                        .collect::<Result<Vec<i32>, Error>>()?;
+                        .collect::<Result<Vec<Number>, Error>>()?;
 
-                    let sum = match func_name {
-                        "+" => args.iter().sum(),
-                        "-" => {
-                            if args.len() >= 1 {
-                                let (head, args) = args.split_first().unwrap();
-                                let mut res = *head;
-                                for arg in args {
-                                    res -= arg;
+                    macro_rules! calc {
+                        ( $args:expr, $elem_type:ty ) => {
+                            match func_name {
+                                "+" => $args.fold(0.0 as $elem_type, |sum, v| sum + v),
+                                "*" => $args.fold(1.0 as $elem_type, |acc, v| acc * v),
+                                "-" | "/" => {
+                                    let sub = func_name == "-";
+                                    if args.len() >= 2 {
+                                        $args
+                                            .reduce(|acc, v| if sub { acc - v } else { acc / v })
+                                            .unwrap()
+                                    } else if args.len() == 1 {
+                                        let value = $args.nth(0).unwrap();
+                                        if sub {
+                                            0.0 as $elem_type - value
+                                        } else {
+                                            1.0 as $elem_type / value
+                                        }
+                                    } else {
+                                        return Err(Error::Eval(format!(
+                                            "Function {} needs least one value",
+                                            func_name
+                                        )));
+                                    }
                                 }
-                                res
-                            } else {
-                                0
-                            }
-                        }
-                        "*" => args.iter().fold(1, |acc, arg| acc * arg),
-                        _ => return Err(Error::Eval(format!("Unknown function: {}", func_name))),
-                    };
-                    Ok(Value::Integer(sum).with_type())
+                                _ => {
+                                    return Err(Error::Eval(format!(
+                                        "Unknown function: {}",
+                                        func_name
+                                    )))
+                                }
+                            };
+                        };
+                    }
+
+                    if has_float_arg {
+                        let mut args = args.iter().map(|arg| match arg {
+                            &Number::Int(v) => v as f32,
+                            &Number::Float(v) => v,
+                        });
+                        Ok(Value::Float(calc!(args, f32)).with_type())
+                    } else {
+                        let mut args = args.iter().map(|arg| match arg {
+                            &Number::Int(v) => v,
+                            &Number::Float(v) => v as i32,
+                        });
+                        Ok(Value::Integer(calc!(args, i32)).with_type())
+                    }
                 }
                 "print" => {
                     for arg in args {
@@ -918,6 +955,7 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
     env.insert_variable_as_symbol("+");
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
+    env.insert_variable_as_symbol("/");
     env.insert_variable_as_symbol("map");
 
     eval_asts(asts, &mut env)
