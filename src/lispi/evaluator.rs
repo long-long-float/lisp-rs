@@ -513,11 +513,9 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                             if let (Some(Ast::Symbol(id)), Some(expr)) = (var.get(0), var.get(1)) {
                                 arg_exprs.push((id.clone(), expr.clone()));
                             } else {
-                                println!("{}", line!());
                                 return err;
                             }
                         } else {
-                            println!("{}", line!());
                             return err;
                         }
                     }
@@ -543,7 +541,6 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
 
                     Ok(get_last_result(result?))
                 } else {
-                    println!("{}", line!());
                     err
                 }
             }
@@ -554,7 +551,6 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                     if cond {
                         eval_ast(then_ast, env)
                     } else {
-                        println!("{:?}", raw_args.get(2));
                         if let Some(else_ast) = raw_args.get(2) {
                             eval_ast(else_ast, env)
                         } else {
@@ -949,8 +945,13 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
             })
         },
     );
+    env.insert_function("newline", Type::function(vec![], Type::Any), |args| {
+        println!();
+        Ok(Value::List(vec![]).with_type())
+    });
 
     env.insert_variable_as_symbol("print");
+    env.insert_variable_as_symbol("display");
     env.insert_variable_as_symbol("list");
     env.insert_variable_as_symbol("+");
     env.insert_variable_as_symbol("-");
