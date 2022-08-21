@@ -53,6 +53,7 @@ impl From<Value> for Ast {
             }
             Value::NativeFunction { name, func: _ } => Ast::Symbol(name),
             Value::RawAst(ast) => ast,
+            Value::Continue(v) => Ast::Continue(v),
         }
     }
 }

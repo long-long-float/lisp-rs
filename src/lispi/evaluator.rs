@@ -63,6 +63,9 @@ pub enum Value {
 
     // For macro expansion
     RawAst(Ast),
+
+    // For optimizing tail recursion
+    Continue(String),
 }
 
 impl Value {
@@ -99,6 +102,7 @@ impl Value {
                 Type::Any
             }
             Value::RawAst(_) => Type::Any,
+            Value::Continue(_) => Type::Any,
         }
     }
 
@@ -147,6 +151,7 @@ impl std::fmt::Display for Value {
                 write!(f, "FUNCTION {}", name)
             }
             Value::RawAst(ast) => write!(f, "AST {:?}", ast),
+            Value::Continue(name) => write!(f, "CONINUE {:?}", name),
         }
     }
 }
@@ -165,7 +170,7 @@ impl From<&Ast> for Value {
                 Value::List(vs)
             }
             Ast::Nil => Value::nil(),
-            Ast::Continue(_) => Value::nil(),
+            Ast::Continue(v) => Value::Continue(v.clone()),
         }
     }
 }
@@ -195,7 +200,7 @@ impl Environment {
             found.value = value.value;
             Ok(())
         } else {
-            Err(Error::Eval(format!("{} is not defined.", name)))
+            Err(Error::Eval(format!("A variable {} is not defined.", name)))
         }
     }
 
@@ -640,29 +645,56 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                     let (args, exprs): (Vec<String>, Vec<Ast>) = arg_exprs.into_iter().unzip();
 
                     if let Some(optimized) = optimize_tail_recursion(proc_id, &args, body) {
-                        println!("Tail recursion!");
-                        println!("{:#?}", optimized);
+                        // println!("Tail recursion!");
+                        // println!("{:#?}", optimized);
+
+                        env.push_local();
+
+                        // Sequencial initialization
+                        for (id, expr) in args.iter().zip(exprs) {
+                            let expr = eval_ast(&expr, env)?;
+                            env.insert_var(id.clone(), expr);
+                        }
+
+                        // let mut result: ValueWithType;
+                        let result = loop {
+                            let results = eval_asts(&optimized, env);
+                            let result = get_last_result(results?);
+                            if let Value::Continue(id) = &result.value {
+                                if id == proc_id {
+                                    // continue
+                                } else {
+                                    break result;
+                                }
+                            } else {
+                                break result;
+                            }
+                        };
+
+                        env.pop_local();
+
+                        Ok(result)
+                    } else {
+                        let func = Value::Function {
+                            name: proc_id.clone(),
+                            args,
+                            body: body.to_vec(),
+                            is_macro: false,
+                        };
+
+                        env.push_local();
+                        env.insert_var(proc_id.clone(), func.with_type());
+
+                        let mut call_args = vec![Ast::Symbol(proc_id.clone())];
+                        let mut exprs = exprs;
+                        call_args.append(&mut exprs);
+
+                        let result = eval_asts(&vec![Ast::List(call_args)], env);
+
+                        env.pop_local();
+
+                        Ok(get_last_result(result?))
                     }
-
-                    let func = Value::Function {
-                        name: proc_id.clone(),
-                        args,
-                        body: body.to_vec(),
-                        is_macro: false,
-                    };
-
-                    env.push_local();
-                    env.insert_var(proc_id.clone(), func.with_type());
-
-                    let mut call_args = vec![Ast::Symbol(proc_id.clone())];
-                    let mut exprs = exprs;
-                    call_args.append(&mut exprs);
-
-                    let result = eval_asts(&vec![Ast::List(call_args)], env);
-
-                    env.pop_local();
-
-                    Ok(get_last_result(result?))
                 } else {
                     err
                 }
@@ -976,7 +1008,10 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> EvalResult {
             if let Some(var) = env.find_var(value) {
                 Ok(var.clone())
             } else {
-                Err(Error::Eval(format!("{:?} is not defined", value)))
+                Err(Error::Eval(format!(
+                    "A variable {:?} is not defined",
+                    value
+                )))
             }
         }
         _ => Ok(Value::from(ast).with_type()),

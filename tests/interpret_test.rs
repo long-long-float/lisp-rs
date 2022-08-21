@@ -336,3 +336,19 @@ a"#
         )
     );
 }
+
+#[test]
+fn optimizing_tail_recursion_test() {
+    assert_eq!(
+        Ok(Value::Integer(1000)),
+        interp(
+            r#"
+(define a 0)
+(let loop ((i 0)) (if (< i 1000)
+    (begin
+        (set! a (+ a 1))
+        (loop (+ i 1)))))
+a"#
+        )
+    );
+}
