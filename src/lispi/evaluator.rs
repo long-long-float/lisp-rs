@@ -165,6 +165,7 @@ impl From<&Ast> for Value {
                 Value::List(vs)
             }
             Ast::Nil => Value::nil(),
+            Ast::Continue(_) => Value::nil(),
         }
     }
 }
@@ -384,6 +385,121 @@ fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<String>, Error> {
         .collect()
 }
 
+/// Try to optimize tail recursion for body
+// TOOD: Support body what the function is assigned other variable
+fn optimize_tail_recursion(
+    func_name: &String,
+    locals: &[String],
+    body: &[Ast],
+) -> Option<Vec<Ast>> {
+    /// Optimize tail recursion for the last ast
+    /// ref https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html
+    fn _optimize_tail_recursion(func_name: &String, locals: &[String], ast: &Ast) -> Option<Ast> {
+        match ast {
+            Ast::List(vs) => {
+                if let Some((name_ast, args)) = vs.split_first() {
+                    if let Ast::Symbol(name) = name_ast {
+                        let name = name.as_str();
+                        let mut args = match name {
+                            "begin" => optimize_tail_recursion(func_name, locals, args),
+                            "if" => {
+                                if let Some(cond) = args.get(0) {
+                                    if let (Some(then), Some(els)) = (args.get(1), args.get(2)) {
+                                        _optimize_tail_recursion(func_name, locals, then).and_then(
+                                            |then| {
+                                                _optimize_tail_recursion(func_name, locals, els)
+                                                    .and_then(|els| {
+                                                        Some(vec![cond.clone(), then, els])
+                                                    })
+                                            },
+                                        )
+                                    } else if let Some(then) = args.get(1) {
+                                        _optimize_tail_recursion(func_name, locals, then)
+                                            .and_then(|then| Some(vec![cond.clone(), then]))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => {
+                                let not_in_args =
+                                    args.iter().all(|arg| !includes_symbol(func_name, arg));
+                                if name == func_name && not_in_args {
+                                    let mut form = vec![Ast::Symbol("begin".to_string())];
+                                    let mut args = args
+                                        .iter()
+                                        .zip(locals)
+                                        .map(|(arg, sym)| {
+                                            Ast::List(vec![
+                                                Ast::Symbol("set!".to_string()),
+                                                Ast::Symbol(sym.clone()),
+                                                arg.clone(),
+                                            ])
+                                        })
+                                        .collect::<Vec<_>>();
+                                    form.append(&mut args);
+                                    form.push(Ast::Continue(name.to_string()));
+                                    return Some(Ast::List(form));
+                                } else {
+                                    None
+                                }
+                            }
+                        };
+                        args.as_mut().map(|args| {
+                            let mut whole = vec![name_ast.clone()];
+                            whole.append(args);
+                            Ast::List(whole)
+                        })
+                    } else {
+                        // This is not valid ast
+                        None
+                    }
+                } else {
+                    Some(ast.clone())
+                }
+            }
+            Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, v),
+            Ast::Symbol(_)
+            | Ast::Integer(_)
+            | Ast::Float(_)
+            | Ast::Boolean(_)
+            | Ast::Char(_)
+            | Ast::Nil => Some(ast.clone()),
+            Ast::Continue(_) => Some(ast.clone()),
+        }
+    }
+
+    fn includes_symbol(sym: &String, ast: &Ast) -> bool {
+        match ast {
+            Ast::List(vs) => vs.iter().any(|v| includes_symbol(sym, v)),
+            Ast::Quoted(v) => includes_symbol(sym, v),
+            Ast::Symbol(v) => v == sym,
+            Ast::Integer(_) | Ast::Float(_) | Ast::Boolean(_) | Ast::Char(_) | Ast::Nil => false,
+            Ast::Continue(_) => false,
+        }
+    }
+
+    let len = body.len();
+    match len {
+        0 => None,
+        _ => {
+            let (last, body) = body.split_last().unwrap();
+            for ast in body {
+                if includes_symbol(func_name, ast) {
+                    return None;
+                }
+            }
+            _optimize_tail_recursion(func_name, locals, last).map(|last| {
+                let mut body = body.to_vec();
+                body.push(last);
+                body
+            })
+        }
+    }
+}
+
 fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) -> EvalResult {
     if let Ast::Symbol(name) = name_ast {
         let name = name.as_str();
@@ -507,6 +623,8 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                 } else if let (Some(Ast::Symbol(proc_id)), Some(Ast::List(args)), (_, body)) =
                     (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
                 {
+                    // named let
+
                     let mut arg_exprs = Vec::new();
                     for arg in args {
                         if let Ast::List(var) = arg {
@@ -519,7 +637,12 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                             return err;
                         }
                     }
-                    let (args, exprs): (_, Vec<Ast>) = arg_exprs.into_iter().unzip();
+                    let (args, exprs): (Vec<String>, Vec<Ast>) = arg_exprs.into_iter().unzip();
+
+                    if let Some(optimized) = optimize_tail_recursion(proc_id, &args, body) {
+                        println!("Tail recursion!");
+                        println!("{:#?}", optimized);
+                    }
 
                     let func = Value::Function {
                         name: proc_id.clone(),
@@ -739,7 +862,7 @@ fn apply_function(
                                         func_name
                                     )))
                                 }
-                            };
+                            }
                         };
                     }
 

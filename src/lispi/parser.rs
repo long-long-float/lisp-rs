@@ -10,6 +10,9 @@ pub enum Ast {
     Boolean(bool),
     Char(char),
     Nil,
+
+    // For optimizing tail recursion
+    Continue(String),
 }
 
 // For evaluating macros
