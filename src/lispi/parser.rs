@@ -58,6 +58,12 @@ impl From<Value> for Ast {
     }
 }
 
+impl From<&str> for Ast {
+    fn from(value: &str) -> Self {
+        Ast::Symbol(value.to_string())
+    }
+}
+
 pub type Program = Vec<Ast>;
 
 pub type ParseResult<'a, T> = Result<(T, &'a [Token]), Error>;

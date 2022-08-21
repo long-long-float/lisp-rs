@@ -408,22 +408,50 @@ fn optimize_tail_recursion(
                         let mut args = match name {
                             "begin" => optimize_tail_recursion(func_name, locals, args),
                             "if" => {
-                                if let Some(cond) = args.get(0) {
-                                    if let (Some(then), Some(els)) = (args.get(1), args.get(2)) {
-                                        _optimize_tail_recursion(func_name, locals, then).and_then(
-                                            |then| {
-                                                _optimize_tail_recursion(func_name, locals, els)
-                                                    .and_then(|els| {
-                                                        Some(vec![cond.clone(), then, els])
-                                                    })
-                                            },
-                                        )
-                                    } else if let Some(then) = args.get(1) {
-                                        _optimize_tail_recursion(func_name, locals, then)
-                                            .and_then(|then| Some(vec![cond.clone(), then]))
-                                    } else {
-                                        None
+                                let cond = args.get(0)?;
+                                if let (Some(then), Some(els)) = (args.get(1), args.get(2)) {
+                                    let then = _optimize_tail_recursion(func_name, locals, then)?;
+                                    let els = _optimize_tail_recursion(func_name, locals, els)?;
+                                    Some(vec![cond.clone(), then, els])
+                                } else if let Some(then) = args.get(1) {
+                                    let then = _optimize_tail_recursion(func_name, locals, then)?;
+                                    Some(vec![cond.clone(), then])
+                                } else {
+                                    None
+                                }
+                            }
+                            "let" | "let*" => {
+                                let (proc_id, rest) = match args.split_first() {
+                                    Some((Ast::Symbol(proc_id), rest)) => (Some(proc_id), rest),
+                                    _ => (None, args),
+                                };
+                                if let Some((Ast::List(vars), body)) = rest.split_first() {
+                                    let includes_sym_in_vars = vars.iter().any(|var| {
+                                        if let Ast::List(var) = var {
+                                            if let Some(expr) = var.get(1) {
+                                                includes_symbol(func_name, expr)
+                                            } else {
+                                                false
+                                            }
+                                        } else {
+                                            false
+                                        }
+                                    });
+
+                                    if includes_sym_in_vars {
+                                        return None;
                                     }
+
+                                    let mut body =
+                                        optimize_tail_recursion(func_name, locals, body)?;
+
+                                    let mut form = Vec::new();
+                                    if let Some(proc_id) = proc_id {
+                                        form.push(Ast::Symbol(proc_id.clone()));
+                                    }
+                                    form.push(Ast::List(vars.clone()));
+                                    form.append(&mut body);
+                                    Some(form)
                                 } else {
                                     None
                                 }
@@ -448,7 +476,14 @@ fn optimize_tail_recursion(
                                     form.push(Ast::Continue(name.to_string()));
                                     return Some(Ast::List(form));
                                 } else {
-                                    None
+                                    println!("[Warn] '{}' is treated as an ordinay function in optimizing tail recursion", name);
+
+                                    let args = args
+                                        .iter()
+                                        .map(|arg| _optimize_tail_recursion(func_name, locals, arg))
+                                        .collect::<Option<Vec<_>>>()?;
+
+                                    Some(args)
                                 }
                             }
                         };

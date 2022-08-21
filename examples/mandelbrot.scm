@@ -6,11 +6,8 @@
     (step 0.045)
     (step-x (/ step 2))
     (step-y step)
-    (lines 10)
-    (columns 10)
-    ; Stack overflow ;;
-    ; (lines 53)
-    ; (columns 151)
+    (lines 53)
+    (columns 151)
     (center-x (- 0.6))
     (center-y 0)
     )
