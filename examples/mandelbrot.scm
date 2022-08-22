@@ -1,6 +1,29 @@
 ; Reference https://gist.github.com/LeopoldTal/2aa79947c4cab728402c4054d6733254
+
+(define MAX_ITERS 200)
+
+(define get-rejection-iters (lambda (ptx pty)
+    (let (
+        [re 0.0]
+        [im 0.0]
+        [re-sq 0.0]
+        [im-sq 0.0])
+        (let loop ([nb-iters 0])
+            (if (or (> (+ im-sq re-sq) 4.0) (>= nb-iters MAX_ITERS))
+                nb-iters
+                (begin
+                    (set! im (+ (* 2.0 re im) pty))
+                    (set! re (+ (- re-sq im-sq) ptx))
+                    
+                    (set! im-sq (* im im))
+                    (set! re-sq (* re re))
+                    (loop (+ nb-iters 1))))))))
+
 (define draw-point (lambda (x y)
-    (display "*")))
+    (let ([iters (get-rejection-iters x y)])
+        (if (>= iters MAX_ITERS)
+            (display " ")
+            (display "*")))))
 
 (let* (
     (step 0.045)

@@ -272,6 +272,10 @@ pub struct ValueWithType {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
+    Numeric,
+    Int,
+    Float,
+
     Scala(String),
     Composite {
         name: String,
@@ -290,11 +294,11 @@ impl Type {
     }
 
     fn int() -> Type {
-        Type::scala("int")
+        Type::Int
     }
 
     fn float() -> Type {
-        Type::scala("float")
+        Type::Float
     }
 
     fn symbol() -> Type {
@@ -319,6 +323,9 @@ impl Type {
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Type::Numeric => write!(f, "numeric"),
+            Type::Int => write!(f, "int"),
+            Type::Float => write!(f, "float"),
             Type::Scala(name) => write!(f, "{}", name),
             Type::Composite { name, inner } => {
                 let inner = inner
@@ -341,18 +348,23 @@ impl std::fmt::Display for Type {
     }
 }
 
-fn check_arg_types(func_name: &str, args: &[ValueWithType], types: &[Type]) -> Result<(), Error> {
-    if args.len() != types.len() {
+fn check_arg_types(
+    func_name: &str,
+    args: &[ValueWithType],
+    expected_types: &[Type],
+) -> Result<(), Error> {
+    if args.len() != expected_types.len() {
         return Err(Error::Type(format!(
             "{} arguments are expected, but {} arguments are specified.",
-            types.len(),
+            expected_types.len(),
             args.len()
         )));
     }
 
-    for (i, (a, t)) in args.iter().zip(types).enumerate() {
-        match (&a.type_, t) {
+    for (i, (a, expected)) in args.iter().zip(expected_types).enumerate() {
+        match (&a.type_, expected) {
             (Type::Any, _) | (_, Type::Any) => (), // Pass-through
+            (Type::Int, Type::Numeric) | (Type::Float, Type::Numeric) => (), // numeric includes int and float
             (actual, expected) => {
                 if actual != expected {
                     return Err(Error::Type(format!("Expected the type {} , but the type {} is specified in {}th argument in {} function", expected, actual, i, func_name)));
@@ -879,7 +891,7 @@ fn apply_function(
 
             match func_name {
                 // Functions
-                "+" | "-" | "*" | "/" => {
+                "+" | "-" | "*" | "/" | ">" | ">=" | "<" | "<=" => {
                     enum Number {
                         Int(i32),
                         Float(f32),
@@ -923,6 +935,19 @@ fn apply_function(
                                         )));
                                     }
                                 }
+                                ">" | ">=" | "<" | "<=" => {
+                                    let args = $args.collect::<Vec<_>>();
+                                    let x = args.get(0);
+                                    let y = args.get(1);
+                                    let res = match func_name {
+                                        ">" => x > y,
+                                        ">=" => x >= y,
+                                        "<" => x < y,
+                                        "<=" => x <= y,
+                                        _ => return Err(bug!()),
+                                    };
+                                    return Ok(Value::from(res).with_type());
+                                }
                                 _ => {
                                     return Err(Error::Eval(format!(
                                         "Unknown function: {}",
@@ -947,6 +972,7 @@ fn apply_function(
                         Ok(Value::Integer(calc!(args, i32)).with_type())
                     }
                 }
+                "or" => Ok(Value::Boolean(args.iter().any(|arg| arg.value.is_true())).with_type()),
                 "print" => {
                     for arg in args {
                         println!("{}", arg.value);
@@ -1110,24 +1136,6 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
         },
     );
     env.insert_function(
-        ">",
-        Type::function(vec![Type::int(), Type::int()], Type::Any),
-        |args| {
-            match_args!(args, Value::Integer(x), Value::Integer(y), {
-                Ok(Value::from(x > y).with_type())
-            })
-        },
-    );
-    env.insert_function(
-        "<",
-        Type::function(vec![Type::int(), Type::int()], Type::Any),
-        |args| {
-            match_args!(args, Value::Integer(x), Value::Integer(y), {
-                Ok(Value::from(x < y).with_type())
-            })
-        },
-    );
-    env.insert_function(
         "cons",
         Type::function(vec![Type::Any, Type::list()], Type::list()),
         |args| {
@@ -1150,6 +1158,11 @@ pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
     env.insert_variable_as_symbol("-");
     env.insert_variable_as_symbol("*");
     env.insert_variable_as_symbol("/");
+    env.insert_variable_as_symbol(">");
+    env.insert_variable_as_symbol(">=");
+    env.insert_variable_as_symbol("<");
+    env.insert_variable_as_symbol("<=");
+    env.insert_variable_as_symbol("or");
     env.insert_variable_as_symbol("map");
 
     eval_asts(asts, &mut env)
