@@ -1,11 +1,11 @@
-use lisp_rs::lispi::{error::Error, evaluator::*, parser::*, tokenizer::*};
+use lisp_rs::lispi::{error::Error, evaluator::*, parser::*, tokenizer::*, SymbolValue};
 use std::stringify;
 
 fn interp(program: &str) -> Result<Value, Error> {
     let lines = program.split('\n').map(|l| l.to_string()).collect();
     let result = tokenize(lines)
         .and_then(parse)
-        .and_then(|ast| eval_program(&ast))?;
+        .and_then(|(ast, env)| eval_program(&ast, env))?;
     Ok(result.last().unwrap().clone().value)
 }
 
@@ -50,7 +50,7 @@ fn build_list(vs: Vec<i32>) -> Value {
 fn build_sym_list(vs: Vec<&str>) -> Value {
     let vs = vs
         .iter()
-        .map(|v| Value::Symbol((*v).to_owned()).with_type())
+        .map(|v| Value::Symbol(SymbolValue::without_id((*v).to_owned())).with_type())
         .collect();
     Value::List(vs)
 }

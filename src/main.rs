@@ -12,8 +12,8 @@ fn main() {
     let result = read_lines(&args[1])
         .and_then(tokenize)
         .and_then(parse)
-        .and_then(show_ast)
-        .and_then(|ast| eval_program(&ast))
+        // .and_then(show_ast)
+        .and_then(|(ast, env)| eval_program(&ast, env))
         .unwrap_or_else(|err| {
             println!("{:?}", err);
             vec![]

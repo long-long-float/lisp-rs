@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
-use super::{error::*, parser::*};
+use super::{error::*, parser::*, SymbolValue};
 
 macro_rules! bug {
     () => {
@@ -48,16 +48,16 @@ pub enum Value {
     Float(f32),
     Boolean(bool),
     Char(char),
-    Symbol(String),
+    Symbol(SymbolValue),
     List(Vec<ValueWithType>),
     Function {
-        name: String,
-        args: Vec<String>,
+        name: SymbolValue,
+        args: Vec<SymbolValue>,
         body: Vec<Ast>,
         is_macro: bool,
     },
     NativeFunction {
-        name: String,
+        name: SymbolValue,
         func: fn(Vec<ValueWithType>) -> EvalResult,
     },
 
@@ -117,7 +117,7 @@ impl std::fmt::Display for Value {
         match self {
             Value::Integer(v) => write!(f, "{}", v),
             Value::Float(v) => write!(f, "{}", v),
-            Value::Symbol(v) => write!(f, "{}", v),
+            Value::Symbol(v) => write!(f, "{}", v.value),
             Value::Boolean(v) => write!(f, "{}", v),
             Value::Char(v) => write!(f, "{}", v),
             Value::List(vs) => {
@@ -142,13 +142,13 @@ impl std::fmt::Display for Value {
                 is_macro,
             } => {
                 if *is_macro {
-                    write!(f, "MACRO {}", name)
+                    write!(f, "MACRO {}", name.value)
                 } else {
-                    write!(f, "FUNCTION {}", name)
+                    write!(f, "FUNCTION {}", name.value)
                 }
             }
             Value::NativeFunction { name, func: _ } => {
-                write!(f, "FUNCTION {}", name)
+                write!(f, "FUNCTION {}", name.value)
             }
             Value::RawAst(ast) => write!(f, "AST {:?}", ast),
             Value::Continue(name) => write!(f, "CONINUE {:?}", name),
@@ -183,45 +183,61 @@ impl From<bool> for Value {
 
 struct Environment {
     local_stack: Vec<Local>,
+    sym_table: SymbolTable,
 }
 
 impl Environment {
-    fn new() -> Environment {
+    fn new(sym_table: SymbolTable) -> Environment {
         let mut env = Environment {
             local_stack: Vec::new(),
+            sym_table,
         };
         env.push_local();
         env
     }
 
-    fn update_var(&mut self, name: String, value: ValueWithType) -> Result<(), Error> {
+    fn update_var(&mut self, name: SymbolValue, value: ValueWithType) -> Result<(), Error> {
         if let Some(found) = self.find_var_mut(&name) {
             // TODO: Check type
             found.value = value.value;
             Ok(())
         } else {
-            Err(Error::Eval(format!("A variable {} is not defined.", name)))
+            Err(Error::Eval(format!(
+                "A variable {} is not defined.",
+                name.value
+            )))
         }
     }
 
-    fn insert_var(&mut self, name: String, value: ValueWithType) {
-        // local_stack must have least one local
-        let local = self.local_stack.last_mut().unwrap();
-        local.variables.insert(name, value);
+    fn resolve_sym_id(&mut self, name: &SymbolValue) -> u32 {
+        if name.id != 0 {
+            name.id
+        } else {
+            self.sym_table.find_id_or_insert(&name.value)
+        }
     }
 
-    fn find_var(&self, name: &String) -> Option<&ValueWithType> {
+    fn insert_var(&mut self, name: SymbolValue, value: ValueWithType) {
+        let id = self.resolve_sym_id(&name);
+        // local_stack must have least one local
+        let local = self.local_stack.last_mut().unwrap();
+        local.variables.insert(id, value);
+    }
+
+    fn find_var(&mut self, name: &SymbolValue) -> Option<&ValueWithType> {
+        let id = self.resolve_sym_id(&name);
         for local in self.local_stack.iter().rev() {
-            if let Some(value) = local.variables.get(name) {
+            if let Some(value) = local.variables.get(&id) {
                 return Some(value);
             }
         }
         None
     }
 
-    fn find_var_mut(&mut self, name: &String) -> Option<&mut ValueWithType> {
+    fn find_var_mut(&mut self, name: &SymbolValue) -> Option<&mut ValueWithType> {
+        let id = self.resolve_sym_id(&name);
         for local in self.local_stack.iter_mut().rev() {
-            if let Some(value) = local.variables.get_mut(name) {
+            if let Some(value) = local.variables.get_mut(&id) {
                 return Some(value);
             }
         }
@@ -235,10 +251,12 @@ impl Environment {
         func: fn(Vec<ValueWithType>) -> EvalResult,
     ) {
         let name = name.to_string();
+        let id = self.sym_table.find_id_or_insert(&name);
+        let sym = SymbolValue { value: name, id };
         self.insert_var(
-            name.clone(),
+            sym.clone(),
             ValueWithType {
-                value: Value::NativeFunction { name, func },
+                value: Value::NativeFunction { name: sym, func },
                 type_,
             },
         );
@@ -246,7 +264,9 @@ impl Environment {
 
     fn insert_variable_as_symbol(&mut self, name: &str) {
         let name = name.to_string();
-        self.insert_var(name.clone(), Value::Symbol(name).with_type());
+        let id = self.sym_table.find_id_or_insert(&name);
+        let sym = SymbolValue { value: name, id };
+        self.insert_var(sym.clone(), Value::Symbol(sym).with_type());
     }
 
     fn push_local(&mut self) {
@@ -261,7 +281,17 @@ impl Environment {
 }
 
 struct Local {
-    variables: HashMap<String, ValueWithType>,
+    variables: HashMap<u32, ValueWithType>,
+    // For ID=0 symbols
+    // variables_string: HashMap<String, ValueWithType>,
+}
+
+impl Local {
+    fn new() -> Local {
+        Local {
+            variables: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -389,7 +419,7 @@ fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
         .unwrap_or(Value::nil().with_type())
 }
 
-fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<String>, Error> {
+fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<SymbolValue>, Error> {
     symbols
         .iter()
         .map(|symbol| {
@@ -406,17 +436,21 @@ fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<String>, Error> {
 // TOOD: Support body what the function is assigned other variable
 fn optimize_tail_recursion(
     func_name: &String,
-    locals: &[String],
+    locals: &[SymbolValue],
     body: &[Ast],
 ) -> Option<Vec<Ast>> {
     /// Optimize tail recursion for the last ast
     /// ref https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html
-    fn _optimize_tail_recursion(func_name: &String, locals: &[String], ast: &Ast) -> Option<Ast> {
+    fn _optimize_tail_recursion(
+        func_name: &String,
+        locals: &[SymbolValue],
+        ast: &Ast,
+    ) -> Option<Ast> {
         match ast {
             Ast::List(vs) => {
                 if let Some((name_ast, args)) = vs.split_first() {
                     if let Ast::Symbol(name) = name_ast {
-                        let name = name.as_str();
+                        let name = name.value.as_str();
                         let mut args = match name {
                             "begin" => optimize_tail_recursion(func_name, locals, args),
                             "if" => {
@@ -472,13 +506,17 @@ fn optimize_tail_recursion(
                                 let not_in_args =
                                     args.iter().all(|arg| !includes_symbol(func_name, arg));
                                 if name == func_name && not_in_args {
-                                    let mut form = vec![Ast::Symbol("begin".to_string())];
+                                    let mut form = vec![Ast::Symbol(SymbolValue::without_id(
+                                        "begin".to_string(),
+                                    ))];
                                     let mut args = args
                                         .iter()
                                         .zip(locals)
                                         .map(|(arg, sym)| {
                                             Ast::List(vec![
-                                                Ast::Symbol("set!".to_string()),
+                                                Ast::Symbol(SymbolValue::without_id(
+                                                    "set!".to_string(),
+                                                )),
                                                 Ast::Symbol(sym.clone()),
                                                 arg.clone(),
                                             ])
@@ -527,7 +565,7 @@ fn optimize_tail_recursion(
         match ast {
             Ast::List(vs) => vs.iter().any(|v| includes_symbol(sym, v)),
             Ast::Quoted(v) => includes_symbol(sym, v),
-            Ast::Symbol(v) => v == sym,
+            Ast::Symbol(v) => &v.value == sym,
             Ast::Integer(_) | Ast::Float(_) | Ast::Boolean(_) | Ast::Char(_) | Ast::Nil => false,
             Ast::Continue(_) => false,
         }
@@ -554,7 +592,7 @@ fn optimize_tail_recursion(
 
 fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) -> EvalResult {
     if let Ast::Symbol(name) = name_ast {
-        let name = name.as_str();
+        let name = name.value.as_str();
         match name {
             "set!" => {
                 if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
@@ -616,7 +654,7 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
 
                     let arg_types = args.iter().map(|_| Type::Any).collect();
                     let func = Value::Function {
-                        name: "".to_string(),
+                        name: SymbolValue::empty(),
                         args: args,
                         body: body.to_vec(),
                         is_macro: false,
@@ -689,9 +727,9 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                             return err;
                         }
                     }
-                    let (args, exprs): (Vec<String>, Vec<Ast>) = arg_exprs.into_iter().unzip();
+                    let (args, exprs): (Vec<SymbolValue>, Vec<Ast>) = arg_exprs.into_iter().unzip();
 
-                    if let Some(optimized) = optimize_tail_recursion(proc_id, &args, body) {
+                    if let Some(optimized) = optimize_tail_recursion(&proc_id.value, &args, body) {
                         // println!("Tail recursion!");
                         // println!("{:#?}", optimized);
 
@@ -708,7 +746,7 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                             let results = eval_asts(&optimized, env);
                             let result = get_last_result(results?);
                             if let Value::Continue(id) = &result.value {
-                                if id == proc_id {
+                                if id == &proc_id.value {
                                     // continue
                                 } else {
                                     break result;
@@ -882,12 +920,12 @@ fn apply_function(
             }
         };
         let arg_types = arg_types.iter().map(|a| *a.clone()).collect::<Vec<Type>>();
-        check_arg_types(name, args, &arg_types)?;
+        check_arg_types(&name.value, args, &arg_types)?;
     }
 
     match &func.value {
         Value::Symbol(func_name) => {
-            let func_name = func_name.as_str();
+            let func_name = func_name.value.as_str();
 
             match func_name {
                 // Functions
@@ -1079,8 +1117,11 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> EvalResult {
     }
 }
 
-pub fn eval_program(asts: &Program) -> Result<Vec<ValueWithType>, Error> {
-    let mut env = Environment::new();
+pub fn eval_program(
+    asts: &Program,
+    ast_env: super::parser::Environment,
+) -> Result<Vec<ValueWithType>, Error> {
+    let mut env = Environment::new(ast_env.sym_table);
 
     // Pre-defined functions and special forms
     // TODO: Add function symbols with its definition

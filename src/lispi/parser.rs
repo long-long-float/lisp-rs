@@ -1,4 +1,6 @@
-use super::{error::*, evaluator::Value, tokenizer::*};
+use std::{collections::HashMap, hash::Hash};
+
+use super::{error::*, evaluator::Value, tokenizer::*, SymbolValue};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
@@ -6,13 +8,48 @@ pub enum Ast {
     Quoted(Box<Ast>),
     Integer(i32),
     Float(f32),
-    Symbol(String),
+    Symbol(SymbolValue),
     Boolean(bool),
     Char(char),
     Nil,
 
     // For optimizing tail recursion
     Continue(String),
+}
+
+pub struct SymbolTable {
+    table: HashMap<String, u32>,
+}
+
+impl SymbolTable {
+    fn new() -> SymbolTable {
+        let mut table = HashMap::new();
+        // ID 0 means undefined
+        table.insert("".to_string(), 0);
+        SymbolTable { table }
+    }
+
+    pub fn find_id_or_insert(&mut self, value: &String) -> u32 {
+        if let Some(id) = self.table.get(value) {
+            *id
+        } else {
+            let id = self.table.len() as u32;
+            self.table.insert(value.clone(), id);
+            id
+        }
+    }
+}
+
+pub struct Environment {
+    pub sym_table: SymbolTable,
+}
+
+impl Environment {
+    fn new() -> Environment {
+        Environment {
+            sym_table: SymbolTable::new(),
+        }
+    }
 }
 
 // For evaluating macros
@@ -38,10 +75,13 @@ impl From<Value> for Ast {
                 body,
                 is_macro: _,
             } => {
-                if name == "" {
+                if name.value == "" {
                     // Function created by lambda
                     let mut elem = vec![
-                        Ast::Symbol("lambda".to_string()),
+                        Ast::Symbol(SymbolValue {
+                            value: "lambda".to_string(),
+                            id: 0,
+                        }),
                         Ast::List(args.into_iter().map(|a| Ast::Symbol(a)).collect()),
                     ];
                     elem.append(&mut body.into_iter().map(|v| v.into()).collect());
@@ -60,7 +100,10 @@ impl From<Value> for Ast {
 
 impl From<&str> for Ast {
     fn from(value: &str) -> Self {
-        Ast::Symbol(value.to_string())
+        Ast::Symbol(SymbolValue {
+            value: value.to_string(),
+            id: 0,
+        })
     }
 }
 
@@ -83,13 +126,14 @@ fn consume<'a>(tokens: &'a [Token], expected: &Token) -> Result<&'a [Token], Err
     }
 }
 
-fn consume_while<F>(
+fn consume_while<F, C>(
     tokens: &[Token],
     pred: F,
-    consumer: fn(&[Token]) -> ParseResult<Ast>,
+    mut consumer: C,
 ) -> Result<(&[Token], Vec<Ast>), Error>
 where
     F: Fn(&Token) -> bool,
+    C: FnMut(&[Token]) -> ParseResult<Ast>,
 {
     if let Some((first, _)) = tokens.split_first() {
         if pred(first) {
@@ -108,34 +152,42 @@ where
     }
 }
 
-fn parse_list(tokens: &[Token]) -> ParseResult<Ast> {
+fn parse_list<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a, Ast> {
     let (left_token, right_token) = if let Some(&Token::LeftSquareBracket) = tokens.first() {
         (&Token::LeftSquareBracket, &Token::RightSquareBracket)
     } else {
         (&Token::LeftParen, &Token::RightParen)
     };
     let tokens = consume(tokens, left_token)?;
-    let (tokens, items) = consume_while(tokens, |token| token != right_token, parse_value)?;
+    let (tokens, items) = consume_while(
+        tokens,
+        |token| token != right_token,
+        |t| parse_value(t, env),
+    )?;
     let tokens = consume(tokens, &right_token)?;
     Ok((Ast::List(items), tokens))
 }
 
-fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
+fn parse_value<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a, Ast> {
     if let Some((first, rest)) = tokens.split_first() {
         match first {
             Token::Identifier(value) => {
                 let ret = if value.to_lowercase() == "nil" {
                     Ast::Nil
                 } else {
-                    Ast::Symbol(value.clone())
+                    let id = env.sym_table.find_id_or_insert(value);
+                    Ast::Symbol(SymbolValue {
+                        value: value.clone(),
+                        id: id,
+                    })
                 };
                 Ok((ret, rest))
             }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value), rest)),
             Token::FloatLiteral(value) => Ok((Ast::Float(*value), rest)),
-            Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens),
+            Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens, env),
             Token::Quote => {
-                let (value, rest) = parse_value(rest)?;
+                let (value, rest) = parse_value(rest, env)?;
                 Ok((Ast::Quoted(Box::new(value)), rest))
             }
             Token::BooleanLiteral(value) => Ok((Ast::Boolean(*value), rest)),
@@ -147,28 +199,28 @@ fn parse_value(tokens: &[Token]) -> ParseResult<Ast> {
     }
 }
 
-fn parse_program(tokens: &[Token]) -> ParseResult<Program> {
+fn parse_program<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a, Program> {
     if tokens.is_empty() {
         Ok((Vec::new(), tokens))
     } else {
-        let (value, rest) = parse_value(tokens)?;
+        let (value, rest) = parse_value(tokens, env)?;
         let mut result = vec![value];
-        let (mut values, rest) = parse_program(rest)?;
+        let (mut values, rest) = parse_program(rest, env)?;
         result.append(&mut values);
         Ok((result, rest))
     }
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<Program, Error> {
-    parse_program(&tokens[..])
-        .and_then(|(ast, tokens)| {
-            if !tokens.is_empty() {
-                Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0])))
-            } else {
-                Ok((ast, tokens))
-            }
-        })
-        .map(|(ast, _)| ast)
+pub fn parse(tokens: Vec<Token>) -> Result<(Program, Environment), Error> {
+    let mut env = Environment::new();
+
+    parse_program(&tokens, &mut env).and_then(|(ast, tokens)| {
+        if !tokens.is_empty() {
+            Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0])))
+        } else {
+            Ok((ast, env))
+        }
+    })
 }
 
 pub fn show_ast(ast: Program) -> Result<Program, Error> {
