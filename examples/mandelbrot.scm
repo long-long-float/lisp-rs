@@ -22,8 +22,8 @@
 (define draw-point (lambda (x y)
     (let ([iters (get-rejection-iters x y)])
         (if (>= iters MAX_ITERS)
-            (display " ")
-            (display "*")))))
+            (display #\_)
+            (display #\*)))))
 
 (let* (
     (step 0.045)
