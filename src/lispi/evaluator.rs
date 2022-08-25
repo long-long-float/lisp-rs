@@ -1,5 +1,5 @@
 use rustc_hash::FxHashMap;
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, collections::LinkedList};
 
 use super::{error::*, parser::*, SymbolValue};
 
@@ -183,14 +183,14 @@ impl From<bool> for Value {
 }
 
 struct Environment {
-    local_stack: Vec<Local>,
+    local_stack: LinkedList<Local>,
     sym_table: SymbolTable,
 }
 
 impl Environment {
     fn new(sym_table: SymbolTable) -> Environment {
         let mut env = Environment {
-            local_stack: Vec::new(),
+            local_stack: LinkedList::new(),
             sym_table,
         };
         env.push_local();
@@ -221,13 +221,13 @@ impl Environment {
     fn insert_var(&mut self, name: SymbolValue, value: ValueWithType) {
         let id = self.resolve_sym_id(&name);
         // local_stack must have least one local
-        let local = self.local_stack.last_mut().unwrap();
+        let local = self.local_stack.front_mut().unwrap();
         local.variables.insert(id, value);
     }
 
     fn find_var(&mut self, name: &SymbolValue) -> Option<&ValueWithType> {
         let id = self.resolve_sym_id(&name);
-        for local in self.local_stack.iter().rev() {
+        for local in &self.local_stack {
             if let Some(value) = local.variables.get(&id) {
                 return Some(value);
             }
@@ -237,7 +237,7 @@ impl Environment {
 
     fn find_var_mut(&mut self, name: &SymbolValue) -> Option<&mut ValueWithType> {
         let id = self.resolve_sym_id(&name);
-        for local in self.local_stack.iter_mut().rev() {
+        for local in self.local_stack.iter_mut() {
             if let Some(value) = local.variables.get_mut(&id) {
                 return Some(value);
             }
@@ -271,11 +271,11 @@ impl Environment {
     }
 
     fn push_local(&mut self) {
-        self.local_stack.push(Local::new());
+        self.local_stack.push_front(Local::new());
     }
 
     fn pop_local(&mut self) {
-        self.local_stack.pop();
+        self.local_stack.pop_front();
     }
 }
 
