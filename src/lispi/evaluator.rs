@@ -1,3 +1,4 @@
+use rustc_hash::FxHashMap;
 use std::{collections::HashMap, hash::Hash};
 
 use super::{error::*, parser::*, SymbolValue};
@@ -270,9 +271,7 @@ impl Environment {
     }
 
     fn push_local(&mut self) {
-        self.local_stack.push(Local {
-            variables: HashMap::new(),
-        });
+        self.local_stack.push(Local::new());
     }
 
     fn pop_local(&mut self) {
@@ -281,7 +280,7 @@ impl Environment {
 }
 
 struct Local {
-    variables: HashMap<u32, ValueWithType>,
+    variables: FxHashMap<u32, ValueWithType>,
     // For ID=0 symbols
     // variables_string: HashMap<String, ValueWithType>,
 }
@@ -289,7 +288,7 @@ struct Local {
 impl Local {
     fn new() -> Local {
         Local {
-            variables: HashMap::new(),
+            variables: HashMap::default(),
         }
     }
 }
