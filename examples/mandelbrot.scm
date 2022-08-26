@@ -19,11 +19,14 @@
                     (set! re-sq (* re re))
                     (loop (+ nb-iters 1))))))))
 
+(define palette '(#\. #\: #\- #\= #\+ #\* #\# #\% #\@))
+
 (define draw-point (lambda (x y)
     (let ([iters (get-rejection-iters x y)])
         (if (>= iters MAX_ITERS)
-            (display #\_)
-            (display #\*)))))
+            (display #\ )
+            (display (list-ref palette (mod (- iters 1) (length palette))))
+            ))))
 
 (let* (
     (step 0.045)

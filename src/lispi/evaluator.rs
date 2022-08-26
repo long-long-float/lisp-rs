@@ -1186,6 +1186,28 @@ pub fn eval_program(
             })
         },
     );
+    env.insert_function(
+        "length",
+        Type::function(vec![Type::list()], Type::Int),
+        |args| {
+            match_args!(args, Value::List(vs), {
+                Ok(Value::Integer(vs.len() as i32).with_type())
+            })
+        },
+    );
+    env.insert_function(
+        "list-ref",
+        Type::function(vec![Type::list(), Type::Int], Type::Any),
+        |args| {
+            match_args!(args, Value::List(vs), Value::Integer(idx), {
+                if let Some(v) = vs.get(*idx as usize) {
+                    Ok(v.clone())
+                } else {
+                    Err(Error::Eval("out of range".to_string()))
+                }
+            })
+        },
+    );
     env.insert_function("newline", Type::function(vec![], Type::Any), |args| {
         println!();
         Ok(Value::List(vec![]).with_type())
