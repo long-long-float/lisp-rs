@@ -1,20 +1,26 @@
 lisp-rs
 =========
 
-This is a lisp interpreter, follows a subset of Scheme, and written in Rust.
+This is a lisp interpreter written in Rust, and implementing a subset of Scheme.
 
 ```shell
-$ cargo run examples/fizzbuzz.lisp
+$ cargo run -r examples/mandelbrot.scm
+```
 
-# Run tests
+![mandelbrot](./examples/mandelbrot.png)
+
+Run tests by
+
+```
 $ cargo test
 ```
 
 # Milestones
 
 - [x] Run FizzBuzz
-- [ ] Draw Mandelbrot set
+- [x] Draw Mandelbrot set
 - [ ] Concreate type system
+- [ ] Compiler for RISC-V
 - [ ] Implement a lisp interpreter running in lisp-rs.
 
 # Reference
