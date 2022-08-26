@@ -49,6 +49,7 @@ pub enum Value {
     Float(f32),
     Boolean(bool),
     Char(char),
+    String(String),
     Symbol(SymbolValue),
     List(Vec<ValueWithType>),
     Function {
@@ -83,11 +84,12 @@ impl Value {
 
     fn get_type(&self) -> Type {
         match self {
-            Value::Integer(_) => Type::int(),
-            Value::Float(_) => Type::float(),
+            Value::Integer(_) => Type::Int,
+            Value::Float(_) => Type::Float,
             Value::Symbol(_) => Type::symbol(),
-            Value::Boolean(_) => Type::scala("boolean"),
-            Value::Char(_) => Type::scala("char"),
+            Value::Boolean(_) => Type::Boolean,
+            Value::Char(_) => Type::Char,
+            Value::String(_) => Type::String,
             Value::List(_) => Type::list(),
             Value::Function {
                 name: _,
@@ -121,6 +123,7 @@ impl std::fmt::Display for Value {
             Value::Symbol(v) => write!(f, "{}", v.value),
             Value::Boolean(v) => write!(f, "{}", v),
             Value::Char(v) => write!(f, "{}", v),
+            Value::String(v) => write!(f, "{}", v),
             Value::List(vs) => {
                 if vs.len() == 0 {
                     write!(f, "Nil")
@@ -164,6 +167,7 @@ impl From<&Ast> for Value {
             Ast::Float(v) => Value::Float(*v),
             Ast::Boolean(v) => Value::Boolean(*v),
             Ast::Char(v) => Value::Char(*v),
+            Ast::String(v) => Value::String(v.clone()),
             Ast::Symbol(v) => Value::Symbol(v.clone()),
             Ast::Quoted(v) => (&**v).into(),
             Ast::List(vs) => {
@@ -304,6 +308,9 @@ pub enum Type {
     Numeric,
     Int,
     Float,
+    Boolean,
+    Char,
+    String,
 
     Scala(String),
     Composite {
@@ -355,6 +362,9 @@ impl std::fmt::Display for Type {
             Type::Numeric => write!(f, "numeric"),
             Type::Int => write!(f, "int"),
             Type::Float => write!(f, "float"),
+            Type::Boolean => write!(f, "boolean"),
+            Type::Char => write!(f, "char"),
+            Type::String => write!(f, "string"),
             Type::Scala(name) => write!(f, "{}", name),
             Type::Composite { name, inner } => {
                 let inner = inner
@@ -555,6 +565,7 @@ fn optimize_tail_recursion(
             | Ast::Float(_)
             | Ast::Boolean(_)
             | Ast::Char(_)
+            | Ast::String(_)
             | Ast::Nil => Some(ast.clone()),
             Ast::Continue(_) => Some(ast.clone()),
         }
@@ -565,7 +576,12 @@ fn optimize_tail_recursion(
             Ast::List(vs) => vs.iter().any(|v| includes_symbol(sym, v)),
             Ast::Quoted(v) => includes_symbol(sym, v),
             Ast::Symbol(v) => &v.value == sym,
-            Ast::Integer(_) | Ast::Float(_) | Ast::Boolean(_) | Ast::Char(_) | Ast::Nil => false,
+            Ast::Integer(_)
+            | Ast::Float(_)
+            | Ast::Boolean(_)
+            | Ast::Char(_)
+            | Ast::String(_)
+            | Ast::Nil => false,
             Ast::Continue(_) => false,
         }
     }

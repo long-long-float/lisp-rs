@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash};
+use std::collections::HashMap;
 
 use super::{error::*, evaluator::Value, tokenizer::*, SymbolValue};
 
@@ -11,6 +11,7 @@ pub enum Ast {
     Symbol(SymbolValue),
     Boolean(bool),
     Char(char),
+    String(String),
     Nil,
 
     // For optimizing tail recursion
@@ -61,6 +62,7 @@ impl From<Value> for Ast {
             Value::Symbol(v) => Ast::Symbol(v),
             Value::Boolean(v) => Ast::Boolean(v),
             Value::Char(v) => Ast::Char(v),
+            Value::String(v) => Ast::String(v),
             Value::List(vs) => {
                 if vs.len() == 0 {
                     Ast::Nil
@@ -192,6 +194,7 @@ fn parse_value<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a
             }
             Token::BooleanLiteral(value) => Ok((Ast::Boolean(*value), rest)),
             Token::CharLiteral(value) => Ok((Ast::Char(*value), rest)),
+            Token::StringLiteral(value) => Ok((Ast::String(value.clone()), rest)),
             _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0]))),
         }
     } else {

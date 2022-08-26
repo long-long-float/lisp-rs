@@ -26,6 +26,7 @@ pub enum Token {
     Identifier(String),
     BooleanLiteral(bool),
     CharLiteral(char),
+    StringLiteral(String),
 }
 
 trait CharExt {
@@ -59,6 +60,19 @@ fn take_while(program: &Vec<char>, index: &mut usize, pred: fn(&char) -> bool) -
         *index += 1;
     }
     buf
+}
+
+fn take_expected(program: &Vec<char>, index: &mut usize, expected: char) -> Result<(), Error> {
+    if let Some(c) = program.get(*index) {
+        if c == &expected {
+            *index += 1;
+            Ok(())
+        } else {
+            Err(Error::Tokenize(format!("Unexpected {}", c)))
+        }
+    } else {
+        Err(Error::Tokenize("Unexpected EOF".to_string()))
+    }
 }
 
 pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
@@ -111,6 +125,15 @@ pub fn tokenize(lines: Vec<String>) -> Result<Vec<Token>, Error> {
             ';' => {
                 let _ = take_while(&program, &mut i, |&c| c != '\n');
                 i += 1;
+            }
+            '"' => {
+                i += 1;
+
+                let value = take_while(&program, &mut i, |&c| c != '"');
+                let value = value.join("");
+                result.push(Token::StringLiteral(value));
+
+                take_expected(&program, &mut i, '"')?;
             }
             c if c.is_ascii_digit() => {
                 let int = take_while(&program, &mut i, |c| c.is_ascii_digit());
