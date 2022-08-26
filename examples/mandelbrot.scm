@@ -19,7 +19,7 @@
                     (set! re-sq (* re re))
                     (loop (+ nb-iters 1))))))))
 
-(define palette '(#\. #\: #\- #\= #\+ #\* #\# #\% #\@))
+(define palette (string->list ".:-=+*#%@"))
 
 (define draw-point (lambda (x y)
     (let ([iters (get-rejection-iters x y)])

@@ -333,10 +333,6 @@ impl Type {
         Type::Int
     }
 
-    fn float() -> Type {
-        Type::Float
-    }
-
     fn symbol() -> Type {
         Type::scala("symbol")
     }
@@ -1224,7 +1220,17 @@ pub fn eval_program(
             })
         },
     );
-    env.insert_function("newline", Type::function(vec![], Type::Any), |args| {
+    env.insert_function(
+        "string->list",
+        Type::function(vec![Type::String], Type::list()),
+        |args| {
+            match_args!(args, Value::String(value), {
+                let chars = value.chars().map(|c| Value::Char(c).with_type()).collect();
+                Ok(Value::List(chars).with_type())
+            })
+        },
+    );
+    env.insert_function("newline", Type::function(vec![], Type::Any), |_| {
         println!();
         Ok(Value::List(vec![]).with_type())
     });

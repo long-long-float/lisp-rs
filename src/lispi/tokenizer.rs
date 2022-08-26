@@ -177,6 +177,7 @@ pub fn show_tokens(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
 mod tests {
     use super::*;
 
+    #[allow(dead_code)]
     fn toknenize_single(value: &str) -> Token {
         tokenize(vec![value.to_string()])
             .unwrap()
