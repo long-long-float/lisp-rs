@@ -27,3 +27,15 @@ impl SymbolValue {
         SymbolValue { value, id: 0 }
     }
 }
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Location {
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct LocationRange {
+    pub begin: Location,
+    pub end: Location,
+}

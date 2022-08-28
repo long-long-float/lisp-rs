@@ -111,16 +111,19 @@ impl From<&str> for Ast {
 
 pub type Program = Vec<Ast>;
 
-pub type ParseResult<'a, T> = Result<(T, &'a [Token]), Error>;
+pub type ParseResult<'a, T> = Result<(T, &'a [TokenWithLocation]), Error>;
 
-fn consume<'a>(tokens: &'a [Token], expected: &Token) -> Result<&'a [Token], Error> {
+fn consume<'a>(
+    tokens: &'a [TokenWithLocation],
+    expected: &Token,
+) -> Result<&'a [TokenWithLocation], Error> {
     if let Some((first, rest)) = tokens.split_first() {
-        if first == expected {
+        if &first.token == expected {
             Ok(rest)
         } else {
             Err(Error::Parse(format!(
                 "Expected {:?}, actual {:?}",
-                expected, first
+                expected, first.token
             )))
         }
     } else {
@@ -129,39 +132,43 @@ fn consume<'a>(tokens: &'a [Token], expected: &Token) -> Result<&'a [Token], Err
 }
 
 fn consume_while<F, C>(
-    tokens: &[Token],
+    tokens: &[TokenWithLocation],
     pred: F,
     mut consumer: C,
-) -> Result<(&[Token], Vec<Ast>), Error>
+) -> ParseResult<Vec<Ast>>
 where
     F: Fn(&Token) -> bool,
-    C: FnMut(&[Token]) -> ParseResult<Ast>,
+    C: FnMut(&[TokenWithLocation]) -> ParseResult<Ast>,
 {
     if let Some((first, _)) = tokens.split_first() {
-        if pred(first) {
+        if pred(&first.token) {
             let (first, rest) = consumer(tokens)?;
 
-            consume_while(rest, pred, consumer).and_then(|(rest, mut asts)| {
+            consume_while(rest, pred, consumer).and_then(|(mut asts, rest)| {
                 let mut result = vec![first];
                 result.append(&mut asts);
-                Ok((rest, result))
+                Ok((result, rest))
             })
         } else {
-            Ok((tokens, Vec::new()))
+            Ok((Vec::new(), tokens))
         }
     } else {
-        Ok((tokens, Vec::new()))
+        Ok((Vec::new(), tokens))
     }
 }
 
-fn parse_list<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a, Ast> {
-    let (left_token, right_token) = if let Some(&Token::LeftSquareBracket) = tokens.first() {
+fn parse_list<'a>(tokens: &'a [TokenWithLocation], env: &mut Environment) -> ParseResult<'a, Ast> {
+    let (left_token, right_token) = if let Some(&TokenWithLocation {
+        token: Token::LeftSquareBracket,
+        location: _,
+    }) = tokens.first()
+    {
         (&Token::LeftSquareBracket, &Token::RightSquareBracket)
     } else {
         (&Token::LeftParen, &Token::RightParen)
     };
     let tokens = consume(tokens, left_token)?;
-    let (tokens, items) = consume_while(
+    let (items, tokens) = consume_while(
         tokens,
         |token| token != right_token,
         |t| parse_value(t, env),
@@ -170,9 +177,9 @@ fn parse_list<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a,
     Ok((Ast::List(items), tokens))
 }
 
-fn parse_value<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a, Ast> {
+fn parse_value<'a>(tokens: &'a [TokenWithLocation], env: &mut Environment) -> ParseResult<'a, Ast> {
     if let Some((first, rest)) = tokens.split_first() {
-        match first {
+        match &first.token {
             Token::Identifier(value) => {
                 let ret = if value.to_lowercase() == "nil" {
                     Ast::Nil
@@ -195,14 +202,17 @@ fn parse_value<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a
             Token::BooleanLiteral(value) => Ok((Ast::Boolean(*value), rest)),
             Token::CharLiteral(value) => Ok((Ast::Char(*value), rest)),
             Token::StringLiteral(value) => Ok((Ast::String(value.clone()), rest)),
-            _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0]))),
+            _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0].token))),
         }
     } else {
         Err(Error::Parse("EOF".to_string()))
     }
 }
 
-fn parse_program<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<'a, Program> {
+fn parse_program<'a>(
+    tokens: &'a [TokenWithLocation],
+    env: &mut Environment,
+) -> ParseResult<'a, Program> {
     if tokens.is_empty() {
         Ok((Vec::new(), tokens))
     } else {
@@ -214,12 +224,12 @@ fn parse_program<'a>(tokens: &'a [Token], env: &mut Environment) -> ParseResult<
     }
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<(Program, Environment), Error> {
+pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, Environment), Error> {
     let mut env = Environment::new();
 
     parse_program(&tokens, &mut env).and_then(|(ast, tokens)| {
         if !tokens.is_empty() {
-            Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0])))
+            Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0].token)))
         } else {
             Ok((ast, env))
         }
