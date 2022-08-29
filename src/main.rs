@@ -11,6 +11,7 @@ fn main() {
 
     let result = read_lines(&args[1])
         .and_then(tokenize)
+        .and_then(show_tokens)
         .and_then(parse)
         // .and_then(|(ast, env)| Ok((show_ast(ast)?, env)))
         .and_then(|(ast, env)| eval_program(&ast, env))

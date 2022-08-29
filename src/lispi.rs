@@ -1,3 +1,5 @@
+use std::io::BufRead;
+
 pub mod error;
 pub mod evaluator;
 pub mod parser;
@@ -28,12 +30,37 @@ impl SymbolValue {
     }
 }
 
+/// A location in file
 #[derive(Clone, PartialEq, Debug)]
 pub struct Location {
+    /// zero-based line no
     pub line: usize,
+    /// zero-based column no
     pub column: usize,
 }
 
+impl Location {
+    fn new(line: usize, column: usize) -> Location {
+        Location { line, column }
+    }
+
+    fn head() -> Location {
+        Location { line: 0, column: 0 }
+    }
+
+    fn newline(self: &mut Self) {
+        self.line += 1;
+        self.column = 0;
+    }
+}
+
+impl std::fmt::Display for Location {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}:{}", self.line + 1, self.column + 1)
+    }
+}
+
+/// A range in file, `[begin, end)`.
 #[derive(Clone, PartialEq, Debug)]
 pub struct LocationRange {
     pub begin: Location,

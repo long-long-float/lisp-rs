@@ -1,4 +1,5 @@
 use std::num::{ParseFloatError, ParseIntError};
+use std::ops::RangeBounds;
 use std::str::Chars;
 
 use super::error::*;
@@ -29,6 +30,10 @@ pub enum Token {
     BooleanLiteral(bool),
     CharLiteral(char),
     StringLiteral(String),
+
+    /// Unused token such as new line, space
+    Other,
+    EOF,
 }
 
 impl Token {
@@ -40,6 +45,7 @@ impl Token {
     }
 }
 
+#[derive(PartialEq, Debug)]
 pub struct TokenWithLocation {
     pub token: Token,
     pub location: LocationRange,
@@ -65,23 +71,33 @@ impl CharExt for char {
     }
 }
 
-fn take_while(program: &Vec<char>, index: &mut usize, pred: fn(&char) -> bool) -> Vec<String> {
+fn take_while(
+    program: &Vec<String>,
+    line: &mut Vec<char>,
+    loc: &mut Location,
+    pred: fn(char) -> bool,
+) -> Vec<String> {
     let mut buf = Vec::new();
-    while let Some(ch) = program.get(*index) {
+    while let Some(ch) = current_char(line, loc) {
         if !pred(ch) {
             break;
         }
         buf.push(ch.to_string());
 
-        *index += 1;
+        succ(program, line, loc);
     }
     buf
 }
 
-fn take_expected(program: &Vec<char>, index: &mut usize, expected: char) -> Result<(), Error> {
-    if let Some(c) = program.get(*index) {
-        if c == &expected {
-            *index += 1;
+fn take_expected(
+    program: &Vec<String>,
+    line: &mut Vec<char>,
+    loc: &mut Location,
+    expected: char,
+) -> Result<(), Error> {
+    if let Some(c) = current_char(line, loc) {
+        if c == expected {
+            succ(program, line, loc);
             Ok(())
         } else {
             Err(Error::Tokenize(format!("Unexpected {}", c)))
@@ -92,22 +108,32 @@ fn take_expected(program: &Vec<char>, index: &mut usize, expected: char) -> Resu
 }
 
 fn current_char(line: &Vec<char>, loc: &Location) -> Option<char> {
-    if let Some(ch) = line.get(loc.column - 1) {
-        return Some(*ch);
+    if let Some(ch) = line.get(loc.column) {
+        Some(*ch)
+    } else {
+        None
     }
-
-    None
 }
 
 fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Location) {
     loc.column += 1;
     let c = current_char(&line, loc);
-    if let Some(c) = c {
+    let nl = if let Some(c) = c {
         if c == '\r' || c == '\n' {
-            loc.line += 1;
-            if let Some(new_line) = program.get(loc.line - 1) {
-                *line = new_line.chars().collect();
-            }
+            true
+        } else {
+            false
+        }
+    } else {
+        true
+    };
+
+    if nl {
+        loc.newline();
+        if let Some(new_line) = program.get(loc.line) {
+            *line = new_line.chars().collect();
+        } else {
+            *line = Vec::new();
         }
     }
 }
@@ -131,89 +157,105 @@ fn tokenize_single<'a>(
             '[' => {
                 succ(program, line, loc);
                 Token::LeftSquareBracket.with_location(begin, loc.clone())
-            } //             ']' => {
-            //                 *index += 1;
-            //                 Token::RightSquareBracket.with_location(begin, current_loc!())
-            //             }
-            //             '\'' => {
-            //                 *index += 1;
-            //                 Token::Quote.with_location(begin, current_loc!())
-            //             }
-            //             '#' => {
-            //                 *index += 1;
-            //                 let ret = match program.get(*index) {
-            //                     Some('t') => Token::BooleanLiteral(true),
-            //                     Some('f') => Token::BooleanLiteral(false),
-            //                     Some('\\') => {
-            //                         i += 1;
-            //                         let c = program
-            //                             .get(i)
-            //                             .ok_or(Error::Tokenize("Unexpected EOF".to_string()))?;
-            //                         Token::CharLiteral(*c)
-            //                     }
-            //                     Some(c) => Err(Error::Tokenize(format!("Unexpected charactor {}", c)))?,
-            //                     None => Err(Error::Tokenize("Unexpected EOF".to_string()))?,
-            //                 };
-            //                 *index += 1;
-            //                 ret.with_location(begin, current_loc!())
-            //             }
-            //             ';' => {
-            //                 let _ = take_while(&program, &mut index, |&c| c != '\n');
-            //                 return Ok(None)
-            //             }
-            //             '"' => {
-            //                 *index += 1;
+            }
+            ']' => {
+                succ(program, line, loc);
+                Token::RightSquareBracket.with_location(begin, loc.clone())
+            }
+            '\'' => {
+                succ(program, line, loc);
+                Token::Quote.with_location(begin, loc.clone())
+            }
+            '#' => {
+                succ(program, line, loc);
+                let ret = match current_char(line, loc) {
+                    Some('t') => Token::BooleanLiteral(true),
+                    Some('f') => Token::BooleanLiteral(false),
+                    Some('\\') => {
+                        succ(program, line, loc);
+                        let c = current_char(line, loc)
+                            .ok_or(Error::Tokenize("Unexpected EOF".to_string()))?;
+                        Token::CharLiteral(c)
+                    }
+                    Some(c) => Err(Error::Tokenize(format!("Unexpected charactor {}", c)))?,
+                    None => Err(Error::Tokenize("Unexpected EOF".to_string()))?,
+                };
+                succ(program, line, loc);
+                ret.with_location(begin, loc.clone())
+            }
+            ';' => {
+                let _ = take_while(program, line, loc, |c| c != '\n');
+                return Ok(None);
+            }
+            '"' => {
+                succ(program, line, loc);
 
-            //                 let value = take_while(&program, &mut index, |&c| c != '"');
-            //                 let value = value.join("");
+                let value = take_while(program, line, loc, |c| c != '"');
+                let value = value.join("");
 
-            //                 take_expected(&program, &mut index, '"')?;
+                take_expected(&program, line, loc, '"')?;
 
-            // Token::StringLiteral(value).with_location(begin, current_loc!())
-            //             }
-            //             c if c.is_ascii_digit() => {
-            //                 let int = take_while(&program, &mut i, |c| c.is_ascii_digit());
-            //                 let int = int.join("");
+                Token::StringLiteral(value).with_location(begin, loc.clone())
+            }
+            c if c.is_ascii_digit() => {
+                let int = take_while(program, line, loc, |c| c.is_ascii_digit());
+                let int = int.join("");
 
-            //                 if let Some('.') = program.get(i) {
-            //                     i += 1;
-            //                     let decimal = take_while(&program, &mut i, |c| c.is_ascii_digit());
-            //                     let decimal = decimal.join("");
-            //                     let float = (int + "." + &decimal).parse::<f32>()?;
-            //                     result.push(Token::FloatLiteral(float));
-            //                 } else {
-            //                     let int = int.parse::<i32>()?;
-            //                     result.push(Token::IntegerLiteral(int));
-            //                 }
-            //             }
-            //             c if c.is_identifier_head() => {
-            //                 i += 1;
-            //                 let mut chars = vec![c.to_string()];
-            //                 let mut rest = take_while(&program, &mut i, |c| c.is_identifier());
-            //                 chars.append(&mut rest);
-            //                 let value = chars.join("");
-            //                 result.push(Token::Identifier(value));
-            //             }
-            _ => return Ok(None),
+                if let Some('.') = current_char(line, loc) {
+                    succ(program, line, loc);
+                    let decimal = take_while(program, line, loc, |c| c.is_ascii_digit());
+                    let decimal = decimal.join("");
+                    let float = (int + "." + &decimal).parse::<f32>()?;
+                    Token::FloatLiteral(float).with_location(begin, loc.clone())
+                } else {
+                    let int = int.parse::<i32>()?;
+                    Token::IntegerLiteral(int).with_location(begin, loc.clone())
+                }
+            }
+            c if c.is_identifier_head() => {
+                succ(program, line, loc);
+
+                let mut chars = vec![c.to_string()];
+                let mut rest = take_while(program, line, loc, |c| c.is_identifier());
+                chars.append(&mut rest);
+
+                let value = chars.join("");
+                Token::Identifier(value).with_location(begin, loc.clone())
+            }
+            _ => {
+                succ(program, line, loc);
+                Token::Other.with_location(Location::head(), Location::head())
+            }
         };
         Ok(Some(result))
     } else {
-        Ok(None)
+        let token = if loc.line < program.len() - 1 {
+            succ(program, line, loc);
+            Token::Other
+        } else {
+            Token::EOF
+        };
+
+        Ok(Some(
+            token.with_location(Location::head(), Location::head()),
+        ))
     }
 }
 
 pub fn tokenize(program: Vec<String>) -> Result<Vec<TokenWithLocation>, Error> {
     let mut result = Vec::new();
 
-    if let Some(mut line) = program.get(0) {
+    if let Some(line) = program.get(0) {
         let mut line: Vec<char> = line.chars().collect();
-        let mut loc = Location { line: 1, column: 1 };
+        let mut loc = Location::head();
         loop {
             let token = tokenize_single(&program, &mut line, &mut loc)?;
             if let Some(token) = token {
-                result.push(token);
-            } else {
-                break;
+                match token.token {
+                    Token::Other => {}
+                    Token::EOF => break,
+                    _ => result.push(token),
+                }
             }
         }
         Ok(result)
@@ -222,9 +264,9 @@ pub fn tokenize(program: Vec<String>) -> Result<Vec<TokenWithLocation>, Error> {
     }
 }
 
-pub fn show_tokens(tokens: Vec<Token>) -> Result<Vec<Token>, Error> {
-    for token in &tokens {
-        println!("{:?}", token);
+pub fn show_tokens(tokens: Vec<TokenWithLocation>) -> Result<Vec<TokenWithLocation>, Error> {
+    for TokenWithLocation { token, location } in &tokens {
+        println!("{:?} @ {}-{}", token, location.begin, location.end);
     }
     Ok(tokens)
 }
@@ -233,12 +275,13 @@ mod tests {
     use super::*;
 
     #[allow(dead_code)]
-    fn toknenize_single(value: &str) -> TokenWithLocation {
+    fn toknenize_single(value: &str) -> Token {
         tokenize(vec![value.to_string()])
             .unwrap()
             .into_iter()
             .next()
             .unwrap()
+            .token
     }
 
     #[test]
