@@ -55,7 +55,7 @@ pub enum Value {
     Function {
         name: SymbolValue,
         args: Vec<SymbolValue>,
-        body: Vec<Ast>,
+        body: Vec<AstWithLocation>,
         is_macro: bool,
     },
     NativeFunction {
@@ -64,7 +64,7 @@ pub enum Value {
     },
 
     // For macro expansion
-    RawAst(Ast),
+    RawAst(AstWithLocation),
 
     // For optimizing tail recursion
     Continue(String),
@@ -169,9 +169,9 @@ impl From<&Ast> for Value {
             Ast::Char(v) => Value::Char(*v),
             Ast::String(v) => Value::String(v.clone()),
             Ast::Symbol(v) => Value::Symbol(v.clone()),
-            Ast::Quoted(v) => (&**v).into(),
+            Ast::Quoted(v) => Value::from(&(*v).ast),
             Ast::List(vs) => {
-                let vs = vs.iter().map(|v| Value::from(v).with_type()).collect();
+                let vs = vs.iter().map(|v| Value::from(&v.ast).with_type()).collect();
                 Value::List(vs)
             }
             Ast::Nil => Value::nil(),
@@ -411,7 +411,7 @@ fn check_arg_types(
     Ok(())
 }
 
-fn eval_asts(asts: &[Ast], env: &mut Environment) -> Result<Vec<ValueWithType>, Error> {
+fn eval_asts(asts: &[AstWithLocation], env: &mut Environment) -> Result<Vec<ValueWithType>, Error> {
     asts.iter()
         .map(|arg| eval_ast(arg, env))
         .collect::<Result<Vec<ValueWithType>, Error>>()
@@ -424,11 +424,11 @@ fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
         .unwrap_or(Value::nil().with_type())
 }
 
-fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<SymbolValue>, Error> {
+fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>, Error> {
     symbols
         .iter()
         .map(|symbol| {
-            if let Ast::Symbol(v) = symbol {
+            if let Ast::Symbol(v) = symbol.ast {
                 Ok(v.clone())
             } else {
                 Err(Error::Eval(format!("{:?} is not an symbol.", symbol)))
@@ -442,19 +442,19 @@ fn get_symbol_values(symbols: &Vec<Ast>) -> Result<Vec<SymbolValue>, Error> {
 fn optimize_tail_recursion(
     func_name: &String,
     locals: &[SymbolValue],
-    body: &[Ast],
-) -> Option<Vec<Ast>> {
+    body: &[AstWithLocation],
+) -> Option<Vec<AstWithLocation>> {
     /// Optimize tail recursion for the last ast
     /// ref https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html
     fn _optimize_tail_recursion(
         func_name: &String,
         locals: &[SymbolValue],
-        ast: &Ast,
-    ) -> Option<Ast> {
-        match ast {
+        ast: &AstWithLocation,
+    ) -> Option<AstWithLocation> {
+        match ast.ast {
             Ast::List(vs) => {
                 if let Some((name_ast, args)) = vs.split_first() {
-                    if let Ast::Symbol(name) = name_ast {
+                    if let Ast::Symbol(name) = name_ast.ast {
                         let name = name.value.as_str();
                         let mut args = match name {
                             "begin" => optimize_tail_recursion(func_name, locals, args),
@@ -498,9 +498,11 @@ fn optimize_tail_recursion(
 
                                     let mut form = Vec::new();
                                     if let Some(proc_id) = proc_id {
-                                        form.push(Ast::Symbol(proc_id.clone()));
+                                        form.push(
+                                            Ast::Symbol(proc_id.clone()).with_pointless_location(),
+                                        );
                                     }
-                                    form.push(Ast::List(vars.clone()));
+                                    form.push(Ast::List(vars.clone()).with_pointless_location());
                                     form.append(&mut body);
                                     Some(form)
                                 } else {
@@ -513,7 +515,9 @@ fn optimize_tail_recursion(
                                 if name == func_name && not_in_args {
                                     let mut form = vec![Ast::Symbol(SymbolValue::without_id(
                                         "begin".to_string(),
-                                    ))];
+                                    ))
+                                    .with_pointless_location()];
+
                                     let mut args = args
                                         .iter()
                                         .zip(locals)
@@ -521,15 +525,21 @@ fn optimize_tail_recursion(
                                             Ast::List(vec![
                                                 Ast::Symbol(SymbolValue::without_id(
                                                     "set!".to_string(),
-                                                )),
-                                                Ast::Symbol(sym.clone()),
+                                                ))
+                                                .with_pointless_location(),
+                                                Ast::Symbol(sym.clone()).with_pointless_location(),
                                                 arg.clone(),
                                             ])
+                                            .with_pointless_location()
                                         })
                                         .collect::<Vec<_>>();
+
                                     form.append(&mut args);
-                                    form.push(Ast::Continue(name.to_string()));
-                                    return Some(Ast::List(form));
+                                    form.push(
+                                        Ast::Continue(name.to_string()).with_pointless_location(),
+                                    );
+
+                                    return Some(Ast::List(form).with_pointless_location());
                                 } else {
                                     println!("[Warn] '{}' is treated as an ordinay function in optimizing tail recursion", name);
 
@@ -545,7 +555,7 @@ fn optimize_tail_recursion(
                         args.as_mut().map(|args| {
                             let mut whole = vec![name_ast.clone()];
                             whole.append(args);
-                            Ast::List(whole)
+                            Ast::List(whole).with_pointless_location()
                         })
                     } else {
                         // This is not valid ast
@@ -601,8 +611,12 @@ fn optimize_tail_recursion(
     }
 }
 
-fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) -> EvalResult {
-    if let Ast::Symbol(name) = name_ast {
+fn eval_special_form(
+    name_ast: &AstWithLocation,
+    raw_args: &[AstWithLocation],
+    env: &mut Environment,
+) -> EvalResult {
+    if let Ast::Symbol(name) = name_ast.ast {
         let name = name.value.as_str();
         match name {
             "set!" => {
@@ -785,7 +799,8 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                         let mut exprs = exprs;
                         call_args.append(&mut exprs);
 
-                        let result = eval_asts(&vec![Ast::List(call_args)], env);
+                        let result =
+                            eval_asts(&vec![Ast::List(call_args).with_pointless_location()], env);
 
                         env.pop_local();
 
@@ -855,7 +870,7 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                 if let Some(func) = raw_args.first() {
                     let result = eval_ast(func, env)?;
                     if let Value::Symbol(name) = result.value {
-                        Ok(eval_ast(&Ast::Symbol(name), env)?)
+                        Ok(eval_ast(&Ast::Symbol(name).with_pointless_location(), env)?)
                     } else {
                         Ok(result)
                     }
@@ -885,7 +900,7 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
                     env.pop_local();
 
                     let result = get_last_result(result?);
-                    eval_ast(&Ast::from(result.value), env)
+                    eval_ast(&Ast::from(result.value).with_pointless_location(), env)
                 } else {
                     Err(Error::DoNothing)
                 }
@@ -896,7 +911,11 @@ fn eval_special_form(name_ast: &Ast, raw_args: &[Ast], env: &mut Environment) ->
     }
 }
 
-fn eval_function(name: &Ast, args: &[Ast], env: &mut Environment) -> EvalResult {
+fn eval_function(
+    name: &AstWithLocation,
+    args: &[AstWithLocation],
+    env: &mut Environment,
+) -> EvalResult {
     let name = eval_ast(name, env)?;
     let args = eval_asts(args, env)?;
 
@@ -1100,8 +1119,8 @@ fn apply_function(
     }
 }
 
-fn eval_ast(ast: &Ast, env: &mut Environment) -> EvalResult {
-    match ast {
+fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
+    match ast.ast {
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
                 let result = eval_special_form(first, rest, env);
@@ -1115,7 +1134,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> EvalResult {
         }
         Ast::Symbol(value) => {
             // println!("{:#?}", env.variables);
-            if let Some(var) = env.find_var(value) {
+            if let Some(var) = env.find_var(&value) {
                 Ok(var.clone())
             } else {
                 Err(Error::Eval(format!(
@@ -1124,7 +1143,7 @@ fn eval_ast(ast: &Ast, env: &mut Environment) -> EvalResult {
                 )))
             }
         }
-        _ => Ok(Value::from(ast).with_type()),
+        _ => Ok(Value::from(&ast.ast).with_type()),
     }
 }
 

@@ -1,5 +1,3 @@
-use std::io::BufRead;
-
 pub mod error;
 pub mod evaluator;
 pub mod parser;
@@ -40,10 +38,6 @@ pub struct Location {
 }
 
 impl Location {
-    fn new(line: usize, column: usize) -> Location {
-        Location { line, column }
-    }
-
     fn head() -> Location {
         Location { line: 0, column: 0 }
     }
@@ -65,4 +59,10 @@ impl std::fmt::Display for Location {
 pub struct LocationRange {
     pub begin: Location,
     pub end: Location,
+}
+
+impl LocationRange {
+    fn new(begin: Location, end: Location) -> LocationRange {
+        LocationRange { begin, end }
+    }
 }

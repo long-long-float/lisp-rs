@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use super::{error::*, evaluator::Value, tokenizer::*, SymbolValue};
+use super::{error::*, evaluator::Value, tokenizer::*, Location, LocationRange, SymbolValue};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
-    List(Vec<Ast>),
-    Quoted(Box<Ast>),
+    List(Vec<AstWithLocation>),
+    Quoted(Box<AstWithLocation>),
     Integer(i32),
     Float(f32),
     Symbol(SymbolValue),
@@ -16,6 +16,28 @@ pub enum Ast {
 
     // For optimizing tail recursion
     Continue(String),
+}
+
+impl Ast {
+    pub fn with_location(self, location: LocationRange) -> AstWithLocation {
+        AstWithLocation {
+            ast: self,
+            location,
+        }
+    }
+
+    pub fn with_pointless_location(self) -> AstWithLocation {
+        AstWithLocation {
+            ast: self,
+            location: LocationRange::new(Location::head(), Location::head()),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct AstWithLocation {
+    pub ast: Ast,
+    pub location: LocationRange,
 }
 
 pub struct SymbolTable {
@@ -67,7 +89,10 @@ impl From<Value> for Ast {
                 if vs.len() == 0 {
                     Ast::Nil
                 } else {
-                    let vs = vs.into_iter().map(|v| v.value.into()).collect();
+                    let vs = vs
+                        .into_iter()
+                        .map(|v| Ast::from(v.value).with_pointless_location())
+                        .collect();
                     Ast::List(vs)
                 }
             }
@@ -83,10 +108,21 @@ impl From<Value> for Ast {
                         Ast::Symbol(SymbolValue {
                             value: "lambda".to_string(),
                             id: 0,
-                        }),
-                        Ast::List(args.into_iter().map(|a| Ast::Symbol(a)).collect()),
+                        })
+                        .with_pointless_location(),
+                        Ast::List(
+                            args.into_iter()
+                                .map(|a| Ast::Symbol(a).with_pointless_location())
+                                .collect(),
+                        )
+                        .with_pointless_location(),
                     ];
-                    elem.append(&mut body.into_iter().map(|v| v.into()).collect());
+                    elem.append(
+                        &mut body
+                            .into_iter()
+                            .map(|v| Ast::from(v.ast).with_pointless_location())
+                            .collect(),
+                    );
                     Ast::List(elem)
                 } else {
                     // Named function should be referenced
@@ -94,7 +130,7 @@ impl From<Value> for Ast {
                 }
             }
             Value::NativeFunction { name, func: _ } => Ast::Symbol(name),
-            Value::RawAst(ast) => ast,
+            Value::RawAst(ast) => ast.ast,
             Value::Continue(v) => Ast::Continue(v),
         }
     }
@@ -109,17 +145,17 @@ impl From<&str> for Ast {
     }
 }
 
-pub type Program = Vec<Ast>;
+pub type Program = Vec<AstWithLocation>;
 
 pub type ParseResult<'a, T> = Result<(T, &'a [TokenWithLocation]), Error>;
 
 fn consume<'a>(
     tokens: &'a [TokenWithLocation],
     expected: &Token,
-) -> Result<&'a [TokenWithLocation], Error> {
+) -> Result<(LocationRange, &'a [TokenWithLocation]), Error> {
     if let Some((first, rest)) = tokens.split_first() {
         if &first.token == expected {
-            Ok(rest)
+            Ok((first.location, rest))
         } else {
             Err(Error::Parse(format!(
                 "Expected {:?}, actual {:?}",
@@ -135,10 +171,10 @@ fn consume_while<F, C>(
     tokens: &[TokenWithLocation],
     pred: F,
     mut consumer: C,
-) -> ParseResult<Vec<Ast>>
+) -> ParseResult<Vec<AstWithLocation>>
 where
     F: Fn(&Token) -> bool,
-    C: FnMut(&[TokenWithLocation]) -> ParseResult<Ast>,
+    C: FnMut(&[TokenWithLocation]) -> ParseResult<AstWithLocation>,
 {
     if let Some((first, _)) = tokens.split_first() {
         if pred(&first.token) {
@@ -157,7 +193,10 @@ where
     }
 }
 
-fn parse_list<'a>(tokens: &'a [TokenWithLocation], env: &mut Environment) -> ParseResult<'a, Ast> {
+fn parse_list<'a>(
+    tokens: &'a [TokenWithLocation],
+    env: &mut Environment,
+) -> ParseResult<'a, AstWithLocation> {
     let (left_token, right_token) = if let Some(&TokenWithLocation {
         token: Token::LeftSquareBracket,
         location: _,
@@ -167,18 +206,25 @@ fn parse_list<'a>(tokens: &'a [TokenWithLocation], env: &mut Environment) -> Par
     } else {
         (&Token::LeftParen, &Token::RightParen)
     };
-    let tokens = consume(tokens, left_token)?;
+    let (head_loc, tokens) = consume(tokens, left_token)?;
     let (items, tokens) = consume_while(
         tokens,
         |token| token != right_token,
         |t| parse_value(t, env),
     )?;
-    let tokens = consume(tokens, &right_token)?;
-    Ok((Ast::List(items), tokens))
+    let (tail_loc, tokens) = consume(tokens, &right_token)?;
+    Ok((
+        Ast::List(items).with_location(LocationRange::new(head_loc.begin, tail_loc.end)),
+        tokens,
+    ))
 }
 
-fn parse_value<'a>(tokens: &'a [TokenWithLocation], env: &mut Environment) -> ParseResult<'a, Ast> {
+fn parse_value<'a>(
+    tokens: &'a [TokenWithLocation],
+    env: &mut Environment,
+) -> ParseResult<'a, AstWithLocation> {
     if let Some((first, rest)) = tokens.split_first() {
+        let loc = first.location;
         match &first.token {
             Token::Identifier(value) => {
                 let ret = if value.to_lowercase() == "nil" {
@@ -190,18 +236,20 @@ fn parse_value<'a>(tokens: &'a [TokenWithLocation], env: &mut Environment) -> Pa
                         id: id,
                     })
                 };
-                Ok((ret, rest))
+                Ok((ret.with_location(loc), rest))
             }
-            Token::IntegerLiteral(value) => Ok((Ast::Integer(*value), rest)),
-            Token::FloatLiteral(value) => Ok((Ast::Float(*value), rest)),
+            Token::IntegerLiteral(value) => Ok((Ast::Integer(*value).with_location(loc), rest)),
+            Token::FloatLiteral(value) => Ok((Ast::Float(*value).with_location(loc), rest)),
             Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens, env),
             Token::Quote => {
                 let (value, rest) = parse_value(rest, env)?;
-                Ok((Ast::Quoted(Box::new(value)), rest))
+                Ok((Ast::Quoted(Box::new(value)).with_location(loc), rest))
             }
-            Token::BooleanLiteral(value) => Ok((Ast::Boolean(*value), rest)),
-            Token::CharLiteral(value) => Ok((Ast::Char(*value), rest)),
-            Token::StringLiteral(value) => Ok((Ast::String(value.clone()), rest)),
+            Token::BooleanLiteral(value) => Ok((Ast::Boolean(*value).with_location(loc), rest)),
+            Token::CharLiteral(value) => Ok((Ast::Char(*value).with_location(loc), rest)),
+            Token::StringLiteral(value) => {
+                Ok((Ast::String(value.clone()).with_location(loc), rest))
+            }
             _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0].token))),
         }
     } else {
