@@ -16,7 +16,7 @@ macro_rules! bug {
     };
 }
 
-macro_rules! match_args {
+macro_rules! match_call_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
         if let Some(ValueWithType { value: $p, type_: _ }) = $args.get($index) {
             $b
@@ -28,7 +28,7 @@ macro_rules! match_args {
 
     ( $args:expr, $p:pat, $( $ps:pat ),*, $b:block, $index:expr ) => {
         if let Some(ValueWithType { value: $p, type_: _ }) = $args.get($index) {
-            match_args!($args, $( $ps ),*, $b, ($index + 1))
+            match_call_args!($args, $( $ps ),*, $b, ($index + 1))
         }
         else {
             Err(bug!(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
@@ -36,8 +36,52 @@ macro_rules! match_args {
     };
 
     ( $args:expr, $( $ps:pat ),+, $b:block ) => {
-        // Patterns must be matched because args are passed type checking
-        match_args!($args, $( $ps ),+, $b, 0)
+        match_call_args!($args, $( $ps ),+, $b, 0)
+    };
+}
+
+macro_rules! match_special_args {
+    ( $args:expr, $p:pat, $b:block, $index:expr ) => {
+        if let Some($p) = $args.get($index) {
+            if $index != $args.len() - 1 {
+                Err(Error::Eval(format!("The length of argument is invalid")))
+            }
+            else {
+                $b
+            }
+        }
+        else {
+            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
+        }
+    };
+
+    ( $args:expr, $p:pat, $( $ps:pat ),*, $b:block, $index:expr ) => {
+        if let Some($p) = $args.get($index) {
+            match_special_args!($args, $( $ps ),*, $b, ($index + 1))
+        }
+        else {
+            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
+        }
+    };
+
+    ( $args:expr, $( $ps:pat ),+, $b:block ) => {
+        match_special_args!($args, $( $ps ),+, $b, 0)
+    };
+}
+
+macro_rules! ast_pat {
+    ( $p:pat ) => {
+        AstWithLocation {
+            ast: $p,
+            location: _,
+        }
+    };
+
+    ( $p:pat, $loc:ident ) => {
+        AstWithLocation {
+            ast: $p,
+            location: $loc,
+        }
     };
 }
 
@@ -428,7 +472,7 @@ fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>,
     symbols
         .iter()
         .map(|symbol| {
-            if let Ast::Symbol(v) = symbol.ast {
+            if let Ast::Symbol(v) = &symbol.ast {
                 Ok(v.clone())
             } else {
                 Err(Error::Eval(format!("{:?} is not an symbol.", symbol)))
@@ -451,10 +495,10 @@ fn optimize_tail_recursion(
         locals: &[SymbolValue],
         ast: &AstWithLocation,
     ) -> Option<AstWithLocation> {
-        match ast.ast {
+        match &ast.ast {
             Ast::List(vs) => {
                 if let Some((name_ast, args)) = vs.split_first() {
-                    if let Ast::Symbol(name) = name_ast.ast {
+                    if let Ast::Symbol(name) = &name_ast.ast {
                         let name = name.value.as_str();
                         let mut args = match name {
                             "begin" => optimize_tail_recursion(func_name, locals, args),
@@ -473,14 +517,17 @@ fn optimize_tail_recursion(
                             }
                             "let" | "let*" => {
                                 let (proc_id, rest) = match args.split_first() {
-                                    Some((Ast::Symbol(proc_id), rest)) => (Some(proc_id), rest),
+                                    Some((ast_pat!(Ast::Symbol(proc_id)), rest)) => {
+                                        (Some(proc_id), rest)
+                                    }
                                     _ => (None, args),
                                 };
-                                if let Some((Ast::List(vars), body)) = rest.split_first() {
+                                if let Some((ast_pat!(Ast::List(vars)), body)) = rest.split_first()
+                                {
                                     let includes_sym_in_vars = vars.iter().any(|var| {
-                                        if let Ast::List(var) = var {
+                                        if let ast_pat!(Ast::List(var)) = var {
                                             if let Some(expr) = var.get(1) {
-                                                includes_symbol(func_name, expr)
+                                                includes_symbol(func_name, &expr.ast)
                                             } else {
                                                 false
                                             }
@@ -511,7 +558,7 @@ fn optimize_tail_recursion(
                             }
                             _ => {
                                 let not_in_args =
-                                    args.iter().all(|arg| !includes_symbol(func_name, arg));
+                                    args.iter().all(|arg| !includes_symbol(func_name, &arg.ast));
                                 if name == func_name && not_in_args {
                                     let mut form = vec![Ast::Symbol(SymbolValue::without_id(
                                         "begin".to_string(),
@@ -565,7 +612,7 @@ fn optimize_tail_recursion(
                     Some(ast.clone())
                 }
             }
-            Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, v),
+            Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, &v),
             Ast::Symbol(_)
             | Ast::Integer(_)
             | Ast::Float(_)
@@ -579,8 +626,8 @@ fn optimize_tail_recursion(
 
     fn includes_symbol(sym: &String, ast: &Ast) -> bool {
         match ast {
-            Ast::List(vs) => vs.iter().any(|v| includes_symbol(sym, v)),
-            Ast::Quoted(v) => includes_symbol(sym, v),
+            Ast::List(vs) => vs.iter().any(|v| includes_symbol(sym, &v.ast)),
+            Ast::Quoted(v) => includes_symbol(sym, &v.ast),
             Ast::Symbol(v) => &v.value == sym,
             Ast::Integer(_)
             | Ast::Float(_)
@@ -598,7 +645,7 @@ fn optimize_tail_recursion(
         _ => {
             let (last, body) = body.split_last().unwrap();
             for ast in body {
-                if includes_symbol(func_name, ast) {
+                if includes_symbol(func_name, &ast.ast) {
                     return None;
                 }
             }
@@ -616,20 +663,17 @@ fn eval_special_form(
     raw_args: &[AstWithLocation],
     env: &mut Environment,
 ) -> EvalResult {
-    if let Ast::Symbol(name) = name_ast.ast {
+    if let Ast::Symbol(name) = &name_ast.ast {
         let name = name.value.as_str();
         match name {
             "set!" => {
-                if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
+                match_special_args!(raw_args, ast_pat!(Ast::Symbol(name), loc1), value, {
                     let value = eval_ast(value, env)?;
                     env.update_var(name.clone(), value)?;
                     Ok(Value::nil().with_type())
-                } else {
-                    Err(Error::Eval(
-                        "'set!' is formed as (set! symbol value)".to_string(),
-                    ))
-                }
+                })
             }
+            /*
             "define" => {
                 if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
                     let value = eval_ast(value, env)?;
@@ -880,6 +924,7 @@ fn eval_special_form(
                     ))
                 }
             }
+            */
             _ => {
                 let mac = eval_ast(name_ast, env)?;
                 if let Value::Function {
@@ -1120,7 +1165,7 @@ fn apply_function(
 }
 
 fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
-    match ast.ast {
+    match &ast.ast {
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
                 let result = eval_special_form(first, rest, env);
@@ -1159,7 +1204,7 @@ pub fn eval_program(
         "even?",
         Type::function(vec![Type::int()], Type::Any),
         |args| {
-            match_args!(args, Value::Integer(v), {
+            match_call_args!(args, Value::Integer(v), {
                 Ok(Value::from(v % 2 == 0).with_type())
             })
         },
@@ -1167,13 +1212,13 @@ pub fn eval_program(
     env.insert_function(
         "=",
         Type::function(vec![Type::Any, Type::Any], Type::Any),
-        |args| match_args!(args, v1, v2, { Ok(Value::from(v1 == v2).with_type()) }),
+        |args| match_call_args!(args, v1, v2, { Ok(Value::from(v1 == v2).with_type()) }),
     );
     env.insert_function(
         "car",
         Type::function(vec![Type::list()], Type::Any),
         |args| {
-            match_args!(args, Value::List(vs), {
+            match_call_args!(args, Value::List(vs), {
                 let first = vs.first().map(|v| (*v).clone());
                 Ok(first.unwrap_or(Value::nil().with_type()))
             })
@@ -1183,7 +1228,7 @@ pub fn eval_program(
         "cdr",
         Type::function(vec![Type::list()], Type::Any),
         |args| {
-            match_args!(args, Value::List(vs), {
+            match_call_args!(args, Value::List(vs), {
                 if let Some((_, rest)) = vs.split_first() {
                     if rest.is_empty() {
                         Ok(Value::nil().with_type())
@@ -1201,7 +1246,7 @@ pub fn eval_program(
         "mod",
         Type::function(vec![Type::int(), Type::int()], Type::int()),
         |args| {
-            match_args!(args, Value::Integer(num), Value::Integer(divisor), {
+            match_call_args!(args, Value::Integer(num), Value::Integer(divisor), {
                 Ok(Value::Integer(num % divisor).with_type())
             })
         },
@@ -1210,7 +1255,7 @@ pub fn eval_program(
         "cons",
         Type::function(vec![Type::Any, Type::list()], Type::list()),
         |args| {
-            match_args!(args, v, Value::List(vs), {
+            match_call_args!(args, v, Value::List(vs), {
                 let mut vs = vs.clone();
                 vs.insert(0, v.clone().with_type());
                 Ok(Value::List(vs).with_type())
@@ -1221,7 +1266,7 @@ pub fn eval_program(
         "length",
         Type::function(vec![Type::list()], Type::Int),
         |args| {
-            match_args!(args, Value::List(vs), {
+            match_call_args!(args, Value::List(vs), {
                 Ok(Value::Integer(vs.len() as i32).with_type())
             })
         },
@@ -1230,7 +1275,7 @@ pub fn eval_program(
         "list-ref",
         Type::function(vec![Type::list(), Type::Int], Type::Any),
         |args| {
-            match_args!(args, Value::List(vs), Value::Integer(idx), {
+            match_call_args!(args, Value::List(vs), Value::Integer(idx), {
                 if let Some(v) = vs.get(*idx as usize) {
                     Ok(v.clone())
                 } else {
@@ -1243,7 +1288,7 @@ pub fn eval_program(
         "string->list",
         Type::function(vec![Type::String], Type::list()),
         |args| {
-            match_args!(args, Value::String(value), {
+            match_call_args!(args, Value::String(value), {
                 let chars = value.chars().map(|c| Value::Char(c).with_type()).collect();
                 Ok(Value::List(chars).with_type())
             })

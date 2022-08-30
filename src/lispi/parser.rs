@@ -155,7 +155,7 @@ fn consume<'a>(
 ) -> Result<(LocationRange, &'a [TokenWithLocation]), Error> {
     if let Some((first, rest)) = tokens.split_first() {
         if &first.token == expected {
-            Ok((first.location, rest))
+            Ok((first.location.clone(), rest))
         } else {
             Err(Error::Parse(format!(
                 "Expected {:?}, actual {:?}",
@@ -223,9 +223,16 @@ fn parse_value<'a>(
     tokens: &'a [TokenWithLocation],
     env: &mut Environment,
 ) -> ParseResult<'a, AstWithLocation> {
-    if let Some((first, rest)) = tokens.split_first() {
-        let loc = first.location;
-        match &first.token {
+    if let Some((
+        TokenWithLocation {
+            token: first,
+            location: loc,
+        },
+        rest,
+    )) = tokens.split_first()
+    {
+        let loc = loc.clone();
+        match first {
             Token::Identifier(value) => {
                 let ret = if value.to_lowercase() == "nil" {
                     Ast::Nil
