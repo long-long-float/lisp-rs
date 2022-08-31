@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 use std::{collections::HashMap, collections::LinkedList};
 
-use super::{error::*, parser::*, SymbolValue};
+use super::{error::*, parser::*, Location, LocationRange, SymbolValue};
 
 macro_rules! bug {
     () => {
@@ -55,7 +55,7 @@ macro_rules! match_special_args {
         }
     };
 
-    ( $args:expr, $p:pat, $( $ps:pat ),*, $b:block, $index:expr ) => {
+    ( $args:expr, $p:pat, $( $ps:pat ),+, $b:block, $index:expr ) => {
         if let Some($p) = $args.get($index) {
             match_special_args!($args, $( $ps ),*, $b, ($index + 1))
         }
@@ -69,6 +69,30 @@ macro_rules! match_special_args {
     };
 }
 
+macro_rules! match_special_args_with_rest {
+    ( $args:expr, $rest:ident, $p:pat, $b:block, $index:expr ) => {
+        if let (Some($p), (_, $rest)) = ($args.get($index), $args.split_at($index + 1)) {
+            $b
+        }
+        else {
+            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
+        }
+    };
+
+    ( $args:expr, $rest:ident, $p:pat, $( $ps:pat ),+, $b:block, $index:expr ) => {
+        if let Some($p) = $args.get($index) {
+            match_special_args_with_rest!($args, $rest, $( $ps ),*, $b, ($index + 1))
+        }
+        else {
+            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
+        }
+    };
+
+    ( $args:expr, $rest:ident, $( $ps:pat ),+, $b:block ) => {
+        match_special_args_with_rest!($args, $rest, $( $ps ),+, $b, 0)
+    };
+}
+
 macro_rules! ast_pat {
     ( $p:pat ) => {
         AstWithLocation {
@@ -77,7 +101,7 @@ macro_rules! ast_pat {
         }
     };
 
-    ( $p:pat, $loc:ident ) => {
+    ( $p:pat, $loc:pat ) => {
         AstWithLocation {
             ast: $p,
             location: $loc,
@@ -667,58 +691,53 @@ fn eval_special_form(
         let name = name.value.as_str();
         match name {
             "set!" => {
-                match_special_args!(raw_args, ast_pat!(Ast::Symbol(name), loc1), value, {
+                match_special_args!(raw_args, ast_pat!(Ast::Symbol(name), _loc), value, {
                     let value = eval_ast(value, env)?;
                     env.update_var(name.clone(), value)?;
                     Ok(Value::nil().with_type())
                 })
             }
-            /*
             "define" => {
-                if let (Some(Ast::Symbol(name)), Some(value)) = (raw_args.get(0), raw_args.get(1)) {
+                match_special_args!(raw_args, ast_pat!(Ast::Symbol(name), _loc), value, {
                     let value = eval_ast(value, env)?;
 
                     env.insert_var(name.clone(), value);
 
                     Ok(Value::nil().with_type())
-                } else {
-                    Err(Error::Eval(
-                        "'define' is formed as (define name (arg ...) body ...)".to_string(),
-                    ))
-                }
+                })
             }
             "define-macro" => {
-                if let (Some(Ast::Symbol(fun_name)), Some(Ast::List(args)), (_, body)) =
-                    (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
-                {
-                    let is_macro = name == "define-macro";
+                match_special_args_with_rest!(
+                    raw_args,
+                    body,
+                    ast_pat!(Ast::Symbol(fun_name), _loc1),
+                    ast_pat!(Ast::List(args)),
+                    {
+                        let is_macro = name == "define-macro";
 
-                    let args = get_symbol_values(args)?;
+                        let args = get_symbol_values(args)?;
 
-                    let arg_types = args.iter().map(|_| Type::Any).collect();
-                    let func = Value::Function {
-                        name: fun_name.clone(),
-                        args: args,
-                        body: body.to_vec(),
-                        is_macro,
-                    };
-                    env.insert_var(
-                        fun_name.clone(),
-                        ValueWithType {
-                            value: func,
-                            type_: Type::function(arg_types, Type::Any),
-                        },
-                    );
+                        let arg_types = args.iter().map(|_| Type::Any).collect();
+                        let func = Value::Function {
+                            name: fun_name.clone(),
+                            args: args,
+                            body: body.to_vec(),
+                            is_macro,
+                        };
+                        env.insert_var(
+                            fun_name.clone(),
+                            ValueWithType {
+                                value: func,
+                                type_: Type::function(arg_types, Type::Any),
+                            },
+                        );
 
-                    Ok(Value::nil().with_type())
-                } else {
-                    Err(Error::Eval(
-                        "'define' is formed as (define name (arg ...) body ...)".to_string(),
-                    ))
-                }
+                        Ok(Value::nil().with_type())
+                    }
+                )
             }
             "lambda" => {
-                if let Some((Ast::List(args), body)) = raw_args.split_first() {
+                match_special_args_with_rest!(raw_args, body, ast_pat!(Ast::List(args), _loc), {
                     let args = get_symbol_values(args)?;
 
                     let arg_types = args.iter().map(|_| Type::Any).collect();
@@ -733,11 +752,7 @@ fn eval_special_form(
                         value: func,
                         type_: Type::function(arg_types, Type::Any),
                     })
-                } else {
-                    Err(Error::Eval(
-                        "'lambda' is formed as (lambda (arg ...) body ...)".to_string(),
-                    ))
-                }
+                })
             }
             "let" | "let*" => {
                 let err = Err(Error::Eval(
@@ -746,23 +761,22 @@ fn eval_special_form(
 
                 let sequence = name == "let*";
 
-                if let Some((Ast::List(vars), body)) = raw_args.split_first() {
+                if let Some((ast_pat!(Ast::List(vars), _loc), body)) = raw_args.split_first() {
                     env.push_local();
 
                     let mut exprs = Vec::new();
 
                     for var in vars {
-                        if let Ast::List(var) = var {
-                            if let (Some(Ast::Symbol(id)), Some(expr)) = (var.get(0), var.get(1)) {
+                        if let ast_pat!(Ast::List(var)) = var {
+                            match_special_args!(var, ast_pat!(Ast::Symbol(id)), expr, {
                                 let expr = eval_ast(expr, env)?;
                                 if sequence {
                                     env.insert_var(id.clone(), expr);
                                 } else {
                                     exprs.push((id, expr));
                                 }
-                            } else {
-                                return err;
-                            }
+                                Ok(())
+                            })?
                         } else {
                             return err;
                         }
@@ -779,24 +793,26 @@ fn eval_special_form(
                     env.pop_local();
 
                     Ok(get_last_result(result?))
-                } else if let (Some(Ast::Symbol(proc_id)), Some(Ast::List(args)), (_, body)) =
-                    (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
+                } else if let (
+                    Some(ast_pat!(Ast::Symbol(proc_id))),
+                    Some(ast_pat!(Ast::List(args))),
+                    (_, body),
+                ) = (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
                 {
                     // named let
 
                     let mut arg_exprs = Vec::new();
                     for arg in args {
-                        if let Ast::List(var) = arg {
-                            if let (Some(Ast::Symbol(id)), Some(expr)) = (var.get(0), var.get(1)) {
+                        if let ast_pat!(Ast::List(var)) = arg {
+                            match_special_args!(var, ast_pat!(Ast::Symbol(id)), expr, {
                                 arg_exprs.push((id.clone(), expr.clone()));
-                            } else {
-                                return err;
-                            }
+                                Ok(())
+                            })?
                         } else {
                             return err;
                         }
                     }
-                    let (args, exprs): (Vec<SymbolValue>, Vec<Ast>) = arg_exprs.into_iter().unzip();
+                    let (args, exprs): (Vec<SymbolValue>, Vec<_>) = arg_exprs.into_iter().unzip();
 
                     if let Some(optimized) = optimize_tail_recursion(&proc_id.value, &args, body) {
                         // println!("Tail recursion!");
@@ -839,7 +855,8 @@ fn eval_special_form(
                         env.push_local();
                         env.insert_var(proc_id.clone(), func.with_type());
 
-                        let mut call_args = vec![Ast::Symbol(proc_id.clone())];
+                        let mut call_args =
+                            vec![Ast::Symbol(proc_id.clone()).with_pointless_location()];
                         let mut exprs = exprs;
                         call_args.append(&mut exprs);
 
@@ -854,6 +871,7 @@ fn eval_special_form(
                     err
                 }
             }
+
             "begin" => Ok(get_last_result(eval_asts(raw_args, env)?)),
             "if" => {
                 if let (Some(cond), Some(then_ast)) = (raw_args.get(0), raw_args.get(1)) {
@@ -894,7 +912,7 @@ fn eval_special_form(
                 let err = "'cond' is formed as (cond (cond body ...) ...)";
 
                 for arg in raw_args {
-                    if let Ast::List(arm) = arg {
+                    if let ast_pat!(Ast::List(arm)) = arg {
                         if let Some((cond, body)) = arm.split_first() {
                             let cond = eval_ast(cond, env)?;
                             if cond.value.is_true() {
@@ -924,7 +942,6 @@ fn eval_special_form(
                     ))
                 }
             }
-            */
             _ => {
                 let mac = eval_ast(name_ast, env)?;
                 if let Value::Function {
@@ -961,14 +978,16 @@ fn eval_function(
     args: &[AstWithLocation],
     env: &mut Environment,
 ) -> EvalResult {
+    let name_loc = &name.location;
     let name = eval_ast(name, env)?;
     let args = eval_asts(args, env)?;
 
-    apply_function(&name, &args, env)
+    apply_function(&name, &name_loc, &args, env)
 }
 
 fn apply_function(
     func: &ValueWithType,
+    func_loc: &LocationRange,
     args: &[ValueWithType],
     env: &mut Environment,
 ) -> EvalResult {
@@ -1130,7 +1149,12 @@ fn apply_function(
                                 );
                             }
 
-                            result.push(apply_function(func, &args, env)?);
+                            result.push(apply_function(
+                                func,
+                                &LocationRange::new(Location::head(), Location::head()),
+                                &args,
+                                env,
+                            )?);
                         }
 
                         Ok(Value::List(result).with_type())
@@ -1160,7 +1184,10 @@ fn apply_function(
             Ok(get_last_result(result?))
         }
         Value::NativeFunction { name: _, func } => func(args.to_vec()),
-        _ => Err(Error::Eval(format!("{:?} is not a function", func.value))),
+        _ => Err(Error::Eval(format!(
+            "{:?} is not a function at {}",
+            func.value, func_loc.begin
+        ))),
     }
 }
 
@@ -1178,7 +1205,6 @@ fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
             }
         }
         Ast::Symbol(value) => {
-            // println!("{:#?}", env.variables);
             if let Some(var) = env.find_var(&value) {
                 Ok(var.clone())
             } else {
