@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{error::*, evaluator::Value, tokenizer::*, Location, LocationRange, SymbolValue};
+use super::{error::*, evaluator::Value, tokenizer::*, LocationRange, SymbolValue, TokenLocation};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
@@ -22,14 +22,14 @@ impl Ast {
     pub fn with_location(self, location: LocationRange) -> AstWithLocation {
         AstWithLocation {
             ast: self,
-            location,
+            location: TokenLocation::Range(location),
         }
     }
 
-    pub fn with_pointless_location(self) -> AstWithLocation {
+    pub fn with_null_location(self) -> AstWithLocation {
         AstWithLocation {
             ast: self,
-            location: LocationRange::new(Location::head(), Location::head()),
+            location: TokenLocation::Null,
         }
     }
 }
@@ -37,7 +37,7 @@ impl Ast {
 #[derive(Clone, PartialEq, Debug)]
 pub struct AstWithLocation {
     pub ast: Ast,
-    pub location: LocationRange,
+    pub location: TokenLocation,
 }
 
 pub struct SymbolTable {
@@ -91,7 +91,7 @@ impl From<Value> for Ast {
                 } else {
                     let vs = vs
                         .into_iter()
-                        .map(|v| Ast::from(v.value).with_pointless_location())
+                        .map(|v| Ast::from(v.value).with_null_location())
                         .collect();
                     Ast::List(vs)
                 }
@@ -109,18 +109,18 @@ impl From<Value> for Ast {
                             value: "lambda".to_string(),
                             id: 0,
                         })
-                        .with_pointless_location(),
+                        .with_null_location(),
                         Ast::List(
                             args.into_iter()
-                                .map(|a| Ast::Symbol(a).with_pointless_location())
+                                .map(|a| Ast::Symbol(a).with_null_location())
                                 .collect(),
                         )
-                        .with_pointless_location(),
+                        .with_null_location(),
                     ];
                     elem.append(
                         &mut body
                             .into_iter()
-                            .map(|v| Ast::from(v.ast).with_pointless_location())
+                            .map(|v| Ast::from(v.ast).with_null_location())
                             .collect(),
                     );
                     Ast::List(elem)

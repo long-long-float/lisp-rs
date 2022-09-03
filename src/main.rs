@@ -11,18 +11,25 @@ fn main() {
 
     let result = read_lines(&args[1])
         .and_then(tokenize)
-        .and_then(show_tokens)
-        .and_then(parse)
-        // .and_then(|(ast, env)| Ok((show_ast(ast)?, env)))
-        .and_then(|(ast, env)| eval_program(&ast, env))
-        .unwrap_or_else(|err| {
-            println!("{:?}", err);
-            vec![]
-        });
+        // .and_then(show_tokens)
+        .and_then(parse);
+    // .and_then(|(ast, env)| Ok((show_ast(ast)?, env)))
 
-    if let Some(result) = result.last() {
-        println!("{}: {}", result.value, result.type_);
-    }
+    match result {
+        Ok((ast, env)) => match eval_program(&ast, env) {
+            Ok(result) => {
+                if let Some(result) = result.last() {
+                    println!("{}: {}", result.value, result.type_);
+                }
+            }
+            Err(err) => {
+                println!("{:?}", err);
+            }
+        },
+        Err(err) => {
+            println!("{:?}", err);
+        }
+    };
 }
 
 fn read_lines<P>(filename: P) -> Result<Vec<String>, Error>

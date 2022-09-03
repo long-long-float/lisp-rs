@@ -29,7 +29,7 @@ impl SymbolValue {
 }
 
 /// A location in file
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Location {
     /// zero-based line no
     pub line: usize,
@@ -54,8 +54,14 @@ impl std::fmt::Display for Location {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum TokenLocation {
+    Range(LocationRange),
+    Null,
+}
+
 /// A range in file, `[begin, end)`.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct LocationRange {
     pub begin: Location,
     pub end: Location,

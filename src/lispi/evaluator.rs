@@ -1,7 +1,8 @@
+use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::{collections::HashMap, collections::LinkedList};
 
-use super::{error::*, parser::*, Location, LocationRange, SymbolValue};
+use super::{error::*, parser::*, SymbolValue, TokenLocation};
 
 macro_rules! bug {
     () => {
@@ -13,6 +14,8 @@ macro_rules! bug {
             file: file!(),
             line: line!(),
         }
+        .with_null_location()
+        .into()
     };
 }
 
@@ -40,18 +43,25 @@ macro_rules! match_call_args {
     };
 }
 
+fn get_location(ast: Option<&AstWithLocation>) -> TokenLocation {
+    ast.and_then(|arg| Some(arg.location))
+        .unwrap_or(TokenLocation::Null)
+}
+
 macro_rules! match_special_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
         if let Some($p) = $args.get($index) {
             if $index != $args.len() - 1 {
-                Err(Error::Eval(format!("The length of argument is invalid")))
+                let loc = get_location($args.get($index));
+                Err(anyhow!(Error::Eval(format!("The length of argument is invalid")).with_location(loc)))
             }
             else {
                 $b
             }
         }
         else {
-            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
+            let loc = get_location($args.last());
+            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
 
@@ -60,7 +70,8 @@ macro_rules! match_special_args {
             match_special_args!($args, $( $ps ),*, $b, ($index + 1))
         }
         else {
-            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
+            let loc = get_location($args.last());
+            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
 
@@ -75,7 +86,8 @@ macro_rules! match_special_args_with_rest {
             $b
         }
         else {
-            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
+            let loc = get_location($args.last());
+            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
 
@@ -84,7 +96,8 @@ macro_rules! match_special_args_with_rest {
             match_special_args_with_rest!($args, $rest, $( $ps ),*, $b, ($index + 1))
         }
         else {
-            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))))
+            let loc = get_location($args.last());
+            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
 
@@ -109,7 +122,8 @@ macro_rules! ast_pat {
     };
 }
 
-type EvalResult = Result<ValueWithType, Error>;
+// type EvalResult = Result<ValueWithType, Error>;
+type EvalResult = Result<ValueWithType>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value {
@@ -276,7 +290,7 @@ impl Environment {
             Ok(())
         } else {
             Err(Error::Eval(format!(
-                "A variable {} is not defined.",
+                "A variable `{}` is not defined.",
                 name.value
             )))
         }
@@ -452,16 +466,19 @@ impl std::fmt::Display for Type {
 }
 
 fn check_arg_types(
-    func_name: &str,
+    func_loc: TokenLocation,
     args: &[ValueWithType],
+    arg_locs: &[TokenLocation],
     expected_types: &[Type],
-) -> Result<(), Error> {
+) -> Result<()> {
     if args.len() != expected_types.len() {
         return Err(Error::Type(format!(
             "{} arguments are expected, but {} arguments are specified.",
             expected_types.len(),
             args.len()
-        )));
+        ))
+        .with_location(func_loc)
+        .into());
     }
 
     for (i, (a, expected)) in args.iter().zip(expected_types).enumerate() {
@@ -470,7 +487,13 @@ fn check_arg_types(
             (Type::Int, Type::Numeric) | (Type::Float, Type::Numeric) => (), // numeric includes int and float
             (actual, expected) => {
                 if actual != expected {
-                    return Err(Error::Type(format!("Expected the type {} , but the type {} is specified in {}th argument in {} function", expected, actual, i, func_name)));
+                    let loc = arg_locs.get(i).unwrap_or(&TokenLocation::Null);
+                    return Err(Error::Type(format!(
+                        "Expected the type {} , but the actual type is {}",
+                        expected, actual
+                    ))
+                    .with_location(*loc)
+                    .into());
                 }
             }
         }
@@ -479,10 +502,10 @@ fn check_arg_types(
     Ok(())
 }
 
-fn eval_asts(asts: &[AstWithLocation], env: &mut Environment) -> Result<Vec<ValueWithType>, Error> {
+fn eval_asts(asts: &[AstWithLocation], env: &mut Environment) -> Result<Vec<ValueWithType>> {
     asts.iter()
         .map(|arg| eval_ast(arg, env))
-        .collect::<Result<Vec<ValueWithType>, Error>>()
+        .collect::<Result<Vec<ValueWithType>>>()
 }
 
 fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
@@ -492,14 +515,16 @@ fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
         .unwrap_or(Value::nil().with_type())
 }
 
-fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>, Error> {
+fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>> {
     symbols
         .iter()
         .map(|symbol| {
             if let Ast::Symbol(v) = &symbol.ast {
                 Ok(v.clone())
             } else {
-                Err(Error::Eval(format!("{:?} is not an symbol.", symbol)))
+                Err(Error::Eval(format!("{:?} is not an symbol.", symbol))
+                    .with_location(symbol.location)
+                    .into())
             }
         })
         .collect()
@@ -570,10 +595,10 @@ fn optimize_tail_recursion(
                                     let mut form = Vec::new();
                                     if let Some(proc_id) = proc_id {
                                         form.push(
-                                            Ast::Symbol(proc_id.clone()).with_pointless_location(),
+                                            Ast::Symbol(proc_id.clone()).with_null_location(),
                                         );
                                     }
-                                    form.push(Ast::List(vars.clone()).with_pointless_location());
+                                    form.push(Ast::List(vars.clone()).with_null_location());
                                     form.append(&mut body);
                                     Some(form)
                                 } else {
@@ -587,7 +612,7 @@ fn optimize_tail_recursion(
                                     let mut form = vec![Ast::Symbol(SymbolValue::without_id(
                                         "begin".to_string(),
                                     ))
-                                    .with_pointless_location()];
+                                    .with_null_location()];
 
                                     let mut args = args
                                         .iter()
@@ -597,20 +622,18 @@ fn optimize_tail_recursion(
                                                 Ast::Symbol(SymbolValue::without_id(
                                                     "set!".to_string(),
                                                 ))
-                                                .with_pointless_location(),
-                                                Ast::Symbol(sym.clone()).with_pointless_location(),
+                                                .with_null_location(),
+                                                Ast::Symbol(sym.clone()).with_null_location(),
                                                 arg.clone(),
                                             ])
-                                            .with_pointless_location()
+                                            .with_null_location()
                                         })
                                         .collect::<Vec<_>>();
 
                                     form.append(&mut args);
-                                    form.push(
-                                        Ast::Continue(name.to_string()).with_pointless_location(),
-                                    );
+                                    form.push(Ast::Continue(name.to_string()).with_null_location());
 
-                                    return Some(Ast::List(form).with_pointless_location());
+                                    return Some(Ast::List(form).with_null_location());
                                 } else {
                                     println!("[Warn] '{}' is treated as an ordinay function in optimizing tail recursion", name);
 
@@ -626,7 +649,7 @@ fn optimize_tail_recursion(
                         args.as_mut().map(|args| {
                             let mut whole = vec![name_ast.clone()];
                             whole.append(args);
-                            Ast::List(whole).with_pointless_location()
+                            Ast::List(whole).with_null_location()
                         })
                     } else {
                         // This is not valid ast
@@ -693,7 +716,8 @@ fn eval_special_form(
             "set!" => {
                 match_special_args!(raw_args, ast_pat!(Ast::Symbol(name), _loc), value, {
                     let value = eval_ast(value, env)?;
-                    env.update_var(name.clone(), value)?;
+                    env.update_var(name.clone(), value)
+                        .or_else(|err| Err(anyhow!(err.with_location(name_ast.location))))?;
                     Ok(Value::nil().with_type())
                 })
             }
@@ -757,7 +781,7 @@ fn eval_special_form(
             "let" | "let*" => {
                 let err = Err(Error::Eval(
                     "'let' is formed as (let ([id expr] ...) body ...) or named let (let proc-id ([id expr] ...) body ...)".to_string(),
-                ));
+                ).with_location(name_ast.location).into());
 
                 let sequence = name == "let*";
 
@@ -855,13 +879,12 @@ fn eval_special_form(
                         env.push_local();
                         env.insert_var(proc_id.clone(), func.with_type());
 
-                        let mut call_args =
-                            vec![Ast::Symbol(proc_id.clone()).with_pointless_location()];
+                        let mut call_args = vec![Ast::Symbol(proc_id.clone()).with_null_location()];
                         let mut exprs = exprs;
                         call_args.append(&mut exprs);
 
                         let result =
-                            eval_asts(&vec![Ast::List(call_args).with_pointless_location()], env);
+                            eval_asts(&vec![Ast::List(call_args).with_null_location()], env);
 
                         env.pop_local();
 
@@ -886,9 +909,11 @@ fn eval_special_form(
                         }
                     }
                 } else {
-                    Err(Error::Eval(
-                        "'if' is formed as (if cond then else)".to_string(),
-                    ))
+                    Err(
+                        Error::Eval("'if' is formed as (if cond then else)".to_string())
+                            .with_location(name_ast.location)
+                            .into(),
+                    )
                 }
             }
             "when" | "unless" => {
@@ -902,14 +927,19 @@ fn eval_special_form(
                         Ok(Value::nil().with_type())
                     }
                 } else {
-                    Err(Error::Eval(format!(
-                        "'{}' is formed as (if cond then else)",
-                        name
-                    )))
+                    Err(
+                        Error::Eval(format!("'{}' is formed as (if cond then else)", name))
+                            .with_location(name_ast.location)
+                            .into(),
+                    )
                 }
             }
             "cond" => {
-                let err = "'cond' is formed as (cond (cond body ...) ...)";
+                let err = Err(Error::Eval(
+                    "'cond' is formed as (cond (cond body ...) ...)".to_string(),
+                )
+                .with_location(name_ast.location)
+                .into());
 
                 for arg in raw_args {
                     if let ast_pat!(Ast::List(arm)) = arg {
@@ -919,10 +949,10 @@ fn eval_special_form(
                                 return Ok(get_last_result(eval_asts(body, env)?));
                             }
                         } else {
-                            return Err(Error::Eval(err.to_string()));
+                            return err;
                         }
                     } else {
-                        return Err(Error::Eval(err.to_string()));
+                        return err;
                     }
                 }
 
@@ -932,14 +962,16 @@ fn eval_special_form(
                 if let Some(func) = raw_args.first() {
                     let result = eval_ast(func, env)?;
                     if let Value::Symbol(name) = result.value {
-                        Ok(eval_ast(&Ast::Symbol(name).with_pointless_location(), env)?)
+                        Ok(eval_ast(&Ast::Symbol(name).with_null_location(), env)?)
                     } else {
                         Ok(result)
                     }
                 } else {
-                    Err(Error::Eval(
-                        "'function' is formed as (function name)".to_string(),
-                    ))
+                    Err(
+                        Error::Eval("'function' is formed as (function name)".to_string())
+                            .with_location(name_ast.location)
+                            .into(),
+                    )
                 }
             }
             _ => {
@@ -962,14 +994,14 @@ fn eval_special_form(
                     env.pop_local();
 
                     let result = get_last_result(result?);
-                    eval_ast(&Ast::from(result.value).with_pointless_location(), env)
+                    eval_ast(&Ast::from(result.value).with_null_location(), env)
                 } else {
-                    Err(Error::DoNothing)
+                    Err(Error::DoNothing.with_null_location().into())
                 }
             }
         }
     } else {
-        Err(Error::DoNothing)
+        Err(Error::DoNothing.with_null_location().into())
     }
 }
 
@@ -980,41 +1012,43 @@ fn eval_function(
 ) -> EvalResult {
     let name_loc = &name.location;
     let name = eval_ast(name, env)?;
+    let arg_locs = args.iter().map(|arg| arg.location).collect::<Vec<_>>();
     let args = eval_asts(args, env)?;
 
-    apply_function(&name, &name_loc, &args, env)
+    apply_function(&name, *name_loc, &args, &arg_locs, env)
 }
 
 fn apply_function(
     func: &ValueWithType,
-    func_loc: &LocationRange,
+    func_loc: TokenLocation,
     args: &[ValueWithType],
+    arg_locs: &[TokenLocation],
     env: &mut Environment,
 ) -> EvalResult {
     if let ValueWithType {
-        value,
+        value: _,
         type_: Type::Function {
             args: arg_types,
             result: _,
         },
     } = &func
     {
-        let name = match value {
-            Value::Symbol(name) => name,
-            Value::Function {
-                name,
-                args: _,
-                body: _,
-                is_macro: _,
-            } => name,
-            Value::NativeFunction { name, func: _ } => name,
-            _ => {
-                println!("{:?}", value);
-                return Err(bug!());
-            }
-        };
+        // let name = match value {
+        //     Value::Symbol(name) => name,
+        //     Value::Function {
+        //         name,
+        //         args: _,
+        //         body: _,
+        //         is_macro: _,
+        //     } => name,
+        //     Value::NativeFunction { name, func: _ } => name,
+        //     _ => {
+        //         println!("{:?}", value);
+        //         return Err(bug!());
+        //     }
+        // };
         let arg_types = arg_types.iter().map(|a| *a.clone()).collect::<Vec<Type>>();
-        check_arg_types(&name.value, args, &arg_types)?;
+        check_arg_types(func_loc, args, arg_locs, &arg_types)?;
     }
 
     match &func.value {
@@ -1032,15 +1066,18 @@ fn apply_function(
                     let mut has_float_arg = false;
                     let args = args
                         .iter()
-                        .map(|arg| match arg.value {
+                        .zip(arg_locs)
+                        .map(|(arg, loc)| match arg.value {
                             Value::Integer(v) => Ok(Number::Int(v)),
                             Value::Float(v) => {
                                 has_float_arg = true;
                                 Ok(Number::Float(v))
                             }
-                            _ => Err(Error::Eval(format!("{:?} is not an integer.", arg))),
+                            _ => Err(Error::Eval(format!("{:?} is not an integer.", arg))
+                                .with_location(*loc)
+                                .into()),
                         })
-                        .collect::<Result<Vec<Number>, Error>>()?;
+                        .collect::<Result<Vec<Number>>>()?;
 
                     macro_rules! calc {
                         ( $args:expr, $elem_type:ty ) => {
@@ -1064,7 +1101,9 @@ fn apply_function(
                                         return Err(Error::Eval(format!(
                                             "Function {} needs least one value",
                                             func_name
-                                        )));
+                                        ))
+                                        .with_location(func_loc)
+                                        .into());
                                     }
                                 }
                                 ">" | ">=" | "<" | "<=" => {
@@ -1084,7 +1123,9 @@ fn apply_function(
                                     return Err(Error::Eval(format!(
                                         "Unknown function: {}",
                                         func_name
-                                    )))
+                                    ))
+                                    .with_location(func_loc)
+                                    .into())
                                 }
                             }
                         };
@@ -1119,7 +1160,9 @@ fn apply_function(
                 }
                 "list" => Ok(Value::List(args.to_vec()).with_type()),
                 "map" => {
-                    let err = "'map' is formed as (mapcar function list ...)";
+                    let err =
+                        Error::Eval("'map' is formed as (mapcar function list ...)".to_string())
+                            .with_location(func_loc);
 
                     if let Some((func, lists)) = args.split_first() {
                         let lists = lists
@@ -1128,13 +1171,13 @@ fn apply_function(
                                 if let Value::List(elements) = &list.value {
                                     Ok(elements)
                                 } else {
-                                    Err(Error::Eval(err.to_string()))
+                                    Err(anyhow!(err.clone()))
                                 }
                             })
-                            .collect::<Result<Vec<_>, Error>>()?;
+                            .collect::<Result<Vec<_>>>()?;
 
                         if lists.len() == 0 {
-                            return Err(Error::Eval(err.to_string()));
+                            return Err(anyhow!(err.clone()));
                         }
 
                         let mut result = Vec::new();
@@ -1148,21 +1191,25 @@ fn apply_function(
                                         .unwrap_or(Value::nil().with_type()),
                                 );
                             }
+                            let arg_locs = [TokenLocation::Null].repeat(lists.len());
 
                             result.push(apply_function(
                                 func,
-                                &LocationRange::new(Location::head(), Location::head()),
+                                TokenLocation::Null,
                                 &args,
+                                &arg_locs,
                                 env,
                             )?);
                         }
 
                         Ok(Value::List(result).with_type())
                     } else {
-                        Err(Error::Eval(err.to_string()))
+                        Err(anyhow!(err))
                     }
                 }
-                _ => Err(Error::Eval(format!("Unknown function: {}", func_name))),
+                _ => Err(Error::Eval(format!("Unknown function: {}", func_name))
+                    .with_location(func_loc)
+                    .into()),
             }
         }
         Value::Function {
@@ -1184,10 +1231,9 @@ fn apply_function(
             Ok(get_last_result(result?))
         }
         Value::NativeFunction { name: _, func } => func(args.to_vec()),
-        _ => Err(Error::Eval(format!(
-            "{:?} is not a function at {}",
-            func.value, func_loc.begin
-        ))),
+        _ => Err(Error::Eval(format!("{:?} is not a function", func.value))
+            .with_location(func_loc)
+            .into()),
     }
 }
 
@@ -1196,9 +1242,18 @@ fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
                 let result = eval_special_form(first, rest, env);
-                match result {
-                    Err(Error::DoNothing) => eval_function(first, rest, env),
-                    _ => result,
+                if let Err(err) = result {
+                    if let Some(ErrorWithLocation {
+                        err: Error::DoNothing,
+                        location: _,
+                    }) = err.downcast_ref::<ErrorWithLocation>()
+                    {
+                        eval_function(first, rest, env)
+                    } else {
+                        Err(anyhow!(err))
+                    }
+                } else {
+                    result
                 }
             } else {
                 Ok(Value::nil().with_type())
@@ -1208,10 +1263,11 @@ fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
             if let Some(var) = env.find_var(&value) {
                 Ok(var.clone())
             } else {
-                Err(Error::Eval(format!(
-                    "A variable {:?} is not defined",
-                    value
-                )))
+                Err(
+                    Error::Eval(format!("A variable `{}` is not defined", value.value))
+                        .with_location(ast.location)
+                        .into(),
+                )
             }
         }
         _ => Ok(Value::from(&ast.ast).with_type()),
@@ -1221,7 +1277,7 @@ fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
 pub fn eval_program(
     asts: &Program,
     ast_env: super::parser::Environment,
-) -> Result<Vec<ValueWithType>, Error> {
+) -> Result<Vec<ValueWithType>> {
     let mut env = Environment::new(ast_env.sym_table);
 
     // Pre-defined functions and special forms
@@ -1305,7 +1361,10 @@ pub fn eval_program(
                 if let Some(v) = vs.get(*idx as usize) {
                     Ok(v.clone())
                 } else {
-                    Err(Error::Eval("out of range".to_string()))
+                    // TODO: Annotate the location
+                    Err(Error::Eval("out of range".to_string())
+                        .with_null_location()
+                        .into())
                 }
             })
         },

@@ -1,12 +1,27 @@
-use lisp_rs::lispi::{error::Error, evaluator::*, parser::*, tokenizer::*, SymbolValue};
 use std::stringify;
+
+use lisp_rs::lispi::{
+    error::{Error, ErrorWithLocation},
+    evaluator::*,
+    parser::*,
+    tokenizer::*,
+    SymbolValue,
+};
 
 fn interp(program: &str) -> Result<Value, Error> {
     let lines = program.split('\n').map(|l| l.to_string()).collect();
-    let result = tokenize(lines)
-        .and_then(parse)
-        .and_then(|(ast, env)| eval_program(&ast, env))?;
-    Ok(result.last().unwrap().clone().value)
+    let (ast, env) = tokenize(lines).and_then(parse)?;
+    match eval_program(&ast, env) {
+        Ok(result) => Ok(result.last().unwrap().clone().value),
+        Err(err) => {
+            if let Some(err) = err.downcast_ref::<ErrorWithLocation>() {
+                Err(err.err.clone())
+            } else {
+                // Must not reach here
+                Err(Error::DoNothing)
+            }
+        }
+    }
 }
 
 macro_rules! assert_error {
