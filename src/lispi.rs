@@ -46,6 +46,13 @@ impl Location {
         self.line += 1;
         self.column = 0;
     }
+
+    pub fn humanize(self) -> Location {
+        Location {
+            line: self.line + 1,
+            column: self.column + 1,
+        }
+    }
 }
 
 impl std::fmt::Display for Location {

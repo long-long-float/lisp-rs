@@ -214,7 +214,7 @@ impl std::fmt::Display for Value {
                     for (i, v) in vs.iter().enumerate() {
                         write!(f, "{}", v.value)?;
                         if i < vs.len() - 1 {
-                            write!(f, ", ")?;
+                            write!(f, " ")?;
                         }
                     }
                     write!(f, ")")?;
@@ -522,7 +522,7 @@ fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>>
             if let Ast::Symbol(v) = &symbol.ast {
                 Ok(v.clone())
             } else {
-                Err(Error::Eval(format!("{:?} is not an symbol.", symbol))
+                Err(Error::Eval(format!("{:?} is not an symbol", symbol.ast))
                     .with_location(symbol.location)
                     .into())
             }
@@ -1033,20 +1033,6 @@ fn apply_function(
         },
     } = &func
     {
-        // let name = match value {
-        //     Value::Symbol(name) => name,
-        //     Value::Function {
-        //         name,
-        //         args: _,
-        //         body: _,
-        //         is_macro: _,
-        //     } => name,
-        //     Value::NativeFunction { name, func: _ } => name,
-        //     _ => {
-        //         println!("{:?}", value);
-        //         return Err(bug!());
-        //     }
-        // };
         let arg_types = arg_types.iter().map(|a| *a.clone()).collect::<Vec<Type>>();
         check_arg_types(func_loc, args, arg_locs, &arg_types)?;
     }
@@ -1073,7 +1059,7 @@ fn apply_function(
                                 has_float_arg = true;
                                 Ok(Number::Float(v))
                             }
-                            _ => Err(Error::Eval(format!("{:?} is not an integer.", arg))
+                            _ => Err(Error::Eval(format!("`{}` is not an integer.", arg.value))
                                 .with_location(*loc)
                                 .into()),
                         })
@@ -1231,7 +1217,7 @@ fn apply_function(
             Ok(get_last_result(result?))
         }
         Value::NativeFunction { name: _, func } => func(args.to_vec()),
-        _ => Err(Error::Eval(format!("{:?} is not a function", func.value))
+        _ => Err(Error::Eval(format!("{} is not a function", func.value))
             .with_location(func_loc)
             .into()),
     }
