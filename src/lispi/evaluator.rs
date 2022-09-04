@@ -268,16 +268,16 @@ impl From<bool> for Value {
     }
 }
 
-struct Environment {
+pub struct Environment {
     local_stack: LinkedList<Local>,
     sym_table: SymbolTable,
 }
 
 impl Environment {
-    fn new(sym_table: SymbolTable) -> Environment {
+    pub fn new() -> Environment {
         let mut env = Environment {
             local_stack: LinkedList::new(),
-            sym_table,
+            sym_table: SymbolTable::new(),
         };
         env.push_local();
         env
@@ -502,7 +502,7 @@ fn check_arg_types(
     Ok(())
 }
 
-fn eval_asts(asts: &[AstWithLocation], env: &mut Environment) -> Result<Vec<ValueWithType>> {
+pub fn eval_asts(asts: &[AstWithLocation], env: &mut Environment) -> Result<Vec<ValueWithType>> {
     asts.iter()
         .map(|arg| eval_ast(arg, env))
         .collect::<Result<Vec<ValueWithType>>>()
@@ -635,7 +635,7 @@ fn optimize_tail_recursion(
 
                                     return Some(Ast::List(form).with_null_location());
                                 } else {
-                                    println!("[Warn] '{}' is treated as an ordinay function in optimizing tail recursion", name);
+                                    // println!("[Warn] '{}' is treated as an ordinay function in optimizing tail recursion", name);
 
                                     let args = args
                                         .iter()
@@ -1260,12 +1260,7 @@ fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
     }
 }
 
-pub fn eval_program(
-    asts: &Program,
-    ast_env: super::parser::Environment,
-) -> Result<Vec<ValueWithType>> {
-    let mut env = Environment::new(ast_env.sym_table);
-
+pub fn init_env(env: &mut Environment) {
     // Pre-defined functions and special forms
     // TODO: Add function symbols with its definition
     env.insert_function(
@@ -1383,6 +1378,14 @@ pub fn eval_program(
     env.insert_variable_as_symbol("<=");
     env.insert_variable_as_symbol("or");
     env.insert_variable_as_symbol("map");
+}
 
+pub fn eval_program(
+    asts: &Program,
+    ast_env: super::parser::Environment,
+) -> Result<Vec<ValueWithType>> {
+    let mut env = Environment::new();
+    env.sym_table = ast_env.sym_table;
+    init_env(&mut env);
     eval_asts(asts, &mut env)
 }

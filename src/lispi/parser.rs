@@ -46,7 +46,7 @@ pub struct SymbolTable {
 }
 
 impl SymbolTable {
-    fn new() -> SymbolTable {
+    pub fn new() -> SymbolTable {
         let mut table = HashMap::new();
         // ID 0 means undefined
         table.insert("".to_string(), 0);
@@ -69,7 +69,7 @@ pub struct Environment {
 }
 
 impl Environment {
-    fn new() -> Environment {
+    pub fn new() -> Environment {
         Environment {
             sym_table: SymbolTable::new(),
         }
