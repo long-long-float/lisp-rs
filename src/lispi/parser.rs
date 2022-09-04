@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::collections::HashMap;
 
 use super::{error::*, evaluator::Value, tokenizer::*, LocationRange, SymbolValue, TokenLocation};
@@ -147,23 +148,26 @@ impl From<&str> for Ast {
 
 pub type Program = Vec<AstWithLocation>;
 
-pub type ParseResult<'a, T> = Result<(T, &'a [TokenWithLocation]), Error>;
+pub type ParseResult<'a, T> = Result<(T, &'a [TokenWithLocation])>;
 
 fn consume<'a>(
     tokens: &'a [TokenWithLocation],
     expected: &Token,
-) -> Result<(LocationRange, &'a [TokenWithLocation]), Error> {
+) -> ParseResult<'a, LocationRange> {
     if let Some((first, rest)) = tokens.split_first() {
         if &first.token == expected {
             Ok((first.location.clone(), rest))
         } else {
-            Err(Error::Parse(format!(
-                "Expected {:?}, actual {:?}",
-                expected, first.token
-            )))
+            Err(
+                Error::Parse(format!("Expected {:?}, actual {:?}", expected, first.token))
+                    .with_location(TokenLocation::Range(first.location))
+                    .into(),
+            )
         }
     } else {
-        Err(Error::Parse(format!("Expected {:?}, actual EOF", expected)))
+        Err(Error::Parse(format!("Expected {:?}, actual EOF", expected))
+            .with_location(TokenLocation::EOF)
+            .into())
     }
 }
 
@@ -257,10 +261,14 @@ fn parse_value<'a>(
             Token::StringLiteral(value) => {
                 Ok((Ast::String(value.clone()).with_location(loc), rest))
             }
-            _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0].token))),
+            _ => Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0].token))
+                .with_location(TokenLocation::Range(loc))
+                .into()),
         }
     } else {
-        Err(Error::Parse("EOF".to_string()))
+        Err(Error::Parse("Unexpected EOF".to_string())
+            .with_location(TokenLocation::Null)
+            .into())
     }
 }
 
@@ -279,12 +287,15 @@ fn parse_program<'a>(
     }
 }
 
-pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, Environment), Error> {
+pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, Environment)> {
     let mut env = Environment::new();
 
     parse_program(&tokens, &mut env).and_then(|(ast, tokens)| {
         if !tokens.is_empty() {
-            Err(Error::Parse(format!("Unexpeced {:?}", &tokens[0].token)))
+            let token = &tokens[0];
+            Err(Error::Parse(format!("Unexpeced {:?}", token.token))
+                .with_location(TokenLocation::Range(token.location))
+                .into())
         } else {
             Ok((ast, env))
         }

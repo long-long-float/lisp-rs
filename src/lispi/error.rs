@@ -1,7 +1,7 @@
 use std::{error, fmt::Display};
 use thiserror;
 
-use super::TokenLocation;
+use super::{Location, LocationRange, TokenLocation};
 
 #[derive(PartialEq, Debug, Clone, thiserror::Error)]
 pub enum Error {
@@ -34,6 +34,14 @@ impl Error {
             err: self,
             location,
         }
+    }
+
+    pub fn with_single_location(self, loc: Location) -> ErrorWithLocation {
+        let end = Location {
+            line: loc.line,
+            column: loc.column + 1,
+        };
+        self.with_location(TokenLocation::Range(LocationRange::new(loc, end)))
     }
 
     pub fn with_null_location(self) -> ErrorWithLocation {

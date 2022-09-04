@@ -64,7 +64,18 @@ impl std::fmt::Display for Location {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TokenLocation {
     Range(LocationRange),
+    EOF,
     Null,
+}
+
+impl std::fmt::Display for TokenLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            TokenLocation::Range(range) => write!(f, "{}", range),
+            TokenLocation::Null => write!(f, "NULL"),
+            TokenLocation::EOF => write!(f, "EOF"),
+        }
+    }
 }
 
 /// A range in file, `[begin, end)`.
@@ -77,5 +88,11 @@ pub struct LocationRange {
 impl LocationRange {
     fn new(begin: Location, end: Location) -> LocationRange {
         LocationRange { begin, end }
+    }
+}
+
+impl std::fmt::Display for LocationRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{} - {}", self.begin, self.end)
     }
 }

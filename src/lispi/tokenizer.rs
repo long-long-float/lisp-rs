@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::num::{ParseFloatError, ParseIntError};
 
 use super::error::*;
@@ -92,16 +93,20 @@ fn take_expected(
     line: &mut Vec<char>,
     loc: &mut Location,
     expected: char,
-) -> Result<(), Error> {
+) -> Result<()> {
     if let Some(c) = current_char(line, loc) {
         if c == expected {
             succ(program, line, loc);
             Ok(())
         } else {
-            Err(Error::Tokenize(format!("Unexpected {}", c)))
+            Err(Error::Tokenize(format!("Unexpected {}", c))
+                .with_single_location(loc.clone())
+                .into())
         }
     } else {
-        Err(Error::Tokenize("Unexpected EOF".to_string()))
+        Err(Error::Tokenize("Unexpected EOF".to_string())
+            .with_single_location(loc.clone())
+            .into())
     }
 }
 
@@ -113,8 +118,14 @@ fn current_char(line: &Vec<char>, loc: &Location) -> Option<char> {
     }
 }
 
-fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Location) {
+/// Move loc to next location.
+///
+/// Returned value is moved location, however it is not next line when the column reaches the end of line.
+fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Location) -> Location {
     loc.column += 1;
+
+    let result = loc.clone();
+
     let c = current_char(&line, loc);
     let nl = if let Some(c) = c {
         if c == '\r' || c == '\n' {
@@ -134,23 +145,25 @@ fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Locatio
             *line = Vec::new();
         }
     }
+
+    result
 }
 
 fn tokenize_single<'a>(
     program: &'a Vec<String>,
     line: &'a mut Vec<char>,
     loc: &mut Location,
-) -> Result<Option<TokenWithLocation>, Error> {
+) -> Result<Option<TokenWithLocation>> {
     if let Some(ch) = current_char(line, loc) {
         let begin = loc.clone();
         let result = match ch {
             '(' => {
-                succ(program, line, loc);
-                Token::LeftParen.with_location(begin, loc.clone())
+                let end = succ(program, line, loc);
+                Token::LeftParen.with_location(begin, end)
             }
             ')' => {
-                succ(program, line, loc);
-                Token::RightParen.with_location(begin, loc.clone())
+                let end = succ(program, line, loc);
+                Token::RightParen.with_location(begin, end)
             }
             '[' => {
                 succ(program, line, loc);
@@ -171,12 +184,16 @@ fn tokenize_single<'a>(
                     Some('f') => Token::BooleanLiteral(false),
                     Some('\\') => {
                         succ(program, line, loc);
-                        let c = current_char(line, loc)
-                            .ok_or(Error::Tokenize("Unexpected EOF".to_string()))?;
+                        let c = current_char(line, loc).ok_or(
+                            Error::Tokenize("Unexpected EOF".to_string())
+                                .with_single_location(loc.clone()),
+                        )?;
                         Token::CharLiteral(c)
                     }
-                    Some(c) => Err(Error::Tokenize(format!("Unexpected charactor {}", c)))?,
-                    None => Err(Error::Tokenize("Unexpected EOF".to_string()))?,
+                    Some(c) => Err(Error::Tokenize(format!("Unexpected charactor {}", c))
+                        .with_single_location(loc.clone()))?,
+                    None => Err(Error::Tokenize("Unexpected EOF".to_string())
+                        .with_single_location(loc.clone()))?,
                 };
                 succ(program, line, loc);
                 ret.with_location(begin, loc.clone())
@@ -240,7 +257,7 @@ fn tokenize_single<'a>(
     }
 }
 
-pub fn tokenize(program: Vec<String>) -> Result<Vec<TokenWithLocation>, Error> {
+pub fn tokenize(program: Vec<String>) -> Result<Vec<TokenWithLocation>> {
     let mut result = Vec::new();
 
     if let Some(line) = program.get(0) {
@@ -262,9 +279,9 @@ pub fn tokenize(program: Vec<String>) -> Result<Vec<TokenWithLocation>, Error> {
     }
 }
 
-pub fn show_tokens(tokens: Vec<TokenWithLocation>) -> Result<Vec<TokenWithLocation>, Error> {
+pub fn show_tokens(tokens: Vec<TokenWithLocation>) -> Result<Vec<TokenWithLocation>> {
     for TokenWithLocation { token, location } in &tokens {
-        println!("{:?} @ {}-{}", token, location.begin, location.end);
+        println!("{:?} @ {}", token, location);
     }
     Ok(tokens)
 }

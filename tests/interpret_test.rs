@@ -10,8 +10,10 @@ use lisp_rs::lispi::{
 
 fn interp(program: &str) -> Result<Value, Error> {
     let lines = program.split('\n').map(|l| l.to_string()).collect();
-    let (ast, env) = tokenize(lines).and_then(parse)?;
-    match eval_program(&ast, env) {
+    let result = tokenize(lines)
+        .and_then(parse)
+        .and_then(|(ast, env)| eval_program(&ast, env));
+    match result {
         Ok(result) => Ok(result.last().unwrap().clone().value),
         Err(err) => {
             if let Some(err) = err.downcast_ref::<ErrorWithLocation>() {
