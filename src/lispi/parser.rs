@@ -1,7 +1,10 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
-use super::{error::*, evaluator::Value, tokenizer::*, LocationRange, SymbolValue, TokenLocation};
+use super::{
+    error::*, evaluator::Environment, evaluator::Value, tokenizer::*, LocationRange, SymbolValue,
+    TokenLocation,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
@@ -41,6 +44,7 @@ pub struct AstWithLocation {
     pub location: TokenLocation,
 }
 
+#[derive(Clone, PartialEq, Debug)]
 pub struct SymbolTable {
     table: HashMap<String, u32>,
 }
@@ -64,17 +68,17 @@ impl SymbolTable {
     }
 }
 
-pub struct Environment {
-    pub sym_table: SymbolTable,
-}
+// pub struct Environment {
+//     pub sym_table: SymbolTable,
+// }
 
-impl Environment {
-    pub fn new() -> Environment {
-        Environment {
-            sym_table: SymbolTable::new(),
-        }
-    }
-}
+// impl Environment {
+//     pub fn new() -> Environment {
+//         Environment {
+//             sym_table: SymbolTable::new(),
+//         }
+//     }
+// }
 
 // For evaluating macros
 impl From<Value> for Ast {
@@ -289,15 +293,19 @@ fn parse_program<'a>(
 
 pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, Environment)> {
     let mut env = Environment::new();
+    let ast = parse_with_env(tokens, &mut env)?;
+    Ok((ast, env))
+}
 
-    parse_program(&tokens, &mut env).and_then(|(ast, tokens)| {
+pub fn parse_with_env(tokens: Vec<TokenWithLocation>, env: &mut Environment) -> Result<Program> {
+    parse_program(&tokens, env).and_then(|(ast, tokens)| {
         if !tokens.is_empty() {
             let token = &tokens[0];
             Err(Error::Parse(format!("Unexpeced {:?}", token.token))
                 .with_location(TokenLocation::Range(token.location))
                 .into())
         } else {
-            Ok((ast, env))
+            Ok(ast)
         }
     })
 }

@@ -270,7 +270,7 @@ impl From<bool> for Value {
 
 pub struct Environment {
     local_stack: LinkedList<Local>,
-    sym_table: SymbolTable,
+    pub sym_table: SymbolTable,
 }
 
 impl Environment {
@@ -1380,12 +1380,7 @@ pub fn init_env(env: &mut Environment) {
     env.insert_variable_as_symbol("map");
 }
 
-pub fn eval_program(
-    asts: &Program,
-    ast_env: super::parser::Environment,
-) -> Result<Vec<ValueWithType>> {
-    let mut env = Environment::new();
-    env.sym_table = ast_env.sym_table;
+pub fn eval_program(asts: &Program, mut env: Environment) -> Result<Vec<ValueWithType>> {
     init_env(&mut env);
     eval_asts(asts, &mut env)
 }

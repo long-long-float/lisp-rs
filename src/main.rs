@@ -22,8 +22,9 @@ fn main() -> Result<()> {
 
     if let Some(filename) = cli.filename {
         let lines = read_lines(&filename)?;
-        let result =
-            process_frontend(lines.clone()).and_then(|(ast, env)| e::eval_program(&ast, env));
+        let result = t::tokenize(lines.clone())
+            .and_then(p::parse)
+            .and_then(|(ast, env)| e::eval_program(&ast, env));
 
         match result {
             Ok(result) => {
@@ -45,11 +46,9 @@ fn main() -> Result<()> {
             io::stdin().read_line(&mut buf)?;
             let lines = vec![buf];
 
-            let results = process_frontend(lines.clone()).and_then(|(asts, sym_env)| {
-                // env.merge_sym_env(sym_env);
-
-                e::eval_asts(&asts, &mut env)
-            });
+            let results = t::tokenize(lines.clone())
+                .and_then(|tokens| p::parse_with_env(tokens, &mut env))
+                .and_then(|asts| e::eval_asts(&asts, &mut env));
             match results {
                 Ok(results) => {
                     if let Some(result) = results.last() {
@@ -77,10 +76,6 @@ where
     } else {
         Err(Error::Io("Cannot open soure file".to_string()))
     }
-}
-
-fn process_frontend(lines: Vec<String>) -> Result<(Vec<p::AstWithLocation>, p::Environment)> {
-    t::tokenize(lines).and_then(p::parse)
 }
 
 fn show_error(err: anyhow::Error, filename: String, lines: Vec<String>) {
