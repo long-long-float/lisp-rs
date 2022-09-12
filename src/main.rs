@@ -1,7 +1,14 @@
 use anyhow::Result;
 use clap::Parser;
+use crossterm::cursor;
+use crossterm::event;
+use crossterm::event::{read, Event, KeyEvent};
+use crossterm::terminal;
+use crossterm::ExecutableCommand;
+use std::collections::VecDeque;
+use std::fmt::Display;
 use std::fs::File;
-use std::io::{self, BufRead, Write};
+use std::io::{self, stdout, BufRead, Write};
 use std::path::Path;
 
 use lisp_rs::lispi::error::ErrorWithLocation;
@@ -35,27 +42,163 @@ fn main() -> Result<()> {
             Err(err) => show_error(err, filename, lines),
         }
     } else {
-        // let mut sym_env = Environment::new();
+        terminal::enable_raw_mode()?;
+
+        fn print<T>(text: &T) -> std::io::Result<()>
+        where
+            T: Display + ?Sized,
+        {
+            write!(stdout(), "{}", text)?;
+            stdout().flush()?;
+            Ok(())
+        }
+
+        fn println<T>(text: &T) -> std::io::Result<()>
+        where
+            T: Display + ?Sized,
+        {
+            print(text)?;
+            newline()?;
+            Ok(())
+        }
+
+        fn newline() -> std::io::Result<()> {
+            stdout()
+                .execute(cursor::MoveToNextLine(1))?
+                .execute(terminal::ScrollUp(1))?;
+            Ok(())
+        }
+
+        let prompt = "(lisp-rs) > ";
+
+        print(prompt)?;
+
+        let mut history: VecDeque<Vec<String>> = VecDeque::new();
+        history.push_front("test".chars().map(|c| c.to_string()).collect());
+        history.push_front("hello world".chars().map(|c| c.to_string()).collect());
+        history.push_front(Vec::new());
+
+        // 0 is the position where a user is inputing.
+        let mut history_pos = 0;
+
+        // let mut buffer = Vec::new();
+        // buffer.reserve(1024);
+
+        let mut cursor_pos = 0;
+
+        let set_program = |prog: String, cursor_pos: &mut usize| -> std::io::Result<()> {
+            stdout()
+                .execute(cursor::MoveToColumn(1))?
+                .execute(terminal::Clear(terminal::ClearType::CurrentLine))?;
+            print(prompt)?;
+            print(&prog)?;
+
+            *cursor_pos = prog.len();
+
+            Ok(())
+        };
+
         let mut env = e::Environment::new();
         e::init_env(&mut env);
+
         loop {
-            print!("(lisp-rs) > ");
-            io::stdout().flush()?;
+            let buffer = &mut history[history_pos];
 
-            let mut buf = String::new();
-            io::stdin().read_line(&mut buf)?;
-            let lines = vec![buf];
+            match read()? {
+                Event::Key(KeyEvent { code, modifiers }) => match code {
+                    event::KeyCode::Char(ch) => {
+                        if ch == 'c' && modifiers == event::KeyModifiers::CONTROL {
+                            terminal::disable_raw_mode()?;
+                            return Ok(());
+                        }
 
-            let results = t::tokenize(lines.clone())
-                .and_then(|tokens| p::parse_with_env(tokens, &mut env))
-                .and_then(|asts| e::eval_asts(&asts, &mut env));
-            match results {
-                Ok(results) => {
-                    if let Some(result) = results.last() {
-                        println!("{}: {}", result.value, result.type_);
+                        if cursor_pos < buffer.len() {
+                            buffer.insert(cursor_pos, ch.to_string());
+                        } else {
+                            buffer.push(ch.to_string());
+                        }
+
+                        let left_shift = buffer.len() - cursor_pos - 1;
+
+                        set_program(buffer.join(""), &mut cursor_pos)?;
+
+                        cursor_pos -= left_shift;
+                        stdout().execute(cursor::MoveLeft(left_shift.try_into().unwrap()))?;
                     }
-                }
-                Err(err) => show_error(err, "".to_string(), lines),
+                    event::KeyCode::Backspace => {
+                        if cursor_pos > 0 {
+                            buffer.remove(cursor_pos - 1);
+
+                            let left_shift = buffer.len() + 1 - cursor_pos;
+
+                            set_program(buffer.join(""), &mut cursor_pos)?;
+
+                            cursor_pos -= left_shift;
+                            stdout().execute(cursor::MoveLeft(left_shift.try_into().unwrap()))?;
+                        }
+                    }
+                    event::KeyCode::Enter => {
+                        newline()?;
+
+                        if !buffer.is_empty() {
+                            let lines = vec![buffer.join("")];
+                            let results = t::tokenize(lines.clone())
+                                .and_then(|tokens| p::parse_with_env(tokens, &mut env))
+                                .and_then(|asts| e::eval_asts(&asts, &mut env));
+                            match results {
+                                Ok(results) => {
+                                    if let Some(result) = results.last() {
+                                        println!("{}: {}", result.value, result.type_);
+                                    }
+                                }
+                                Err(err) => show_error(err, "".to_string(), lines),
+                            }
+                        }
+
+                        print(prompt)?;
+
+                        if history_pos >= 2 {
+                            history[0] = buffer.clone();
+                        }
+
+                        if !history[0].is_empty() {
+                            history.push_front(Vec::new());
+                        }
+
+                        history_pos = 0;
+                        cursor_pos = 0;
+                    }
+                    event::KeyCode::Right => {
+                        if cursor_pos < buffer.len() {
+                            stdout().execute(cursor::MoveRight(1))?;
+                            cursor_pos += 1;
+                        }
+                    }
+                    event::KeyCode::Left => {
+                        if cursor_pos > 0 {
+                            stdout().execute(cursor::MoveLeft(1))?;
+                            cursor_pos -= 1;
+                        }
+                    }
+                    event::KeyCode::Up => {
+                        if history_pos < history.len() - 1 {
+                            history_pos += 1;
+
+                            let program = history[history_pos].join("");
+                            set_program(program, &mut cursor_pos)?;
+                        }
+                    }
+                    event::KeyCode::Down => {
+                        if history_pos > 0 {
+                            history_pos -= 1;
+
+                            let program = history[history_pos].join("");
+                            set_program(program, &mut cursor_pos)?;
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
         }
     }
