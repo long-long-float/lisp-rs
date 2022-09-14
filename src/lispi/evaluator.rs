@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::{collections::HashMap, collections::LinkedList};
 
-use super::{error::*, parser::*, SymbolValue, TokenLocation};
+use super::{console::*, error::*, parser::*, SymbolValue, TokenLocation};
 
 macro_rules! bug {
     () => {
@@ -1134,7 +1134,7 @@ fn apply_function(
                 "or" => Ok(Value::Boolean(args.iter().any(|arg| arg.value.is_true())).with_type()),
                 "print" => {
                     for arg in args {
-                        println!("{}", arg.value);
+                        printlnuw(&arg.value);
                     }
                     Ok(Value::nil().with_type())
                 }
@@ -1361,7 +1361,7 @@ pub fn init_env(env: &mut Environment) {
         },
     );
     env.insert_function("newline", Type::function(vec![], Type::Any), |_| {
-        println!();
+        newlineuw();
         Ok(Value::List(vec![]).with_type())
     });
 

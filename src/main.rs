@@ -6,13 +6,12 @@ use crossterm::event::{read, Event, KeyEvent};
 use crossterm::terminal;
 use crossterm::ExecutableCommand;
 use std::collections::VecDeque;
-use std::fmt::Display;
 use std::fs::File;
-use std::io::{self, stdout, BufRead, Write};
+use std::io::{self, stdout, BufRead};
 use std::path::Path;
 
 use lisp_rs::lispi::error::ErrorWithLocation;
-use lisp_rs::lispi::{error::Error, evaluator as e, parser as p, tokenizer as t};
+use lisp_rs::lispi::{console as c, error::Error, evaluator as e, parser as p, tokenizer as t};
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
 #[derive(Parser)]
@@ -44,34 +43,9 @@ fn main() -> Result<()> {
     } else {
         terminal::enable_raw_mode()?;
 
-        fn print<T>(text: &T) -> std::io::Result<()>
-        where
-            T: Display + ?Sized,
-        {
-            write!(stdout(), "{}", text)?;
-            stdout().flush()?;
-            Ok(())
-        }
-
-        fn println<T>(text: &T) -> std::io::Result<()>
-        where
-            T: Display + ?Sized,
-        {
-            print(text)?;
-            newline()?;
-            Ok(())
-        }
-
-        fn newline() -> std::io::Result<()> {
-            stdout()
-                .execute(cursor::MoveToNextLine(1))?
-                .execute(terminal::ScrollUp(1))?;
-            Ok(())
-        }
-
         let prompt = "(lisp-rs) > ";
 
-        print(prompt)?;
+        c::print(prompt)?;
 
         let mut history: VecDeque<Vec<String>> = VecDeque::new();
         history.push_front("test".chars().map(|c| c.to_string()).collect());
@@ -81,17 +55,14 @@ fn main() -> Result<()> {
         // 0 is the position where a user is inputing.
         let mut history_pos = 0;
 
-        // let mut buffer = Vec::new();
-        // buffer.reserve(1024);
-
         let mut cursor_pos = 0;
 
         let set_program = |prog: String, cursor_pos: &mut usize| -> std::io::Result<()> {
             stdout()
                 .execute(cursor::MoveToColumn(1))?
                 .execute(terminal::Clear(terminal::ClearType::CurrentLine))?;
-            print(prompt)?;
-            print(&prog)?;
+            c::print(prompt)?;
+            c::print(&prog)?;
 
             *cursor_pos = prog.len();
 
@@ -138,7 +109,7 @@ fn main() -> Result<()> {
                         }
                     }
                     event::KeyCode::Enter => {
-                        newline()?;
+                        c::newline()?;
 
                         if !buffer.is_empty() {
                             let lines = vec![buffer.join("")];
@@ -148,14 +119,17 @@ fn main() -> Result<()> {
                             match results {
                                 Ok(results) => {
                                     if let Some(result) = results.last() {
-                                        println!("{}: {}", result.value, result.type_);
+                                        c::printlnuw(&format!(
+                                            "{}: {}",
+                                            result.value, result.type_
+                                        ));
                                     }
                                 }
                                 Err(err) => show_error(err, "".to_string(), lines),
                             }
                         }
 
-                        print(prompt)?;
+                        c::print(prompt)?;
 
                         if history_pos >= 2 {
                             history[0] = buffer.clone();
@@ -256,35 +230,35 @@ fn show_error(err: anyhow::Error, filename: String, lines: Vec<String>) {
             } = end.humanize();
 
             if bline == eline {
-                println!("{} at {}:{}:{}", err, filename, bline, bcol);
+                c::printlnuw(&format!("{} at {}:{}:{}", err, filename, bline, bcol));
 
                 let lineno = bline.to_string();
                 let left = " ".repeat(lineno.len()) + " |";
-                println!("{}", left);
+                c::printlnuw(&left);
                 let underline = " ".repeat(bcol - 1) + "^".repeat(ecol - bcol).as_str();
 
-                println!(
+                c::printlnuw(&format!(
                     "{} | {}",
                     lineno,
                     lines
                         .get(bline - 1)
                         .map(|l| l.to_string())
                         .unwrap_or_else(|| "".to_string())
-                );
-                println!("{} {}", left, underline);
+                ));
+                c::printlnuw(&format!("{} {}", left, underline));
             } else {
-                println!(
+                c::printlnuw(&format!(
                     "{} at {}:{}:{} - {}:{}",
                     err, filename, bline, bcol, eline, ecol
-                );
+                ));
 
                 let max_lineno_len = eline.to_string().len();
                 let left = " ".repeat(max_lineno_len) + " |";
-                println!("{}", left);
+                c::printlnuw(&left);
 
                 for line in bline..=eline {
                     let lineno = line.to_string();
-                    println!(
+                    c::printlnuw(&format!(
                         "{}{} | > {}",
                         lineno,
                         " ".repeat(max_lineno_len - lineno.len()),
@@ -292,14 +266,14 @@ fn show_error(err: anyhow::Error, filename: String, lines: Vec<String>) {
                             .get(line - 1)
                             .map(|l| l.to_string())
                             .unwrap_or_else(|| "".to_string())
-                    );
+                    ));
                 }
-                println!("{}", left);
+                c::printlnuw(&left);
             }
         } else {
-            println!("{}", err);
+            c::printlnuw(&err);
         }
     } else {
-        println!("{}", err);
+        c::printlnuw(&err);
     }
 }
