@@ -105,7 +105,7 @@ impl From<Value> for Ast {
                 name,
                 args,
                 body,
-                is_macro: _,
+                ..
             } => {
                 if name.value == "" {
                     // Function created by lambda

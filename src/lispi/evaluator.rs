@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
-use std::{collections::HashMap, collections::LinkedList};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use super::{console::*, error::*, parser::*, SymbolValue, TokenLocation};
 
@@ -122,10 +122,9 @@ macro_rules! ast_pat {
     };
 }
 
-// type EvalResult = Result<ValueWithType, Error>;
 type EvalResult = Result<ValueWithType>;
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Integer(i32),
     Float(f32),
@@ -139,16 +138,17 @@ pub enum Value {
         args: Vec<SymbolValue>,
         body: Vec<AstWithLocation>,
         is_macro: bool,
+        parent_local: LocalRef,
     },
     NativeFunction {
         name: SymbolValue,
         func: fn(Vec<ValueWithType>) -> EvalResult,
     },
 
-    // For macro expansion
+    /// For macro expansion
     RawAst(AstWithLocation),
 
-    // For optimizing tail recursion
+    /// For optimizing tail recursion
     Continue(String),
 }
 
@@ -173,12 +173,7 @@ impl Value {
             Value::Char(_) => Type::Char,
             Value::String(_) => Type::String,
             Value::List(_) => Type::list(),
-            Value::Function {
-                name: _,
-                args: _,
-                body: _,
-                is_macro: _,
-            } => {
+            Value::Function { .. } => {
                 // TODO: Return concrete type
                 Type::Any
             }
@@ -221,12 +216,7 @@ impl std::fmt::Display for Value {
                     Ok(())
                 }
             }
-            Value::Function {
-                name,
-                args: _,
-                body: _,
-                is_macro,
-            } => {
+            Value::Function { name, is_macro, .. } => {
                 if *is_macro {
                     write!(f, "MACRO {}", name.value)
                 } else {
@@ -268,15 +258,37 @@ impl From<bool> for Value {
     }
 }
 
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (&Value::Integer(x), &Value::Integer(y)) => x == y,
+            (&Value::Float(x), &Value::Float(y)) => x == y,
+            (&Value::Boolean(x), &Value::Boolean(y)) => x == y,
+            (&Value::Char(x), &Value::Char(y)) => x == y,
+            (Value::String(x), Value::String(y)) => x == y,
+            (Value::Symbol(x), Value::Symbol(y)) => x == y,
+            (Value::List(x), Value::List(y)) => x == y,
+            (Value::Function { name: x, .. }, Value::Function { name: y, .. }) => x == y,
+            (Value::NativeFunction { name: x, .. }, Value::NativeFunction { name: y, .. }) => {
+                x == y
+            }
+            // These values cannot compare.
+            (Value::RawAst(_), Value::RawAst(_)) => false,
+            (Value::Continue(_), Value::Continue(_)) => false,
+            _ => false,
+        }
+    }
+}
+
 pub struct Environment {
-    local_stack: LinkedList<Local>,
+    head_local: LocalRef,
     pub sym_table: SymbolTable,
 }
 
 impl Environment {
     pub fn new() -> Environment {
         let mut env = Environment {
-            local_stack: LinkedList::new(),
+            head_local: None,
             sym_table: SymbolTable::new(),
         };
         env.push_local();
@@ -284,9 +296,9 @@ impl Environment {
     }
 
     fn update_var(&mut self, name: SymbolValue, value: ValueWithType) -> Result<(), Error> {
-        if let Some(found) = self.find_var_mut(&name) {
-            // TODO: Check type
-            found.value = value.value;
+        let id = self.resolve_sym_id(&name);
+        let mut local = self.head_local.as_mut().unwrap().borrow_mut();
+        if local.update_var(id, value) {
             Ok(())
         } else {
             Err(Error::Eval(format!(
@@ -307,28 +319,13 @@ impl Environment {
     fn insert_var(&mut self, name: SymbolValue, value: ValueWithType) {
         let id = self.resolve_sym_id(&name);
         // local_stack must have least one local
-        let local = self.local_stack.front_mut().unwrap();
+        let mut local = self.head_local.as_ref().unwrap().borrow_mut();
         local.variables.insert(id, value);
     }
 
-    fn find_var(&mut self, name: &SymbolValue) -> Option<&ValueWithType> {
+    fn find_var(&mut self, name: &SymbolValue) -> Option<ValueWithType> {
         let id = self.resolve_sym_id(&name);
-        for local in &self.local_stack {
-            if let Some(value) = local.variables.get(&id) {
-                return Some(value);
-            }
-        }
-        None
-    }
-
-    fn find_var_mut(&mut self, name: &SymbolValue) -> Option<&mut ValueWithType> {
-        let id = self.resolve_sym_id(&name);
-        for local in self.local_stack.iter_mut() {
-            if let Some(value) = local.variables.get_mut(&id) {
-                return Some(value);
-            }
-        }
-        None
+        self.head_local.as_mut().unwrap().borrow_mut().find_var(id)
     }
 
     fn insert_function(
@@ -356,25 +353,81 @@ impl Environment {
         self.insert_var(sym.clone(), Value::Symbol(sym).with_type());
     }
 
+    #[allow(dead_code)]
+    fn dump_local(&self) {
+        let local = self.head_local.as_ref().unwrap().borrow();
+        printlnuw("--- Locals ---");
+        local.dump();
+    }
+
     fn push_local(&mut self) {
-        self.local_stack.push_front(Local::new());
+        let local = self.head_local.clone();
+        let local = Some(Rc::new(RefCell::new(Local::new(local))));
+        self.head_local = local;
     }
 
     fn pop_local(&mut self) {
-        self.local_stack.pop_front();
+        if let Some(local) = &self.head_local {
+            let parent = local.borrow().parent.clone();
+            self.head_local = parent;
+        }
     }
 }
 
-struct Local {
+/// Reference of Local. `None` represents the root.
+type LocalRef = Option<Rc<RefCell<Local>>>;
+
+/// A Local has mappings for local variables.
+///
+/// The Environment has a local as currently evaluation.
+/// A lambda also has a local to realize clojures.
+///
+/// Locals chains like this.
+///
+/// ```text
+/// Environment.head_local -> local1 -> local2 ... -> None (root)
+/// ```
+#[derive(PartialEq, Debug)]
+pub struct Local {
     variables: FxHashMap<u32, ValueWithType>,
-    // For ID=0 symbols
-    // variables_string: HashMap<String, ValueWithType>,
+    parent: LocalRef,
 }
 
 impl Local {
-    fn new() -> Local {
+    fn new(parent: LocalRef) -> Local {
         Local {
             variables: HashMap::default(),
+            parent,
+        }
+    }
+
+    fn find_var(&mut self, id: u32) -> Option<ValueWithType> {
+        if let Some(value) = self.variables.get(&id) {
+            Some(value.clone())
+        } else if let Some(parent) = &self.parent {
+            parent.borrow_mut().find_var(id)
+        } else {
+            None
+        }
+    }
+
+    fn update_var(&mut self, id: u32, value: ValueWithType) -> bool {
+        if let Some(found) = self.variables.get_mut(&id) {
+            // TODO: Check type
+            found.value = value.value;
+            true
+        } else if let Some(parent) = &self.parent {
+            parent.borrow_mut().update_var(id, value)
+        } else {
+            false
+        }
+    }
+
+    fn dump(&self) {
+        if let Some(parent) = &self.parent {
+            // Don't print root local.
+            printlnuw(&format!("{:#?}", self.variables));
+            parent.borrow_mut().dump()
         }
     }
 }
@@ -538,6 +591,7 @@ fn optimize_tail_recursion(
     body: &[AstWithLocation],
 ) -> Option<Vec<AstWithLocation>> {
     /// Optimize tail recursion for the last ast
+    ///
     /// ref https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html
     fn _optimize_tail_recursion(
         func_name: &String,
@@ -747,6 +801,7 @@ fn eval_special_form(
                             args: args,
                             body: body.to_vec(),
                             is_macro,
+                            parent_local: None,
                         };
                         env.insert_var(
                             fun_name.clone(),
@@ -770,6 +825,7 @@ fn eval_special_form(
                         args: args,
                         body: body.to_vec(),
                         is_macro: false,
+                        parent_local: env.head_local.clone(),
                     };
 
                     Ok(ValueWithType {
@@ -850,7 +906,6 @@ fn eval_special_form(
                             env.insert_var(id.clone(), expr);
                         }
 
-                        // let mut result: ValueWithType;
                         let result = loop {
                             let results = eval_asts(&optimized, env);
                             let result = get_last_result(results?);
@@ -874,6 +929,7 @@ fn eval_special_form(
                             args,
                             body: body.to_vec(),
                             is_macro: false,
+                            parent_local: None,
                         };
 
                         env.push_local();
@@ -977,10 +1033,10 @@ fn eval_special_form(
             _ => {
                 let mac = eval_ast(name_ast, env)?;
                 if let Value::Function {
-                    name: _,
                     args,
                     body,
                     is_macro: true,
+                    ..
                 } = mac.value
                 {
                     env.push_local();
@@ -1199,10 +1255,10 @@ fn apply_function(
             }
         }
         Value::Function {
-            name: _,
             args: arg_names,
             body,
             is_macro: false,
+            ..
         } => {
             env.push_local();
 
@@ -1247,7 +1303,7 @@ fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
         }
         Ast::Symbol(value) => {
             if let Some(var) = env.find_var(&value) {
-                Ok(var.clone())
+                Ok(var)
             } else {
                 Err(
                     Error::Eval(format!("A variable `{}` is not defined", value.value))
@@ -1378,6 +1434,9 @@ pub fn init_env(env: &mut Environment) {
     env.insert_variable_as_symbol("<=");
     env.insert_variable_as_symbol("or");
     env.insert_variable_as_symbol("map");
+
+    // For visibility of Environment.dump_local()
+    env.push_local();
 }
 
 pub fn eval_program(asts: &Program, mut env: Environment) -> Result<Vec<ValueWithType>> {
