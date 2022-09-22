@@ -48,8 +48,8 @@ fn main() -> Result<()> {
         c::print(prompt)?;
 
         let mut history: VecDeque<Vec<String>> = VecDeque::new();
-        history.push_front("test".chars().map(|c| c.to_string()).collect());
-        history.push_front("hello world".chars().map(|c| c.to_string()).collect());
+        // history.push_front("test".chars().map(|c| c.to_string()).collect());
+        // history.push_front("hello world".chars().map(|c| c.to_string()).collect());
         history.push_front(Vec::new());
 
         // 0 is the position where a user is inputing.
@@ -79,6 +79,20 @@ fn main() -> Result<()> {
                 Event::Key(KeyEvent { code, modifiers }) => match code {
                     event::KeyCode::Char(ch) => {
                         if ch == 'c' && modifiers == event::KeyModifiers::CONTROL {
+                            c::newline()?;
+                            c::print(prompt)?;
+
+                            if history_pos == 0 {
+                                buffer.clear();
+                            }
+
+                            history_pos = 0;
+                            cursor_pos = 0;
+
+                            continue;
+                        }
+
+                        if ch == 'd' && modifiers == event::KeyModifiers::CONTROL {
                             terminal::disable_raw_mode()?;
                             return Ok(());
                         }

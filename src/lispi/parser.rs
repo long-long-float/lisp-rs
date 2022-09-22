@@ -102,10 +102,7 @@ impl From<Value> for Ast {
                 }
             }
             Value::Function {
-                name,
-                args,
-                body,
-                ..
+                name, args, body, ..
             } => {
                 if name.value == "" {
                     // Function created by lambda
