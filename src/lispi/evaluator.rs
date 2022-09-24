@@ -283,6 +283,9 @@ impl PartialEq for Value {
 pub struct Environment {
     head_local: LocalRef,
     pub sym_table: SymbolTable,
+
+    /// For referencing variables from closure.
+    lambda_local: LocalRef,
 }
 
 impl Environment {
@@ -290,12 +293,13 @@ impl Environment {
         let mut env = Environment {
             head_local: None,
             sym_table: SymbolTable::new(),
+            lambda_local: None,
         };
         env.push_local();
         env
     }
 
-    fn update_var(&mut self, name: SymbolValue, value: ValueWithType) -> Result<(), Error> {
+    fn update_var(&mut self, name: SymbolValue, value: &ValueWithType) -> Result<(), Error> {
         let id = self.resolve_sym_id(&name);
         let mut local = self.head_local.as_mut().unwrap().borrow_mut();
         if local.update_var(id, value) {
@@ -380,7 +384,7 @@ type LocalRef = Option<Rc<RefCell<Local>>>;
 /// A Local has mappings for local variables.
 ///
 /// The Environment has a local as currently evaluation.
-/// A lambda also has a local to realize clojures.
+/// A lambda also has a local to realize closures.
 ///
 /// Locals chains like this.
 ///
@@ -411,10 +415,10 @@ impl Local {
         }
     }
 
-    fn update_var(&mut self, id: u32, value: ValueWithType) -> bool {
+    fn update_var(&mut self, id: u32, value: &ValueWithType) -> bool {
         if let Some(found) = self.variables.get_mut(&id) {
             // TODO: Check type
-            found.value = value.value;
+            found.value = value.value.clone();
             true
         } else if let Some(parent) = &self.parent {
             parent.borrow_mut().update_var(id, value)
@@ -770,8 +774,18 @@ fn eval_special_form(
             "set!" => {
                 match_special_args!(raw_args, ast_pat!(Ast::Symbol(name), _loc), value, {
                     let value = eval_ast(value, env)?;
-                    env.update_var(name.clone(), value)
-                        .or_else(|err| Err(anyhow!(err.with_location(name_ast.location))))?;
+                    if env.update_var(name.clone(), &value).is_ok() {
+                        return Ok(Value::nil().with_type());
+                    }
+
+                    if let Some(local) = env.lambda_local.clone() {
+                        let id = env.resolve_sym_id(&name);
+                        if local.borrow_mut().update_var(id, &value) {
+                            return Ok(Value::nil().with_type());
+                        }
+                    }
+
+                    // .or_else(|err| Err(anyhow!(err.with_location(name_ast.location))))?;
                     Ok(Value::nil().with_type())
                 })
             }
@@ -1258,6 +1272,7 @@ fn apply_function(
             args: arg_names,
             body,
             is_macro: false,
+            parent_local,
             ..
         } => {
             env.push_local();
@@ -1266,7 +1281,14 @@ fn apply_function(
                 env.insert_var(name.clone(), value.clone());
             }
 
+            // TODO: Support nested lambda calling.
+            if parent_local.is_some() {
+                env.lambda_local = parent_local.clone();
+            }
+
             let result = eval_asts(&body, env);
+
+            env.lambda_local = None;
 
             env.pop_local();
 
@@ -1303,14 +1325,21 @@ fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
         }
         Ast::Symbol(value) => {
             if let Some(var) = env.find_var(&value) {
-                Ok(var)
-            } else {
-                Err(
-                    Error::Eval(format!("A variable `{}` is not defined", value.value))
-                        .with_location(ast.location)
-                        .into(),
-                )
+                return Ok(var);
             }
+
+            if let Some(local) = env.lambda_local.clone() {
+                let id = env.resolve_sym_id(&value);
+                if let Some(var) = local.borrow_mut().find_var(id) {
+                    return Ok(var);
+                }
+            }
+
+            Err(
+                Error::Eval(format!("A variable `{}` is not defined", value.value))
+                    .with_location(ast.location)
+                    .into(),
+            )
         }
         _ => Ok(Value::from(&ast.ast).with_type()),
     }

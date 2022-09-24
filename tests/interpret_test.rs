@@ -275,6 +275,26 @@ fn lambda_test() {
 }
 
 #[test]
+fn closure_test() {
+    assert_eq!(
+        Ok(build_list(vec![1, 2, 1, 3])),
+        interp(
+            r#"
+(define make-counter (lambda () 
+    (define c 0)
+    (lambda () 
+        (set! c (+ c 1))
+        c)))
+
+(define c1 (make-counter))
+(define c2 (make-counter))
+
+(list (c1) (c1) (c2) (c1))"#
+        )
+    );
+}
+
+#[test]
 fn macro_test() {
     assert_eq!(
         Ok(build_list(vec![20, 10])),
