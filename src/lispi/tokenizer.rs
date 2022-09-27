@@ -149,6 +149,7 @@ fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Locatio
     result
 }
 
+/// Get a single token from program and move loc to the location of next token
 fn tokenize_single<'a>(
     program: &'a Vec<String>,
     line: &'a mut Vec<char>,
@@ -257,6 +258,9 @@ fn tokenize_single<'a>(
     }
 }
 
+/// Get tokens with its location from program.
+///
+/// This step is to ease parsing step.
 pub fn tokenize(program: Vec<String>) -> Result<Vec<TokenWithLocation>> {
     let mut result = Vec::new();
 

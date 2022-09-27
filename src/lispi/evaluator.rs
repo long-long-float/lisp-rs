@@ -587,16 +587,38 @@ fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>>
         .collect()
 }
 
-/// Try to optimize tail recursion for body
+/// Try to optimize tail recursion for body.
+///
+/// This removes tail recursion such as following forms.
+///
+/// ```lisp
+/// (let loop ((i 0)) (if (< i 1000
+///  (begin
+///   (loop (+ i 1)))))
+/// ```
+///
+/// This is converted to,
+///
+/// ```lisp
+/// (define i 0)
+/// (internal-loop (if (< i 1000
+///  (begin
+///   (set! i (+ i 1))
+///   continue))))
+/// ```
+///
+/// A `internal-loop` behaves like `while(true)`. However it breaks without continue.
+/// A `continue` is special value used only in this interpreter.
+/// If the evaluator meets `continue`, the process goes a head of `internal-loop`.
+///
+/// This optimization is followed by https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html .
+///
 // TOOD: Support body what the function is assigned other variable
 fn optimize_tail_recursion(
     func_name: &String,
     locals: &[SymbolValue],
     body: &[AstWithLocation],
 ) -> Option<Vec<AstWithLocation>> {
-    /// Optimize tail recursion for the last ast
-    ///
-    /// ref https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html
     fn _optimize_tail_recursion(
         func_name: &String,
         locals: &[SymbolValue],
@@ -763,6 +785,15 @@ fn optimize_tail_recursion(
     }
 }
 
+/// Evaluate special forms. The difference from eval_function is whether arguments are evaluated.
+/// Arguments of special froms are not evaluated before processing arguments.
+///
+/// This is useful for `if` for example.
+/// In the second arm `(print "Never evaluated")` is not expected to be evaluated.
+///
+/// ```lisp
+/// (if #t (print "Hi") (print "Never evaluated"))
+/// ```
 fn eval_special_form(
     name_ast: &AstWithLocation,
     raw_args: &[AstWithLocation],
@@ -1088,6 +1119,8 @@ fn eval_function(
     apply_function(&name, *name_loc, &args, &arg_locs, env)
 }
 
+/// Apply a function to args under env.
+/// It's formed as `(func args...)`.
 fn apply_function(
     func: &ValueWithType,
     func_loc: TokenLocation,
@@ -1108,12 +1141,16 @@ fn apply_function(
     }
 
     match &func.value {
+        // Embedded functions
         Value::Symbol(func_name) => {
             let func_name = func_name.value.as_str();
 
             match func_name {
                 // Functions
                 "+" | "-" | "*" | "/" | ">" | ">=" | "<" | "<=" => {
+                    // Arithmetic function accepts both integer and float values.
+                    // If a float value exists in arguments, all arguments are treated as float values.
+                    // Otherwise, there are calcurated as integer.
                     enum Number {
                         Int(i32),
                         Float(f32),
@@ -1135,6 +1172,7 @@ fn apply_function(
                         })
                         .collect::<Result<Vec<Number>>>()?;
 
+                    // To prevent duplicate definitions for integer and float, a macro `calc` is defined.
                     macro_rules! calc {
                         ( $args:expr, $elem_type:ty ) => {
                             match func_name {
@@ -1268,6 +1306,7 @@ fn apply_function(
                     .into()),
             }
         }
+        // Function defined in lisp
         Value::Function {
             args: arg_names,
             body,
@@ -1294,6 +1333,7 @@ fn apply_function(
 
             Ok(get_last_result(result?))
         }
+        // Function defined in Rust (`init_env`).
         Value::NativeFunction { name: _, func } => func(args.to_vec()),
         _ => Err(Error::Eval(format!("{} is not a function", func.value))
             .with_location(func_loc)
@@ -1301,6 +1341,8 @@ fn apply_function(
     }
 }
 
+/// Evaluate a single AST such as lists and symbols.
+/// Other values (ATOM) are evaluated at `Value::from`.
 fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
     match &ast.ast {
         Ast::List(elements) => {
@@ -1345,9 +1387,9 @@ fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
     }
 }
 
+/// Define embedded functions to insert to the root of environment.
 pub fn init_env(env: &mut Environment) {
     // Pre-defined functions and special forms
-    // TODO: Add function symbols with its definition
     env.insert_function(
         "even?",
         Type::function(vec![Type::int()], Type::Any),
@@ -1450,6 +1492,8 @@ pub fn init_env(env: &mut Environment) {
         Ok(Value::List(vec![]).with_type())
     });
 
+    // These functions cannot be defined using `match_call_args!` due to variable arguments.
+    // These are defined at `apply_function`.
     env.insert_variable_as_symbol("print");
     env.insert_variable_as_symbol("display");
     env.insert_variable_as_symbol("list");
@@ -1468,6 +1512,9 @@ pub fn init_env(env: &mut Environment) {
     env.push_local();
 }
 
+/// Evaluate ASTs and return the these results.
+///
+/// This function visits AST node recursively and process each nodes.
 pub fn eval_program(asts: &Program, mut env: Environment) -> Result<Vec<ValueWithType>> {
     init_env(&mut env);
     eval_asts(asts, &mut env)

@@ -27,7 +27,17 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if let Some(filename) = cli.filename {
+        // Run the program from file
+
         let lines = read_lines(&filename)?;
+
+        // Run the program as following steps.
+        // Program as text --(tokenize)-->
+        //   Tokens --(parse)-->
+        //   Abstract Syntax Tree (AST) --(eval_program)-->
+        //   Evaluated result value
+        //
+        // Functions of each steps return Result to express errors.
         let result = t::tokenize(lines.clone())
             .and_then(p::parse)
             .and_then(|(ast, env)| e::eval_program(&ast, env));
@@ -41,6 +51,8 @@ fn main() -> Result<()> {
             Err(err) => show_error(err, filename, lines),
         }
     } else {
+        // REPL mode
+
         terminal::enable_raw_mode()?;
 
         let prompt = "(lisp-rs) > ";
@@ -48,8 +60,6 @@ fn main() -> Result<()> {
         c::print(prompt)?;
 
         let mut history: VecDeque<Vec<String>> = VecDeque::new();
-        // history.push_front("test".chars().map(|c| c.to_string()).collect());
-        // history.push_front("hello world".chars().map(|c| c.to_string()).collect());
         history.push_front(Vec::new());
 
         // 0 is the position where a user is inputing.
@@ -209,12 +219,12 @@ where
     }
 }
 
+/// Show an error as human readable format (like rustc)
 fn show_error(err: anyhow::Error, filename: String, lines: Vec<String>) {
     if let Some(ErrorWithLocation { err, location }) = err.downcast_ref::<ErrorWithLocation>() {
         let range = match location {
             TokenLocation::Range(range) => Some(*range),
             TokenLocation::EOF => {
-                // let line = lines.len() - 1;
                 let last_line = lines
                     .iter()
                     .rev()

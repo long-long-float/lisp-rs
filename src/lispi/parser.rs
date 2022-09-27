@@ -45,6 +45,8 @@ pub struct AstWithLocation {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+/// Maps symbols such as 'x' to unique integer.
+/// It contributes reduction of searching HashMap a little to use an integer instead of a string to manage variables.
 pub struct SymbolTable {
     table: HashMap<String, u32>,
 }
@@ -68,19 +70,7 @@ impl SymbolTable {
     }
 }
 
-// pub struct Environment {
-//     pub sym_table: SymbolTable,
-// }
-
-// impl Environment {
-//     pub fn new() -> Environment {
-//         Environment {
-//             sym_table: SymbolTable::new(),
-//         }
-//     }
-// }
-
-// For evaluating macros
+/// For evaluating macros
 impl From<Value> for Ast {
     fn from(value: Value) -> Self {
         match value {
@@ -151,6 +141,7 @@ pub type Program = Vec<AstWithLocation>;
 
 pub type ParseResult<'a, T> = Result<(T, &'a [TokenWithLocation])>;
 
+/// Get a expected token or return a parse error.
 fn consume<'a>(
     tokens: &'a [TokenWithLocation],
     expected: &Token,
@@ -172,6 +163,7 @@ fn consume<'a>(
     }
 }
 
+/// Get tokens using consumer while pred returns true.
 fn consume_while<F, C>(
     tokens: &[TokenWithLocation],
     pred: F,
@@ -288,6 +280,8 @@ fn parse_program<'a>(
     }
 }
 
+/// Get AST from tokens.
+/// This uses recursive descent parsing and is simple implementation thanks to the syntax of LISP.
 pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, Environment)> {
     let mut env = Environment::new();
     let ast = parse_with_env(tokens, &mut env)?;
