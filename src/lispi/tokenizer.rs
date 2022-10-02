@@ -42,6 +42,16 @@ impl Token {
             location: LocationRange { begin, end },
         }
     }
+
+    fn push_front_to_identifier(self, str: String) -> Token {
+        match self {
+            Token::Identifier(id) => {
+                let id = str + &id;
+                Token::Identifier(id)
+            }
+            _ => self,
+        }
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -149,6 +159,42 @@ fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Locatio
     result
 }
 
+fn tokenize_number(
+    program: &Vec<String>,
+    line: &mut Vec<char>,
+    loc: &mut Location,
+    begin: Location,
+    sign: bool,
+) -> Result<TokenWithLocation> {
+    let int = take_while(program, line, loc, |c| c.is_ascii_digit());
+    let int = int.join("");
+
+    if let Some('.') = current_char(line, loc) {
+        succ(program, line, loc);
+        let decimal = take_while(program, line, loc, |c| c.is_ascii_digit());
+        let decimal = decimal.join("");
+        let float = (int + "." + &decimal).parse::<f32>()?;
+        let float = if sign { float } else { -float };
+        Ok(Token::FloatLiteral(float).with_location(begin, loc.clone()))
+    } else {
+        let int = int.parse::<i32>()?;
+        let int = if sign { int } else { -int };
+        Ok(Token::IntegerLiteral(int).with_location(begin, loc.clone()))
+    }
+}
+
+fn tokenize_identifier(
+    program: &Vec<String>,
+    line: &mut Vec<char>,
+    loc: &mut Location,
+    begin: Location,
+) -> Result<TokenWithLocation> {
+    let chars = take_while(program, line, loc, |c| c.is_identifier());
+
+    let value = chars.join("");
+    Ok(Token::Identifier(value).with_location(begin, loc.clone()))
+}
+
 /// Get a single token from program and move loc to the location of next token
 fn tokenize_single<'a>(
     program: &'a Vec<String>,
@@ -213,31 +259,26 @@ fn tokenize_single<'a>(
 
                 Token::StringLiteral(value).with_location(begin, loc.clone())
             }
-            c if c.is_ascii_digit() => {
-                let int = take_while(program, line, loc, |c| c.is_ascii_digit());
-                let int = int.join("");
+            // Unary operator
+            '+' | '-' => {
+                let op = current_char(line, loc).unwrap();
+                let end = succ(program, line, loc);
 
-                if let Some('.') = current_char(line, loc) {
-                    succ(program, line, loc);
-                    let decimal = take_while(program, line, loc, |c| c.is_ascii_digit());
-                    let decimal = decimal.join("");
-                    let float = (int + "." + &decimal).parse::<f32>()?;
-                    Token::FloatLiteral(float).with_location(begin, loc.clone())
+                if let Some(ch) = current_char(line, loc) {
+                    if ch.is_ascii_digit() {
+                        let sign = op == '+';
+                        tokenize_number(program, line, loc, begin, sign)?
+                    } else {
+                        let mut token = tokenize_identifier(program, line, loc, begin)?;
+                        token.token = token.token.push_front_to_identifier(op.to_string());
+                        token
+                    }
                 } else {
-                    let int = int.parse::<i32>()?;
-                    Token::IntegerLiteral(int).with_location(begin, loc.clone())
+                    Token::Identifier(op.to_string()).with_location(begin, end)
                 }
             }
-            c if c.is_identifier_head() => {
-                succ(program, line, loc);
-
-                let mut chars = vec![c.to_string()];
-                let mut rest = take_while(program, line, loc, |c| c.is_identifier());
-                chars.append(&mut rest);
-
-                let value = chars.join("");
-                Token::Identifier(value).with_location(begin, loc.clone())
-            }
+            c if c.is_ascii_digit() => tokenize_number(program, line, loc, begin, true)?,
+            c if c.is_identifier_head() => tokenize_identifier(program, line, loc, begin)?,
             _ => {
                 succ(program, line, loc);
                 Token::Other.with_location(Location::head(), Location::head())
@@ -294,7 +335,7 @@ mod tests {
     use super::*;
 
     #[allow(dead_code)]
-    fn toknenize_single(value: &str) -> Token {
+    fn tok(value: &str) -> Token {
         tokenize(vec![value.to_string()])
             .unwrap()
             .into_iter()
@@ -304,8 +345,19 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_float() {
-        assert_eq!(toknenize_single("3.14"), Token::FloatLiteral(3.14));
-        assert_eq!(toknenize_single("3.0"), Token::FloatLiteral(3.0));
+    fn test_tokenize_number() {
+        assert_eq!(tok("3.14"), Token::FloatLiteral(3.14));
+        assert_eq!(tok("3.0"), Token::FloatLiteral(3.0));
+
+        assert_eq!(tok("+3"), Token::IntegerLiteral(3));
+        assert_eq!(tok("-3"), Token::IntegerLiteral(-3));
+    }
+
+    #[test]
+    fn test_tokenize_identifier() {
+        assert_eq!(tok("+test"), Token::Identifier("+test".to_string()));
+        assert_eq!(tok("-test"), Token::Identifier("-test".to_string()));
+        assert_eq!(tok("+"), Token::Identifier("+".to_string()));
+        assert_eq!(tok("-"), Token::Identifier("-".to_string()));
     }
 }

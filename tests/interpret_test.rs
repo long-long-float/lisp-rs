@@ -76,6 +76,8 @@ fn build_sym_list(vs: Vec<&str>) -> Value {
 fn literal_test() {
     assert_eq!(Ok(Value::Integer(3)), interp("3"));
     assert_eq!(Ok(Value::Float(3.14)), interp("3.14"));
+    assert_eq!(Ok(Value::Integer(3)), interp("+3"));
+    assert_eq!(Ok(Value::Integer(-3)), interp("-3"));
 
     assert_eq!(
         Ok(Value::String("Hello World! こんにちは".to_string())),

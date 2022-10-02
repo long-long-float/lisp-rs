@@ -19,6 +19,7 @@ macro_rules! bug {
     };
 }
 
+/// This macro is for ease to get arguments with patterns.
 macro_rules! match_call_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
         if let Some(ValueWithType { value: $p, type_: _ }) = $args.get($index) {
@@ -597,7 +598,7 @@ fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>>
 ///   (loop (+ i 1)))))
 /// ```
 ///
-/// This is converted to,
+/// This is converted to like following expressions.
 ///
 /// ```lisp
 /// (define i 0)
