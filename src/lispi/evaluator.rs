@@ -242,6 +242,7 @@ impl From<&Ast> for Value {
             Ast::Char(v) => Value::Char(*v),
             Ast::String(v) => Value::String(v.clone()),
             Ast::Symbol(v) => Value::Symbol(v.clone()),
+            Ast::SymbolWithType(v, _) => Value::Symbol(v.clone()),
             Ast::Quoted(v) => Value::from(&(*v).ast),
             Ast::List(vs) => {
                 let vs = vs.iter().map(|v| Value::from(&v.ast).with_type()).collect();
@@ -577,7 +578,7 @@ fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>>
     symbols
         .iter()
         .map(|symbol| {
-            if let Ast::Symbol(v) = &symbol.ast {
+            if let Some(v) = symbol.ast.get_symbol_value() {
                 Ok(v.clone())
             } else {
                 Err(Error::Eval(format!("{:?} is not an symbol", symbol.ast))
@@ -742,6 +743,7 @@ fn optimize_tail_recursion(
             }
             Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, &v),
             Ast::Symbol(_)
+            | Ast::SymbolWithType(_, _)
             | Ast::Integer(_)
             | Ast::Float(_)
             | Ast::Boolean(_)
@@ -757,6 +759,7 @@ fn optimize_tail_recursion(
             Ast::List(vs) => vs.iter().any(|v| includes_symbol(sym, &v.ast)),
             Ast::Quoted(v) => includes_symbol(sym, &v.ast),
             Ast::Symbol(v) => &v.value == sym,
+            Ast::SymbolWithType(v, _) => &v.value == sym,
             Ast::Integer(_)
             | Ast::Float(_)
             | Ast::Boolean(_)

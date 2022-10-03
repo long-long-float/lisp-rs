@@ -23,6 +23,7 @@ pub enum Token {
     LeftSquareBracket,
     RightSquareBracket,
     Quote,
+    Colon,
     IntegerLiteral(i32),
     FloatLiteral(f32),
     Identifier(String),
@@ -69,8 +70,8 @@ impl CharExt for char {
     fn is_identifier_head(&self) -> bool {
         match *self {
             c if c.is_ascii_alphabetic() => true,
-            '!' | '$' | '%' | '&' | '*' | '/' | ':' | '<' | '=' | '>' | '?' | '@' | '^' | '_'
-            | '~' | '+' | '-' | '.' => true,
+            '!' | '$' | '%' | '&' | '*' | '/' | '<' | '=' | '>' | '?' | '@' | '^' | '_' | '~'
+            | '+' | '-' | '.' => true,
             _ => false,
         }
     }
@@ -249,6 +250,10 @@ fn tokenize_single<'a>(
                 let _ = take_while(program, line, loc, |c| c != '\n');
                 return Ok(None);
             }
+            ':' => {
+                succ(program, line, loc);
+                Token::Colon.with_location(begin, loc.clone())
+            }
             '"' => {
                 succ(program, line, loc);
 
@@ -279,9 +284,14 @@ fn tokenize_single<'a>(
             }
             c if c.is_ascii_digit() => tokenize_number(program, line, loc, begin, true)?,
             c if c.is_identifier_head() => tokenize_identifier(program, line, loc, begin)?,
-            _ => {
+            ' ' | '\n' | '\r' => {
                 succ(program, line, loc);
                 Token::Other.with_location(Location::head(), Location::head())
+            }
+            c => {
+                return Err(Error::Tokenize(format!("Unexpected charactor `{:?}`", c))
+                    .with_location(TokenLocation::Range(LocationRange::new(begin, loc.clone())))
+                    .into())
             }
         };
         Ok(Some(result))

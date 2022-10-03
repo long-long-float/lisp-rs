@@ -13,6 +13,7 @@ pub enum Ast {
     Integer(i32),
     Float(f32),
     Symbol(SymbolValue),
+    SymbolWithType(SymbolValue, SymbolValue),
     Boolean(bool),
     Char(char),
     String(String),
@@ -34,6 +35,14 @@ impl Ast {
         AstWithLocation {
             ast: self,
             location: TokenLocation::Null,
+        }
+    }
+
+    pub fn get_symbol_value(&self) -> Option<&SymbolValue> {
+        match self {
+            Ast::Symbol(sym) => Some(sym),
+            Ast::SymbolWithType(sym, _) => Some(sym),
+            _ => None,
         }
     }
 }
@@ -231,16 +240,46 @@ fn parse_value<'a>(
         let loc = loc.clone();
         match first {
             Token::Identifier(value) => {
-                let ret = if value.to_lowercase() == "nil" {
-                    Ast::Nil
+                if value.to_lowercase() == "nil" {
+                    Ok((Ast::Nil.with_location(loc), rest))
                 } else {
                     let id = env.sym_table.find_id_or_insert(value);
-                    Ast::Symbol(SymbolValue {
+                    let sym = SymbolValue {
                         value: value.clone(),
-                        id: id,
-                    })
-                };
-                Ok((ret.with_location(loc), rest))
+                        id,
+                    };
+                    if let Some((
+                        TokenWithLocation {
+                            token: Token::Colon,
+                            ..
+                        },
+                        rest,
+                    )) = rest.split_first()
+                    {
+                        if let Some((
+                            TokenWithLocation {
+                                token: Token::Identifier(ty),
+                                location: tyloc,
+                            },
+                            rest,
+                        )) = rest.split_first()
+                        {
+                            let id = env.sym_table.find_id_or_insert(ty);
+                            let ty = SymbolValue {
+                                value: ty.clone(),
+                                id,
+                            };
+                            Ok((
+                                Ast::SymbolWithType(sym, ty).with_location(loc.merge(tyloc)),
+                                rest,
+                            ))
+                        } else {
+                            Ok((Ast::Symbol(sym).with_location(loc), rest))
+                        }
+                    } else {
+                        Ok((Ast::Symbol(sym).with_location(loc), rest))
+                    }
+                }
             }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value).with_location(loc), rest)),
             Token::FloatLiteral(value) => Ok((Ast::Float(*value).with_location(loc), rest)),

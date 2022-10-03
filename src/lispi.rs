@@ -90,6 +90,13 @@ impl LocationRange {
     fn new(begin: Location, end: Location) -> LocationRange {
         LocationRange { begin, end }
     }
+
+    fn merge(self, other: &LocationRange) -> LocationRange {
+        LocationRange {
+            begin: self.begin,
+            end: other.end,
+        }
+    }
 }
 
 impl std::fmt::Display for LocationRange {
