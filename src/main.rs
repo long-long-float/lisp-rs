@@ -11,7 +11,10 @@ use std::io::{self, stdout, BufRead};
 use std::path::Path;
 
 use lisp_rs::lispi::error::ErrorWithLocation;
-use lisp_rs::lispi::{console as c, error::Error, evaluator as e, parser as p, tokenizer as t};
+use lisp_rs::lispi::interpret;
+use lisp_rs::lispi::{
+    console as c, error::Error, evaluator as e, parser as p, tokenizer as t, typer as ty,
+};
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
 #[derive(Parser)]
@@ -28,20 +31,8 @@ fn main() -> Result<()> {
 
     if let Some(filename) = cli.filename {
         // Run the program from file
-
         let lines = read_lines(&filename)?;
-
-        // Run the program as following steps.
-        // Program as text --(tokenize)-->
-        //   Tokens --(parse)-->
-        //   Abstract Syntax Tree (AST) --(eval_program)-->
-        //   Evaluated result value
-        //
-        // Functions of each steps return Result to express errors.
-        let result = t::tokenize(lines.clone())
-            .and_then(p::parse)
-            .and_then(|(ast, env)| e::eval_program(&ast, env));
-
+        let result = interpret(lines.clone());
         match result {
             Ok(result) => {
                 if let Some(result) = result.last() {

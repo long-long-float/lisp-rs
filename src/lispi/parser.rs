@@ -1,15 +1,24 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
+use crate::{ast_pat, match_special_args_with_rest};
+
 use super::{
-    error::*, evaluator::Environment, evaluator::Value, tokenizer::*, LocationRange, SymbolValue,
-    TokenLocation,
+    error::*, evaluator as e, evaluator::Value, tokenizer::*, typer::Type, LocationRange,
+    SymbolValue, TokenLocation,
 };
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct DefineMacro {
+    pub id: SymbolValue,
+    pub args: Vec<SymbolValue>,
+    pub body: Vec<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
-    List(Vec<AstWithLocation>),
-    Quoted(Box<AstWithLocation>),
+    List(Vec<AnnotatedAst>),
+    Quoted(Box<AnnotatedAst>),
     Integer(i32),
     Float(f32),
     Symbol(SymbolValue),
@@ -19,23 +28,25 @@ pub enum Ast {
     String(String),
     Nil,
 
-    // For optimizing tail recursion
+    // Special forms
+    // Arguments of macro don't have types.
+    DefineMacro(DefineMacro),
+
+    /// For optimizing tail recursion
     Continue(String),
 }
 
 impl Ast {
-    pub fn with_location(self, location: LocationRange) -> AstWithLocation {
-        AstWithLocation {
-            ast: self,
-            location: TokenLocation::Range(location),
-        }
+    pub fn with_location(self, location: LocationRange) -> AnnotatedAst {
+        AnnotatedAst::new(self, TokenLocation::Range(location))
     }
 
-    pub fn with_null_location(self) -> AstWithLocation {
-        AstWithLocation {
-            ast: self,
-            location: TokenLocation::Null,
-        }
+    pub fn with_token_location(self, location: TokenLocation) -> AnnotatedAst {
+        AnnotatedAst::new(self, location)
+    }
+
+    pub fn with_null_location(self) -> AnnotatedAst {
+        AnnotatedAst::new(self, TokenLocation::Null)
     }
 
     pub fn get_symbol_value(&self) -> Option<&SymbolValue> {
@@ -48,9 +59,20 @@ impl Ast {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct AstWithLocation {
+pub struct AnnotatedAst {
     pub ast: Ast,
     pub location: TokenLocation,
+    pub ty: Option<Type>,
+}
+
+impl AnnotatedAst {
+    fn new(ast: Ast, location: TokenLocation) -> Self {
+        Self {
+            ast,
+            location,
+            ty: None,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -146,7 +168,7 @@ impl From<&str> for Ast {
     }
 }
 
-pub type Program = Vec<AstWithLocation>;
+pub type Program = Vec<AnnotatedAst>;
 
 pub type ParseResult<'a, T> = Result<(T, &'a [TokenWithLocation])>;
 
@@ -177,10 +199,10 @@ fn consume_while<F, C>(
     tokens: &[TokenWithLocation],
     pred: F,
     mut consumer: C,
-) -> ParseResult<Vec<AstWithLocation>>
+) -> ParseResult<Vec<AnnotatedAst>>
 where
     F: Fn(&Token) -> bool,
-    C: FnMut(&[TokenWithLocation]) -> ParseResult<AstWithLocation>,
+    C: FnMut(&[TokenWithLocation]) -> ParseResult<AnnotatedAst>,
 {
     if let Some((first, _)) = tokens.split_first() {
         if pred(&first.token) {
@@ -201,8 +223,8 @@ where
 
 fn parse_list<'a>(
     tokens: &'a [TokenWithLocation],
-    env: &mut Environment,
-) -> ParseResult<'a, AstWithLocation> {
+    env: &mut e::Environment,
+) -> ParseResult<'a, AnnotatedAst> {
     let (left_token, right_token) = if let Some(&TokenWithLocation {
         token: Token::LeftSquareBracket,
         location: _,
@@ -219,16 +241,50 @@ fn parse_list<'a>(
         |t| parse_value(t, env),
     )?;
     let (tail_loc, tokens) = consume(tokens, &right_token)?;
-    Ok((
-        Ast::List(items).with_location(LocationRange::new(head_loc.begin, tail_loc.end)),
-        tokens,
-    ))
+
+    let location = LocationRange::new(head_loc.begin, tail_loc.end);
+
+    if let Some((
+        AnnotatedAst {
+            ast: Ast::Symbol(name),
+            ..
+        },
+        args,
+    )) = items.split_first()
+    {
+        let name = name.value.as_str();
+        match name {
+            "define-macro" => {
+                match_special_args_with_rest!(
+                    args,
+                    body,
+                    ast_pat!(Ast::Symbol(fun_name), _loc1),
+                    ast_pat!(Ast::List(args)),
+                    {
+                        let args = e::get_symbol_values(args)?;
+                        Ok((
+                            Ast::DefineMacro(DefineMacro {
+                                id: fun_name.clone(),
+                                args,
+                                body: body.to_vec(),
+                            })
+                            .with_location(location),
+                            tokens,
+                        ))
+                    }
+                )
+            }
+            _ => Ok((Ast::List(items).with_location(location), tokens)),
+        }
+    } else {
+        Ok((Ast::List(items).with_location(location), tokens))
+    }
 }
 
 fn parse_value<'a>(
     tokens: &'a [TokenWithLocation],
-    env: &mut Environment,
-) -> ParseResult<'a, AstWithLocation> {
+    env: &mut e::Environment,
+) -> ParseResult<'a, AnnotatedAst> {
     if let Some((
         TokenWithLocation {
             token: first,
@@ -264,6 +320,8 @@ fn parse_value<'a>(
                             rest,
                         )) = rest.split_first()
                         {
+                            // TODO: Restrict type annotation in specific location
+
                             let id = env.sym_table.find_id_or_insert(ty);
                             let ty = SymbolValue {
                                 value: ty.clone(),
@@ -306,7 +364,7 @@ fn parse_value<'a>(
 
 fn parse_program<'a>(
     tokens: &'a [TokenWithLocation],
-    env: &mut Environment,
+    env: &mut e::Environment,
 ) -> ParseResult<'a, Program> {
     if tokens.is_empty() {
         Ok((Vec::new(), tokens))
@@ -321,13 +379,13 @@ fn parse_program<'a>(
 
 /// Get AST from tokens.
 /// This uses recursive descent parsing and is simple implementation thanks to the syntax of LISP.
-pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, Environment)> {
-    let mut env = Environment::new();
+pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, e::Environment)> {
+    let mut env = e::Environment::new();
     let ast = parse_with_env(tokens, &mut env)?;
     Ok((ast, env))
 }
 
-pub fn parse_with_env(tokens: Vec<TokenWithLocation>, env: &mut Environment) -> Result<Program> {
+pub fn parse_with_env(tokens: Vec<TokenWithLocation>, env: &mut e::Environment) -> Result<Program> {
     parse_program(&tokens, env).and_then(|(ast, tokens)| {
         if !tokens.is_empty() {
             let token = &tokens[0];

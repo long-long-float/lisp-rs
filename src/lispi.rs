@@ -1,8 +1,18 @@
 pub mod console;
 pub mod error;
+
 pub mod evaluator;
+pub mod macro_expander;
 pub mod parser;
 pub mod tokenizer;
+pub mod typer;
+
+use anyhow::Result;
+
+use crate::lispi::{
+    console as c, error::Error, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
+    typer as ty,
+};
 
 #[derive(Clone, Debug)]
 pub struct SymbolValue {
@@ -103,4 +113,20 @@ impl std::fmt::Display for LocationRange {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{} - {}", self.begin, self.end)
     }
+}
+
+/// Run the program as following steps.
+/// ```text
+/// Program as text --(tokenize)-->
+///   Tokens --(parse)-->
+///   Abstract Syntax Tree (AST) --(eval_program)-->
+///   Evaluated result value
+/// ```
+///
+/// Functions of each steps return Result to express errors.
+pub fn interpret(program: Vec<String>) -> Result<Vec<e::ValueWithType>> {
+    let tokens = t::tokenize(program)?;
+    let (program, env) = p::parse(tokens)?;
+    let program = m::expand_macros(program)?;
+    e::eval_program(&program, env)
 }

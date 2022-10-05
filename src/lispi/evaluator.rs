@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use super::{console::*, error::*, parser::*, SymbolValue, TokenLocation};
+use super::{console::*, error::*, parser::*, typer::*, SymbolValue, TokenLocation};
 
 macro_rules! bug {
     () => {
@@ -44,11 +44,12 @@ macro_rules! match_call_args {
     };
 }
 
-fn get_location(ast: Option<&AstWithLocation>) -> TokenLocation {
+pub fn get_location(ast: Option<&AnnotatedAst>) -> TokenLocation {
     ast.and_then(|arg| Some(arg.location))
         .unwrap_or(TokenLocation::Null)
 }
 
+#[macro_export]
 macro_rules! match_special_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
         if let Some($p) = $args.get($index) {
@@ -81,13 +82,14 @@ macro_rules! match_special_args {
     };
 }
 
+#[macro_export]
 macro_rules! match_special_args_with_rest {
     ( $args:expr, $rest:ident, $p:pat, $b:block, $index:expr ) => {
         if let (Some($p), (_, $rest)) = ($args.get($index), $args.split_at($index + 1)) {
             $b
         }
         else {
-            let loc = get_location($args.last());
+            let loc = crate::lispi::evaluator::get_location($args.last());
             Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
@@ -97,7 +99,7 @@ macro_rules! match_special_args_with_rest {
             match_special_args_with_rest!($args, $rest, $( $ps ),*, $b, ($index + 1))
         }
         else {
-            let loc = get_location($args.last());
+            let loc = crate::lispi::evaluator::get_location($args.last());
             Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
@@ -107,18 +109,21 @@ macro_rules! match_special_args_with_rest {
     };
 }
 
+#[macro_export]
 macro_rules! ast_pat {
     ( $p:pat ) => {
-        AstWithLocation {
+        AnnotatedAst {
             ast: $p,
             location: _,
+            ty: _,
         }
     };
 
     ( $p:pat, $loc:pat ) => {
-        AstWithLocation {
+        AnnotatedAst {
             ast: $p,
             location: $loc,
+            ty: _,
         }
     };
 }
@@ -137,7 +142,7 @@ pub enum Value {
     Function {
         name: SymbolValue,
         args: Vec<SymbolValue>,
-        body: Vec<AstWithLocation>,
+        body: Vec<AnnotatedAst>,
         is_macro: bool,
         parent_local: LocalRef,
     },
@@ -147,7 +152,7 @@ pub enum Value {
     },
 
     /// For macro expansion
-    RawAst(AstWithLocation),
+    RawAst(AnnotatedAst),
 
     /// For optimizing tail recursion
     Continue(String),
@@ -249,6 +254,7 @@ impl From<&Ast> for Value {
                 Value::List(vs)
             }
             Ast::Nil => Value::nil(),
+            Ast::DefineMacro(_) => Value::nil(),
             Ast::Continue(v) => Value::Continue(v.clone()),
         }
     }
@@ -444,84 +450,32 @@ pub struct ValueWithType {
     pub type_: Type,
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub enum Type {
-    Numeric,
-    Int,
-    Float,
-    Boolean,
-    Char,
-    String,
-
-    Scala(String),
-    Composite {
-        name: String,
-        inner: Vec<Box<Type>>,
-    },
-    Function {
-        args: Vec<Box<Type>>,
-        result: Box<Type>,
-    },
-    Any,
+pub fn eval_asts(asts: &[AnnotatedAst], env: &mut Environment) -> Result<Vec<ValueWithType>> {
+    asts.iter()
+        .map(|arg| eval_ast(arg, env))
+        .collect::<Result<Vec<_>>>()
 }
 
-impl Type {
-    fn scala(name: &str) -> Type {
-        Type::Scala(name.to_string())
-    }
-
-    fn int() -> Type {
-        Type::Int
-    }
-
-    fn symbol() -> Type {
-        Type::scala("symbol")
-    }
-
-    fn list() -> Type {
-        Type::Composite {
-            name: "list".to_string(),
-            inner: Vec::new(),
-        }
-    }
-
-    fn function(args: Vec<Type>, result: Type) -> Type {
-        Type::Function {
-            args: args.iter().map(|a| Box::new(a.clone())).collect(),
-            result: Box::new(result),
-        }
-    }
+fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
+    results
+        .into_iter()
+        .last()
+        .unwrap_or(Value::nil().with_type())
 }
 
-impl std::fmt::Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Type::Numeric => write!(f, "numeric"),
-            Type::Int => write!(f, "int"),
-            Type::Float => write!(f, "float"),
-            Type::Boolean => write!(f, "boolean"),
-            Type::Char => write!(f, "char"),
-            Type::String => write!(f, "string"),
-            Type::Scala(name) => write!(f, "{}", name),
-            Type::Composite { name, inner } => {
-                let inner = inner
-                    .iter()
-                    .map(|t| format!("{}", *t))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                write!(f, "{}({})", name, inner)
+pub fn get_symbol_values(symbols: &Vec<AnnotatedAst>) -> Result<Vec<SymbolValue>> {
+    symbols
+        .iter()
+        .map(|symbol| {
+            if let Some(v) = symbol.ast.get_symbol_value() {
+                Ok(v.clone())
+            } else {
+                Err(Error::Eval(format!("{:?} is not an symbol", symbol.ast))
+                    .with_location(symbol.location)
+                    .into())
             }
-            Type::Function { args, result } => {
-                let args = args
-                    .iter()
-                    .map(|t| format!("{}", *t))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                write!(f, "({}) -> {}", args, *result)
-            }
-            Type::Any => write!(f, "any"),
-        }
-    }
+        })
+        .collect()
 }
 
 fn check_arg_types(
@@ -561,34 +515,6 @@ fn check_arg_types(
     Ok(())
 }
 
-pub fn eval_asts(asts: &[AstWithLocation], env: &mut Environment) -> Result<Vec<ValueWithType>> {
-    asts.iter()
-        .map(|arg| eval_ast(arg, env))
-        .collect::<Result<Vec<ValueWithType>>>()
-}
-
-fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
-    results
-        .into_iter()
-        .last()
-        .unwrap_or(Value::nil().with_type())
-}
-
-fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>> {
-    symbols
-        .iter()
-        .map(|symbol| {
-            if let Some(v) = symbol.ast.get_symbol_value() {
-                Ok(v.clone())
-            } else {
-                Err(Error::Eval(format!("{:?} is not an symbol", symbol.ast))
-                    .with_location(symbol.location)
-                    .into())
-            }
-        })
-        .collect()
-}
-
 /// Try to optimize tail recursion for body.
 ///
 /// This removes tail recursion such as following forms.
@@ -619,13 +545,13 @@ fn get_symbol_values(symbols: &Vec<AstWithLocation>) -> Result<Vec<SymbolValue>>
 fn optimize_tail_recursion(
     func_name: &String,
     locals: &[SymbolValue],
-    body: &[AstWithLocation],
-) -> Option<Vec<AstWithLocation>> {
+    body: &[AnnotatedAst],
+) -> Option<Vec<AnnotatedAst>> {
     fn _optimize_tail_recursion(
         func_name: &String,
         locals: &[SymbolValue],
-        ast: &AstWithLocation,
-    ) -> Option<AstWithLocation> {
+        ast: &AnnotatedAst,
+    ) -> Option<AnnotatedAst> {
         match &ast.ast {
             Ast::List(vs) => {
                 if let Some((name_ast, args)) = vs.split_first() {
@@ -750,7 +676,7 @@ fn optimize_tail_recursion(
             | Ast::Char(_)
             | Ast::String(_)
             | Ast::Nil => Some(ast.clone()),
-            Ast::Continue(_) => Some(ast.clone()),
+            Ast::DefineMacro { .. } | Ast::Continue(_) => Some(ast.clone()),
         }
     }
 
@@ -765,8 +691,9 @@ fn optimize_tail_recursion(
             | Ast::Boolean(_)
             | Ast::Char(_)
             | Ast::String(_)
-            | Ast::Nil => false,
-            Ast::Continue(_) => false,
+            | Ast::Nil
+            | Ast::DefineMacro { .. }
+            | Ast::Continue(_) => false,
         }
     }
 
@@ -799,8 +726,8 @@ fn optimize_tail_recursion(
 /// (if #t (print "Hi") (print "Never evaluated"))
 /// ```
 fn eval_special_form(
-    name_ast: &AstWithLocation,
-    raw_args: &[AstWithLocation],
+    name_ast: &AnnotatedAst,
+    raw_args: &[AnnotatedAst],
     env: &mut Environment,
 ) -> EvalResult {
     if let Ast::Symbol(name) = &name_ast.ast {
@@ -832,37 +759,6 @@ fn eval_special_form(
 
                     Ok(Value::nil().with_type())
                 })
-            }
-            "define-macro" => {
-                match_special_args_with_rest!(
-                    raw_args,
-                    body,
-                    ast_pat!(Ast::Symbol(fun_name), _loc1),
-                    ast_pat!(Ast::List(args)),
-                    {
-                        let is_macro = name == "define-macro";
-
-                        let args = get_symbol_values(args)?;
-
-                        let arg_types = args.iter().map(|_| Type::Any).collect();
-                        let func = Value::Function {
-                            name: fun_name.clone(),
-                            args: args,
-                            body: body.to_vec(),
-                            is_macro,
-                            parent_local: None,
-                        };
-                        env.insert_var(
-                            fun_name.clone(),
-                            ValueWithType {
-                                value: func,
-                                type_: Type::function(arg_types, Type::Any),
-                            },
-                        );
-
-                        Ok(Value::nil().with_type())
-                    }
-                )
             }
             "lambda" => {
                 match_special_args_with_rest!(raw_args, body, ast_pat!(Ast::List(args), _loc), {
@@ -1110,11 +1006,7 @@ fn eval_special_form(
     }
 }
 
-fn eval_function(
-    name: &AstWithLocation,
-    args: &[AstWithLocation],
-    env: &mut Environment,
-) -> EvalResult {
+fn eval_function(name: &AnnotatedAst, args: &[AnnotatedAst], env: &mut Environment) -> EvalResult {
     let name_loc = &name.location;
     let name = eval_ast(name, env)?;
     let arg_locs = args.iter().map(|arg| arg.location).collect::<Vec<_>>();
@@ -1347,8 +1239,27 @@ fn apply_function(
 
 /// Evaluate a single AST such as lists and symbols.
 /// Other values (ATOM) are evaluated at `Value::from`.
-fn eval_ast(ast: &AstWithLocation, env: &mut Environment) -> EvalResult {
+fn eval_ast(ast: &AnnotatedAst, env: &mut Environment) -> EvalResult {
     match &ast.ast {
+        Ast::DefineMacro(DefineMacro { id, args, body }) => {
+            let arg_types = args.iter().map(|_| Type::Any).collect();
+            let func = Value::Function {
+                name: id.clone(),
+                args: args.clone(),
+                body: body.to_vec(),
+                is_macro: true,
+                parent_local: None,
+            };
+            env.insert_var(
+                id.clone(),
+                ValueWithType {
+                    value: func,
+                    type_: Type::function(arg_types, Type::Any),
+                },
+            );
+
+            Ok(Value::nil().with_type())
+        }
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
                 let result = eval_special_form(first, rest, env);
