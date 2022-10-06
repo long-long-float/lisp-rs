@@ -1,11 +1,15 @@
 use std::collections::HashMap;
 
-use super::{console::*, error::*, parser::*, typer::*, SymbolValue, TokenLocation};
-use anyhow::{anyhow, Result};
+use super::{evaluator::*, parser::*};
+use anyhow::Result;
 
 type MacroEnv = HashMap<u32, DefineMacro>;
 
-pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<AnnotatedAst> {
+pub fn expand_macros_ast(
+    ast: AnnotatedAst,
+    menv: &mut MacroEnv,
+    env: &mut Environment,
+) -> Result<AnnotatedAst> {
     let AnnotatedAst { ast, location, ty } = ast;
 
     let result = match ast {
@@ -25,31 +29,41 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
             {
                 let mut args = args
                     .into_iter()
-                    .map(|arg| expand_macros_ast(arg.clone(), menv))
+                    .map(|arg| expand_macros_ast(arg.clone(), menv, env))
                     .collect::<Result<Vec<_>>>()?;
 
-                let name = if let Some(mac) = menv.get(&name.id) {
-                    // TODO: expand macro here
-                    AnnotatedAst {
-                        ast: Ast::Symbol(name.clone()),
-                        location: name_loc.clone(),
-                        ty: name_ty.clone(),
-                    }
-                } else {
-                    AnnotatedAst {
-                        ast: Ast::Symbol(name.clone()),
-                        location: name_loc.clone(),
-                        ty: name_ty.clone(),
-                    }
-                };
+                if let Some(mac) = menv.get(&name.id) {
+                    env.push_local();
 
-                let mut vs = vec![name];
-                vs.append(&mut args);
-                Ast::List(vs)
+                    init_env(env);
+
+                    for (name, value) in mac.args.iter().zip(args) {
+                        env.insert_var(name.clone(), Value::RawAst(value.clone()).with_type());
+                    }
+
+                    let result = eval_asts(&mac.body, env);
+
+                    env.pop_local();
+
+                    let result = get_last_result(result?);
+                    env.pop_local();
+
+                    Ast::from(result.value)
+                } else {
+                    let name = AnnotatedAst {
+                        ast: Ast::Symbol(name.clone()),
+                        location: name_loc.clone(),
+                        ty: name_ty.clone(),
+                    };
+
+                    let mut vs = vec![name];
+                    vs.append(&mut args);
+                    Ast::List(vs)
+                }
             } else {
                 let vs = vs
                     .into_iter()
-                    .map(|v| expand_macros_ast(v, menv))
+                    .map(|v| expand_macros_ast(v, menv, env))
                     .collect::<Result<Vec<_>>>()?;
                 Ast::List(vs)
             }
@@ -72,12 +86,12 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
     })
 }
 
-pub fn expand_macros(asts: Program) -> Result<Program> {
+pub fn expand_macros(asts: Program, env: &mut Environment) -> Result<Program> {
     let mut menv = MacroEnv::new();
 
     let asts = asts
         .into_iter()
-        .map(|ast| expand_macros_ast(ast, &mut menv))
+        .map(|ast| expand_macros_ast(ast, &mut menv, env))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(asts)

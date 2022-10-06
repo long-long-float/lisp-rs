@@ -328,7 +328,7 @@ impl Environment {
         }
     }
 
-    fn insert_var(&mut self, name: SymbolValue, value: ValueWithType) {
+    pub fn insert_var(&mut self, name: SymbolValue, value: ValueWithType) {
         let id = self.resolve_sym_id(&name);
         // local_stack must have least one local
         let mut local = self.head_local.as_ref().unwrap().borrow_mut();
@@ -372,13 +372,13 @@ impl Environment {
         local.dump();
     }
 
-    fn push_local(&mut self) {
+    pub fn push_local(&mut self) {
         let local = self.head_local.clone();
         let local = Some(Rc::new(RefCell::new(Local::new(local))));
         self.head_local = local;
     }
 
-    fn pop_local(&mut self) {
+    pub fn pop_local(&mut self) {
         if let Some(local) = &self.head_local {
             let parent = local.borrow().parent.clone();
             self.head_local = parent;
@@ -456,7 +456,7 @@ pub fn eval_asts(asts: &[AnnotatedAst], env: &mut Environment) -> Result<Vec<Val
         .collect::<Result<Vec<_>>>()
 }
 
-fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
+pub fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
     results
         .into_iter()
         .last()

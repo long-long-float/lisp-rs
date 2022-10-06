@@ -9,10 +9,7 @@ pub mod typer;
 
 use anyhow::Result;
 
-use crate::lispi::{
-    console as c, error::Error, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
-    typer as ty,
-};
+use crate::lispi::{evaluator as e, macro_expander as m, parser as p, tokenizer as t};
 
 #[derive(Clone, Debug)]
 pub struct SymbolValue {
@@ -126,7 +123,10 @@ impl std::fmt::Display for LocationRange {
 /// Functions of each steps return Result to express errors.
 pub fn interpret(program: Vec<String>) -> Result<Vec<e::ValueWithType>> {
     let tokens = t::tokenize(program)?;
-    let (program, env) = p::parse(tokens)?;
-    let program = m::expand_macros(program)?;
+    let (program, mut env) = p::parse(tokens)?;
+    let program = m::expand_macros(program, &mut env)?;
+    // for ast in &program {
+    //     println!("{}", ast);
+    // }
     e::eval_program(&program, env)
 }

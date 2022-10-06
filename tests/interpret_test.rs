@@ -3,6 +3,7 @@ use std::stringify;
 use lisp_rs::lispi::{
     error::{Error, ErrorWithLocation},
     evaluator::*,
+    interpret,
     parser::*,
     tokenizer::*,
     SymbolValue,
@@ -10,9 +11,7 @@ use lisp_rs::lispi::{
 
 fn interp(program: &str) -> Result<Value, Error> {
     let lines = program.split('\n').map(|l| l.to_string()).collect();
-    let result = tokenize(lines)
-        .and_then(parse)
-        .and_then(|(ast, env)| eval_program(&ast, env));
+    let result = interpret(lines);
     match result {
         Ok(result) => Ok(result.last().unwrap().clone().value),
         Err(err) => {

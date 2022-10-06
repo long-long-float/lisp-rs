@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::{ast_pat, match_special_args_with_rest};
 
@@ -165,6 +165,48 @@ impl From<&str> for Ast {
             value: value.to_string(),
             id: 0,
         })
+    }
+}
+
+impl Display for AnnotatedAst {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.ast {
+            Ast::List(vs) => {
+                write!(f, "(")?;
+                for v in vs {
+                    write!(f, "{} ", v)?;
+                }
+                write!(f, ")")?;
+                Ok(())
+            }
+            Ast::Quoted(v) => write!(f, "'{}", v),
+            Ast::Integer(v) => write!(f, "{}", v),
+            Ast::Float(v) => write!(f, "{}", v),
+            Ast::Symbol(v) => write!(f, "{}", v.value),
+            Ast::SymbolWithType(v, t) => write!(f, "{}:{}", v.value, t.value),
+            Ast::Boolean(v) => {
+                if *v {
+                    write!(f, "#t")
+                } else {
+                    write!(f, "#f")
+                }
+            }
+            Ast::Char(v) => write!(f, "{}", v),
+            Ast::String(v) => write!(f, "{}", v),
+            Ast::Nil => write!(f, "()"),
+            Ast::DefineMacro(DefineMacro { id, args, body }) => {
+                write!(f, "(define-macro {} (", id.value)?;
+                for arg in args {
+                    write!(f, "{} ", arg.value)?;
+                }
+                write!(f, ")")?;
+                for ast in body {
+                    write!(f, "{} ", ast)?;
+                }
+                write!(f, ")")
+            }
+            Ast::Continue(_) => write!(f, "CONTINUE"),
+        }
     }
 }
 
