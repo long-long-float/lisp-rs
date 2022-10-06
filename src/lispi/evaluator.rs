@@ -54,7 +54,7 @@ macro_rules! match_special_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
         if let Some($p) = $args.get($index) {
             if $index != $args.len() - 1 {
-                let loc = get_location($args.get($index));
+                let loc = crate::lispi::evaluator::get_location($args.get($index));
                 Err(anyhow!(Error::Eval(format!("The length of argument is invalid")).with_location(loc)))
             }
             else {
@@ -62,7 +62,7 @@ macro_rules! match_special_args {
             }
         }
         else {
-            let loc = get_location($args.last());
+            let loc = crate::lispi::evaluator::get_location($args.last());
             Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
@@ -72,7 +72,7 @@ macro_rules! match_special_args {
             match_special_args!($args, $( $ps ),*, $b, ($index + 1))
         }
         else {
-            let loc = get_location($args.last());
+            let loc = crate::lispi::evaluator::get_location($args.last());
             Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
@@ -255,6 +255,7 @@ impl From<&Ast> for Value {
             }
             Ast::Nil => Value::nil(),
             Ast::DefineMacro(_) => Value::nil(),
+            Ast::Define(_) => Value::nil(),
             Ast::Continue(v) => Value::Continue(v.clone()),
         }
     }
@@ -675,8 +676,10 @@ fn optimize_tail_recursion(
             | Ast::Boolean(_)
             | Ast::Char(_)
             | Ast::String(_)
-            | Ast::Nil => Some(ast.clone()),
-            Ast::DefineMacro { .. } | Ast::Continue(_) => Some(ast.clone()),
+            | Ast::Nil
+            | Ast::DefineMacro(_)
+            | Ast::Define(_)
+            | Ast::Continue(_) => Some(ast.clone()),
         }
     }
 
@@ -692,7 +695,8 @@ fn optimize_tail_recursion(
             | Ast::Char(_)
             | Ast::String(_)
             | Ast::Nil
-            | Ast::DefineMacro { .. }
+            | Ast::DefineMacro(_)
+            | Ast::Define(_)
             | Ast::Continue(_) => false,
         }
     }
@@ -748,15 +752,6 @@ fn eval_special_form(
                     }
 
                     // .or_else(|err| Err(anyhow!(err.with_location(name_ast.location))))?;
-                    Ok(Value::nil().with_type())
-                })
-            }
-            "define" => {
-                match_special_args!(raw_args, ast_pat!(Ast::Symbol(name), _loc), value, {
-                    let value = eval_ast(value, env)?;
-
-                    env.insert_var(name.clone(), value);
-
                     Ok(Value::nil().with_type())
                 })
             }
@@ -1258,6 +1253,11 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Environment) -> EvalResult {
                 },
             );
 
+            Ok(Value::nil().with_type())
+        }
+        Ast::Define(Define { id, init }) => {
+            let value = eval_ast(init, env)?;
+            env.insert_var(id.clone(), value);
             Ok(Value::nil().with_type())
         }
         Ast::List(elements) => {

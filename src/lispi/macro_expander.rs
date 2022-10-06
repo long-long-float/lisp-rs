@@ -17,6 +17,10 @@ pub fn expand_macros_ast(
             menv.insert(mac.id.id, mac.clone());
             ast
         }
+        Ast::Define(mut def) => {
+            def.init = Box::new(expand_macros_ast(*def.init, menv, env)?);
+            Ast::Define(def)
+        }
         Ast::List(vs) => {
             if let Some((
                 AnnotatedAst {

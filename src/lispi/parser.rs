@@ -1,7 +1,7 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::{collections::HashMap, fmt::Display};
 
-use crate::{ast_pat, match_special_args_with_rest};
+use crate::{ast_pat, match_special_args, match_special_args_with_rest};
 
 use super::{
     error::*, evaluator as e, evaluator::Value, tokenizer::*, typer::Type, LocationRange,
@@ -11,8 +11,15 @@ use super::{
 #[derive(Clone, PartialEq, Debug)]
 pub struct DefineMacro {
     pub id: SymbolValue,
+    /// Arguments of macro don't have types.
     pub args: Vec<SymbolValue>,
     pub body: Vec<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Define {
+    pub id: SymbolValue,
+    pub init: Box<AnnotatedAst>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -29,8 +36,8 @@ pub enum Ast {
     Nil,
 
     // Special forms
-    // Arguments of macro don't have types.
     DefineMacro(DefineMacro),
+    Define(Define),
 
     /// For optimizing tail recursion
     Continue(String),
@@ -205,6 +212,9 @@ impl Display for AnnotatedAst {
                 }
                 write!(f, ")")
             }
+            Ast::Define(Define { id, init }) => {
+                write!(f, "(define {} {})", id.value, *init)
+            }
             Ast::Continue(_) => write!(f, "CONTINUE"),
         }
     }
@@ -315,6 +325,18 @@ fn parse_list<'a>(
                         ))
                     }
                 )
+            }
+            "define" => {
+                match_special_args!(args, ast_pat!(Ast::Symbol(id), _loc), init, {
+                    Ok((
+                        Ast::Define(Define {
+                            id: id.clone(),
+                            init: Box::new(init.clone()),
+                        })
+                        .with_location(location),
+                        tokens,
+                    ))
+                })
             }
             _ => Ok((Ast::List(items).with_location(location), tokens)),
         }
