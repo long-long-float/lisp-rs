@@ -1,6 +1,7 @@
 pub mod console;
 pub mod error;
 
+pub mod environment;
 pub mod evaluator;
 pub mod macro_expander;
 pub mod parser;
@@ -9,7 +10,9 @@ pub mod typer;
 
 use anyhow::Result;
 
-use crate::lispi::{evaluator as e, macro_expander as m, parser as p, tokenizer as t};
+use crate::lispi::{
+    environment as env, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
+};
 
 #[derive(Clone, Debug)]
 pub struct SymbolValue {
@@ -124,10 +127,10 @@ impl std::fmt::Display for LocationRange {
 pub fn interpret(program: Vec<String>) -> Result<Vec<e::ValueWithType>> {
     let tokens = t::tokenize(program)?;
     let (program, mut sym_table) = p::parse(tokens)?;
-    let mut env = e::Environment::new();
-    let program = m::expand_macros(program, &mut env, &mut sym_table)?;
+    let program = m::expand_macros(program, &mut sym_table)?;
     // for ast in &program {
     //     println!("{}", ast);
     // }
+    let mut env = env::Environment::new();
     e::eval_program(&program, env, sym_table)
 }

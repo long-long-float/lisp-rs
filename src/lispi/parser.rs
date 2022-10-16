@@ -444,7 +444,6 @@ fn parse_program<'a>(
 /// Get AST from tokens.
 /// This uses recursive descent parsing and is simple implementation thanks to the syntax of LISP.
 pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, SymbolTable)> {
-    let mut env = e::Environment::new();
     let mut sym_table = SymbolTable::new();
     let ast = parse_with_env(tokens, &mut sym_table)?;
     Ok((ast, sym_table))

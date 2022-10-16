@@ -13,7 +13,8 @@ use std::path::Path;
 use lisp_rs::lispi::error::ErrorWithLocation;
 use lisp_rs::lispi::interpret;
 use lisp_rs::lispi::{
-    console as c, error::Error, evaluator as e, parser as p, tokenizer as t, typer as ty,
+    console as c, environment as env, error::Error, evaluator as e, parser as p, tokenizer as t,
+    typer as ty,
 };
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
@@ -70,7 +71,7 @@ fn main() -> Result<()> {
             Ok(())
         };
 
-        let mut env = e::Environment::new();
+        let mut env = env::Environment::new();
         let mut sym_table = p::SymbolTable::new();
         e::init_env(&mut env, &mut sym_table);
 

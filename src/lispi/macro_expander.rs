@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{evaluator::*, parser::*};
+use super::{environment::Environment, evaluator::*, parser::*};
 use anyhow::Result;
 
 type MacroEnv = HashMap<u32, DefineMacro>;
@@ -8,7 +8,6 @@ type MacroEnv = HashMap<u32, DefineMacro>;
 pub fn expand_macros_ast(
     ast: AnnotatedAst,
     menv: &mut MacroEnv,
-    env: &mut Environment,
     sym_env: &mut SymbolTable,
 ) -> Result<AnnotatedAst> {
     let AnnotatedAst { ast, location, ty } = ast;
@@ -19,7 +18,7 @@ pub fn expand_macros_ast(
             ast
         }
         Ast::Define(mut def) => {
-            def.init = Box::new(expand_macros_ast(*def.init, menv, env, sym_env)?);
+            def.init = Box::new(expand_macros_ast(*def.init, menv, sym_env)?);
             Ast::Define(def)
         }
         Ast::List(vs) => {
@@ -34,25 +33,23 @@ pub fn expand_macros_ast(
             {
                 let mut args = args
                     .into_iter()
-                    .map(|arg| expand_macros_ast(arg.clone(), menv, env, sym_env))
+                    .map(|arg| expand_macros_ast(arg.clone(), menv, sym_env))
                     .collect::<Result<Vec<_>>>()?;
 
                 if let Some(mac) = menv.get(&name.id) {
-                    env.push_local();
+                    let mut env = Environment::new();
 
-                    init_env(env, sym_env);
+                    init_env(&mut env, sym_env);
 
                     for (name, value) in mac.args.iter().zip(args) {
                         env.insert_var(name.clone(), Value::RawAst(value.clone()).with_type());
                     }
 
-                    let result = eval_asts(&mac.body, env);
+                    let result = eval_asts(&mac.body, &mut env);
 
                     env.pop_local();
 
                     let result = get_last_result(result?);
-                    env.pop_local();
-
                     Ast::from(result.value)
                 } else {
                     let name = AnnotatedAst {
@@ -68,7 +65,7 @@ pub fn expand_macros_ast(
             } else {
                 let vs = vs
                     .into_iter()
-                    .map(|v| expand_macros_ast(v, menv, env, sym_env))
+                    .map(|v| expand_macros_ast(v, menv, sym_env))
                     .collect::<Result<Vec<_>>>()?;
                 Ast::List(vs)
             }
@@ -91,16 +88,12 @@ pub fn expand_macros_ast(
     })
 }
 
-pub fn expand_macros(
-    asts: Program,
-    env: &mut Environment,
-    sym_table: &mut SymbolTable,
-) -> Result<Program> {
+pub fn expand_macros(asts: Program, sym_table: &mut SymbolTable) -> Result<Program> {
     let mut menv = MacroEnv::new();
 
     let asts = asts
         .into_iter()
-        .map(|ast| expand_macros_ast(ast, &mut menv, env, sym_table))
+        .map(|ast| expand_macros_ast(ast, &mut menv, sym_table))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(asts)

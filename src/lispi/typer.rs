@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{ast_pat, match_special_args};
 
-use super::{error::*, evaluator::*, parser::*};
+use super::{environment::*, error::*, evaluator::*, parser::*};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
@@ -98,6 +98,15 @@ impl TypeEnv {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+struct TypeVariable {}
+
+#[derive(Clone, PartialEq, Debug)]
+struct TypeAssignment {
+    left: TypeVariable,
+    right: Type,
+}
+
 fn type_list(vs: &[AnnotatedAst], env: &mut TypeEnv) -> Result<()> {
     // if let Some((name, args)) = vs.split_first() {
     //     if let Ast::Symbol(name) = &name.ast {
@@ -117,33 +126,39 @@ fn type_list(vs: &[AnnotatedAst], env: &mut TypeEnv) -> Result<()> {
     Ok(())
 }
 
-fn type_ast(ast: &mut AnnotatedAst, env: &mut TypeEnv) -> Result<()> {
-    // match &ast.ast {
-    //     Ast::List(vs) => {
-    //         type_list(&vs, env)?;
-    //     }
-    //     Ast::Quoted(_) => todo!(),
-    //     Ast::Integer(_) => todo!(),
-    //     Ast::Float(_) => todo!(),
-    //     Ast::Symbol(_) => todo!(),
-    //     Ast::SymbolWithType(_, _) => todo!(),
-    //     Ast::Boolean(_) => todo!(),
-    //     Ast::Char(_) => todo!(),
-    //     Ast::String(_) => todo!(),
-    //     Ast::Nil => todo!(),
-    //     Ast::Continue(_) => todo!(),
-    // }
+fn collect_constraints(ast: &mut AnnotatedAst, env: &mut TypeEnv) -> Result<Vec<TypeAssignment>> {
+    match &ast.ast {
+        Ast::List(vs) => {
+            type_list(&vs, env)?;
+        }
+        Ast::Quoted(_) => todo!(),
+        Ast::Integer(_) => {
+            ast.ty = Some(Type::Int);
+        }
+        Ast::Float(_) => {
+            ast.ty = Some(Type::Float);
+        }
+        Ast::Symbol(id) => if let Some(var) = env.table.get(&id.value) {},
+        Ast::SymbolWithType(_, _) => todo!(),
+        Ast::Boolean(_) => todo!(),
+        Ast::Char(_) => todo!(),
+        Ast::String(_) => todo!(),
+        Ast::Nil => todo!(),
+        Ast::Continue(_) => todo!(),
+        Ast::DefineMacro(_) => todo!(),
+        Ast::Define(Define { id, init }) => {}
+    }
 
-    Ok(())
+    Ok(Vec::new())
 }
 
 pub fn check_and_inference_type(
     mut asts: Program,
-    mut env: Environment,
-) -> Result<(Program, Environment)> {
+    mut env: Environment<()>,
+) -> Result<(Program, Environment<()>)> {
     let mut ty_env = TypeEnv::new();
     for ast in asts.iter_mut() {
-        type_ast(ast, &mut ty_env)?;
+        collect_constraints(ast, &mut ty_env)?;
     }
     Ok((asts, env))
 }
