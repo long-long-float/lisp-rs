@@ -71,7 +71,8 @@ fn main() -> Result<()> {
         };
 
         let mut env = e::Environment::new();
-        e::init_env(&mut env);
+        let mut sym_table = p::SymbolTable::new();
+        e::init_env(&mut env, &mut sym_table);
 
         loop {
             let buffer = &mut history[history_pos];
@@ -129,7 +130,7 @@ fn main() -> Result<()> {
                         if !buffer.is_empty() {
                             let lines = vec![buffer.join("")];
                             let results = t::tokenize(lines.clone())
-                                .and_then(|tokens| p::parse_with_env(tokens, &mut env))
+                                .and_then(|tokens| p::parse_with_env(tokens, &mut sym_table))
                                 .and_then(|asts| e::eval_asts(&asts, &mut env));
                             match results {
                                 Ok(results) => {
@@ -206,7 +207,7 @@ where
             .collect::<Vec<String>>();
         Ok(lines)
     } else {
-        Err(Error::Io("Cannot open soure file".to_string()))
+        Err(Error::Io(format!("Cannot open source file")))
     }
 }
 

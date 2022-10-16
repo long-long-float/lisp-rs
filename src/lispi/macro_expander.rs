@@ -9,6 +9,7 @@ pub fn expand_macros_ast(
     ast: AnnotatedAst,
     menv: &mut MacroEnv,
     env: &mut Environment,
+    sym_env: &mut SymbolTable,
 ) -> Result<AnnotatedAst> {
     let AnnotatedAst { ast, location, ty } = ast;
 
@@ -18,7 +19,7 @@ pub fn expand_macros_ast(
             ast
         }
         Ast::Define(mut def) => {
-            def.init = Box::new(expand_macros_ast(*def.init, menv, env)?);
+            def.init = Box::new(expand_macros_ast(*def.init, menv, env, sym_env)?);
             Ast::Define(def)
         }
         Ast::List(vs) => {
@@ -33,13 +34,13 @@ pub fn expand_macros_ast(
             {
                 let mut args = args
                     .into_iter()
-                    .map(|arg| expand_macros_ast(arg.clone(), menv, env))
+                    .map(|arg| expand_macros_ast(arg.clone(), menv, env, sym_env))
                     .collect::<Result<Vec<_>>>()?;
 
                 if let Some(mac) = menv.get(&name.id) {
                     env.push_local();
 
-                    init_env(env);
+                    init_env(env, sym_env);
 
                     for (name, value) in mac.args.iter().zip(args) {
                         env.insert_var(name.clone(), Value::RawAst(value.clone()).with_type());
@@ -67,7 +68,7 @@ pub fn expand_macros_ast(
             } else {
                 let vs = vs
                     .into_iter()
-                    .map(|v| expand_macros_ast(v, menv, env))
+                    .map(|v| expand_macros_ast(v, menv, env, sym_env))
                     .collect::<Result<Vec<_>>>()?;
                 Ast::List(vs)
             }
@@ -90,12 +91,16 @@ pub fn expand_macros_ast(
     })
 }
 
-pub fn expand_macros(asts: Program, env: &mut Environment) -> Result<Program> {
+pub fn expand_macros(
+    asts: Program,
+    env: &mut Environment,
+    sym_table: &mut SymbolTable,
+) -> Result<Program> {
     let mut menv = MacroEnv::new();
 
     let asts = asts
         .into_iter()
-        .map(|ast| expand_macros_ast(ast, &mut menv, env))
+        .map(|ast| expand_macros_ast(ast, &mut menv, env, sym_table))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(asts)

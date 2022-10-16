@@ -275,7 +275,7 @@ where
 
 fn parse_list<'a>(
     tokens: &'a [TokenWithLocation],
-    env: &mut e::Environment,
+    sym_table: &mut SymbolTable,
 ) -> ParseResult<'a, AnnotatedAst> {
     let (left_token, right_token) = if let Some(&TokenWithLocation {
         token: Token::LeftSquareBracket,
@@ -290,7 +290,7 @@ fn parse_list<'a>(
     let (items, tokens) = consume_while(
         tokens,
         |token| token != right_token,
-        |t| parse_value(t, env),
+        |t| parse_value(t, sym_table),
     )?;
     let (tail_loc, tokens) = consume(tokens, &right_token)?;
 
@@ -347,7 +347,7 @@ fn parse_list<'a>(
 
 fn parse_value<'a>(
     tokens: &'a [TokenWithLocation],
-    env: &mut e::Environment,
+    sym_table: &mut SymbolTable,
 ) -> ParseResult<'a, AnnotatedAst> {
     if let Some((
         TokenWithLocation {
@@ -363,7 +363,7 @@ fn parse_value<'a>(
                 if value.to_lowercase() == "nil" {
                     Ok((Ast::Nil.with_location(loc), rest))
                 } else {
-                    let id = env.sym_table.find_id_or_insert(value);
+                    let id = sym_table.find_id_or_insert(value);
                     let sym = SymbolValue {
                         value: value.clone(),
                         id,
@@ -386,7 +386,7 @@ fn parse_value<'a>(
                         {
                             // TODO: Restrict type annotation in specific location
 
-                            let id = env.sym_table.find_id_or_insert(ty);
+                            let id = sym_table.find_id_or_insert(ty);
                             let ty = SymbolValue {
                                 value: ty.clone(),
                                 id,
@@ -405,9 +405,9 @@ fn parse_value<'a>(
             }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value).with_location(loc), rest)),
             Token::FloatLiteral(value) => Ok((Ast::Float(*value).with_location(loc), rest)),
-            Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens, env),
+            Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens, sym_table),
             Token::Quote => {
-                let (value, rest) = parse_value(rest, env)?;
+                let (value, rest) = parse_value(rest, sym_table)?;
                 Ok((Ast::Quoted(Box::new(value)).with_location(loc), rest))
             }
             Token::BooleanLiteral(value) => Ok((Ast::Boolean(*value).with_location(loc), rest)),
@@ -428,14 +428,14 @@ fn parse_value<'a>(
 
 fn parse_program<'a>(
     tokens: &'a [TokenWithLocation],
-    env: &mut e::Environment,
+    sym_table: &mut SymbolTable,
 ) -> ParseResult<'a, Program> {
     if tokens.is_empty() {
         Ok((Vec::new(), tokens))
     } else {
-        let (value, rest) = parse_value(tokens, env)?;
+        let (value, rest) = parse_value(tokens, sym_table)?;
         let mut result = vec![value];
-        let (mut values, rest) = parse_program(rest, env)?;
+        let (mut values, rest) = parse_program(rest, sym_table)?;
         result.append(&mut values);
         Ok((result, rest))
     }
@@ -443,14 +443,18 @@ fn parse_program<'a>(
 
 /// Get AST from tokens.
 /// This uses recursive descent parsing and is simple implementation thanks to the syntax of LISP.
-pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, e::Environment)> {
+pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, SymbolTable)> {
     let mut env = e::Environment::new();
-    let ast = parse_with_env(tokens, &mut env)?;
-    Ok((ast, env))
+    let mut sym_table = SymbolTable::new();
+    let ast = parse_with_env(tokens, &mut sym_table)?;
+    Ok((ast, sym_table))
 }
 
-pub fn parse_with_env(tokens: Vec<TokenWithLocation>, env: &mut e::Environment) -> Result<Program> {
-    parse_program(&tokens, env).and_then(|(ast, tokens)| {
+pub fn parse_with_env(
+    tokens: Vec<TokenWithLocation>,
+    sym_table: &mut SymbolTable,
+) -> Result<Program> {
+    parse_program(&tokens, sym_table).and_then(|(ast, tokens)| {
         if !tokens.is_empty() {
             let token = &tokens[0];
             Err(Error::Parse(format!("Unexpeced {:?}", token.token))

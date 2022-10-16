@@ -123,10 +123,11 @@ impl std::fmt::Display for LocationRange {
 /// Functions of each steps return Result to express errors.
 pub fn interpret(program: Vec<String>) -> Result<Vec<e::ValueWithType>> {
     let tokens = t::tokenize(program)?;
-    let (program, mut env) = p::parse(tokens)?;
-    let program = m::expand_macros(program, &mut env)?;
+    let (program, mut sym_table) = p::parse(tokens)?;
+    let mut env = e::Environment::new();
+    let program = m::expand_macros(program, &mut env, &mut sym_table)?;
     // for ast in &program {
     //     println!("{}", ast);
     // }
-    e::eval_program(&program, env)
+    e::eval_program(&program, env, sym_table)
 }

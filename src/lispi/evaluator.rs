@@ -291,8 +291,6 @@ impl PartialEq for Value {
 
 pub struct Environment {
     head_local: LocalRef,
-    pub sym_table: SymbolTable,
-
     /// For referencing variables from closure.
     lambda_local: LocalRef,
 }
@@ -301,7 +299,6 @@ impl Environment {
     pub fn new() -> Environment {
         let mut env = Environment {
             head_local: None,
-            sym_table: SymbolTable::new(),
             lambda_local: None,
         };
         env.push_local();
@@ -309,9 +306,8 @@ impl Environment {
     }
 
     fn update_var(&mut self, name: SymbolValue, value: &ValueWithType) -> Result<(), Error> {
-        let id = self.resolve_sym_id(&name);
         let mut local = self.head_local.as_mut().unwrap().borrow_mut();
-        if local.update_var(id, value) {
+        if local.update_var(name.id, value) {
             Ok(())
         } else {
             Err(Error::Eval(format!(
@@ -321,49 +317,37 @@ impl Environment {
         }
     }
 
-    fn resolve_sym_id(&mut self, name: &SymbolValue) -> u32 {
-        if name.id != 0 {
-            name.id
-        } else {
-            self.sym_table.find_id_or_insert(&name.value)
-        }
-    }
-
     pub fn insert_var(&mut self, name: SymbolValue, value: ValueWithType) {
-        let id = self.resolve_sym_id(&name);
         // local_stack must have least one local
         let mut local = self.head_local.as_ref().unwrap().borrow_mut();
-        local.variables.insert(id, value);
+        local.variables.insert(name.id, value);
     }
 
     fn find_var(&mut self, name: &SymbolValue) -> Option<ValueWithType> {
-        let id = self.resolve_sym_id(&name);
-        self.head_local.as_mut().unwrap().borrow_mut().find_var(id)
+        self.head_local
+            .as_mut()
+            .unwrap()
+            .borrow_mut()
+            .find_var(name.id)
     }
 
     fn insert_function(
         &mut self,
-        name: &str,
+        name: SymbolValue,
         type_: Type,
         func: fn(Vec<ValueWithType>) -> EvalResult,
     ) {
-        let name = name.to_string();
-        let id = self.sym_table.find_id_or_insert(&name);
-        let sym = SymbolValue { value: name, id };
         self.insert_var(
-            sym.clone(),
+            name.clone(),
             ValueWithType {
-                value: Value::NativeFunction { name: sym, func },
+                value: Value::NativeFunction { name, func },
                 type_,
             },
         );
     }
 
-    fn insert_variable_as_symbol(&mut self, name: &str) {
-        let name = name.to_string();
-        let id = self.sym_table.find_id_or_insert(&name);
-        let sym = SymbolValue { value: name, id };
-        self.insert_var(sym.clone(), Value::Symbol(sym).with_type());
+    fn insert_variable_as_symbol(&mut self, name: SymbolValue) {
+        self.insert_var(name.clone(), Value::Symbol(name).with_type());
     }
 
     #[allow(dead_code)]
@@ -745,8 +729,7 @@ fn eval_special_form(
                     }
 
                     if let Some(local) = env.lambda_local.clone() {
-                        let id = env.resolve_sym_id(&name);
-                        if local.borrow_mut().update_var(id, &value) {
+                        if local.borrow_mut().update_var(name.id, &value) {
                             return Ok(Value::nil().with_type());
                         }
                     }
@@ -1286,8 +1269,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Environment) -> EvalResult {
             }
 
             if let Some(local) = env.lambda_local.clone() {
-                let id = env.resolve_sym_id(&value);
-                if let Some(var) = local.borrow_mut().find_var(id) {
+                if let Some(var) = local.borrow_mut().find_var(value.id) {
                     return Ok(var);
                 }
             }
@@ -1303,10 +1285,16 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Environment) -> EvalResult {
 }
 
 /// Define embedded functions to insert to the root of environment.
-pub fn init_env(env: &mut Environment) {
+pub fn init_env(env: &mut Environment, sym_table: &mut SymbolTable) {
+    let mut s = |value: &str| {
+        let value = value.to_string();
+        let id = sym_table.find_id_or_insert(&value);
+        SymbolValue { value, id }
+    };
+
     // Pre-defined functions and special forms
     env.insert_function(
-        "even?",
+        s("even?"),
         Type::function(vec![Type::int()], Type::Any),
         |args| {
             match_call_args!(args, Value::Integer(v), {
@@ -1315,12 +1303,12 @@ pub fn init_env(env: &mut Environment) {
         },
     );
     env.insert_function(
-        "=",
+        s("="),
         Type::function(vec![Type::Any, Type::Any], Type::Any),
         |args| match_call_args!(args, v1, v2, { Ok(Value::from(v1 == v2).with_type()) }),
     );
     env.insert_function(
-        "car",
+        s("car"),
         Type::function(vec![Type::list()], Type::Any),
         |args| {
             match_call_args!(args, Value::List(vs), {
@@ -1330,7 +1318,7 @@ pub fn init_env(env: &mut Environment) {
         },
     );
     env.insert_function(
-        "cdr",
+        s("cdr"),
         Type::function(vec![Type::list()], Type::Any),
         |args| {
             match_call_args!(args, Value::List(vs), {
@@ -1348,7 +1336,7 @@ pub fn init_env(env: &mut Environment) {
     );
     // TODO: Make mod to accept number
     env.insert_function(
-        "mod",
+        s("mod"),
         Type::function(vec![Type::int(), Type::int()], Type::int()),
         |args| {
             match_call_args!(args, Value::Integer(num), Value::Integer(divisor), {
@@ -1357,7 +1345,7 @@ pub fn init_env(env: &mut Environment) {
         },
     );
     env.insert_function(
-        "cons",
+        s("cons"),
         Type::function(vec![Type::Any, Type::list()], Type::list()),
         |args| {
             match_call_args!(args, v, Value::List(vs), {
@@ -1368,7 +1356,7 @@ pub fn init_env(env: &mut Environment) {
         },
     );
     env.insert_function(
-        "length",
+        s("length"),
         Type::function(vec![Type::list()], Type::Int),
         |args| {
             match_call_args!(args, Value::List(vs), {
@@ -1377,7 +1365,7 @@ pub fn init_env(env: &mut Environment) {
         },
     );
     env.insert_function(
-        "list-ref",
+        s("list-ref"),
         Type::function(vec![Type::list(), Type::Int], Type::Any),
         |args| {
             match_call_args!(args, Value::List(vs), Value::Integer(idx), {
@@ -1393,7 +1381,7 @@ pub fn init_env(env: &mut Environment) {
         },
     );
     env.insert_function(
-        "string->list",
+        s("string->list"),
         Type::function(vec![Type::String], Type::list()),
         |args| {
             match_call_args!(args, Value::String(value), {
@@ -1402,26 +1390,26 @@ pub fn init_env(env: &mut Environment) {
             })
         },
     );
-    env.insert_function("newline", Type::function(vec![], Type::Any), |_| {
+    env.insert_function(s("newline"), Type::function(vec![], Type::Any), |_| {
         newlineuw();
         Ok(Value::List(vec![]).with_type())
     });
 
     // These functions cannot be defined using `match_call_args!` due to variable arguments.
     // These are defined at `apply_function`.
-    env.insert_variable_as_symbol("print");
-    env.insert_variable_as_symbol("display");
-    env.insert_variable_as_symbol("list");
-    env.insert_variable_as_symbol("+");
-    env.insert_variable_as_symbol("-");
-    env.insert_variable_as_symbol("*");
-    env.insert_variable_as_symbol("/");
-    env.insert_variable_as_symbol(">");
-    env.insert_variable_as_symbol(">=");
-    env.insert_variable_as_symbol("<");
-    env.insert_variable_as_symbol("<=");
-    env.insert_variable_as_symbol("or");
-    env.insert_variable_as_symbol("map");
+    env.insert_variable_as_symbol(s("print"));
+    env.insert_variable_as_symbol(s("display"));
+    env.insert_variable_as_symbol(s("list"));
+    env.insert_variable_as_symbol(s("+"));
+    env.insert_variable_as_symbol(s("-"));
+    env.insert_variable_as_symbol(s("*"));
+    env.insert_variable_as_symbol(s("/"));
+    env.insert_variable_as_symbol(s(">"));
+    env.insert_variable_as_symbol(s(">="));
+    env.insert_variable_as_symbol(s("<"));
+    env.insert_variable_as_symbol(s("<="));
+    env.insert_variable_as_symbol(s("or"));
+    env.insert_variable_as_symbol(s("map"));
 
     // For visibility of Environment.dump_local()
     env.push_local();
@@ -1430,7 +1418,11 @@ pub fn init_env(env: &mut Environment) {
 /// Evaluate ASTs and return the these results.
 ///
 /// This function visits AST node recursively and process each nodes.
-pub fn eval_program(asts: &Program, mut env: Environment) -> Result<Vec<ValueWithType>> {
-    init_env(&mut env);
+pub fn eval_program(
+    asts: &Program,
+    mut env: Environment,
+    mut sym_table: SymbolTable,
+) -> Result<Vec<ValueWithType>> {
+    init_env(&mut env, &mut sym_table);
     eval_asts(asts, &mut env)
 }
