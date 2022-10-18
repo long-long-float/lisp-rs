@@ -257,6 +257,8 @@ impl From<&Ast> for Value {
                 let vs = vs.iter().map(|v| Value::from(&v.ast).with_type()).collect();
                 Value::List(vs)
             }
+            // This must be converted in eval_ast.
+            Ast::Lambda(_) => Value::nil(),
             Ast::Nil => Value::nil(),
             Ast::DefineMacro(_) => Value::nil(),
             Ast::Define(_) => Value::nil(),
@@ -527,6 +529,7 @@ fn optimize_tail_recursion(
             | Ast::Nil
             | Ast::DefineMacro(_)
             | Ast::Define(_)
+            | Ast::Lambda(_)
             | Ast::Continue(_) => Some(ast.clone()),
         }
     }
@@ -545,6 +548,7 @@ fn optimize_tail_recursion(
             | Ast::Nil
             | Ast::DefineMacro(_)
             | Ast::Define(_)
+            | Ast::Lambda(_)
             | Ast::Continue(_) => false,
         }
     }
@@ -600,25 +604,6 @@ fn eval_special_form(
 
                     // .or_else(|err| Err(anyhow!(err.with_location(name_ast.location))))?;
                     Ok(Value::nil().with_type())
-                })
-            }
-            "lambda" => {
-                match_special_args_with_rest!(raw_args, body, ast_pat!(Ast::List(args), _loc), {
-                    let args = get_symbol_values(args)?;
-
-                    let arg_types = args.iter().map(|_| Type::Any).collect();
-                    let func = Value::Function {
-                        name: SymbolValue::empty(),
-                        args: args,
-                        body: body.to_vec(),
-                        is_macro: false,
-                        parent_local: env.head_local.clone(),
-                    };
-
-                    Ok(ValueWithType {
-                        value: func,
-                        type_: Type::function(arg_types, Type::Any),
-                    })
                 })
             }
             "let" | "let*" => {
@@ -1106,6 +1091,20 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             let value = eval_ast(init, env)?;
             env.insert_var(id.clone(), value);
             Ok(Value::nil().with_type())
+        }
+        Ast::Lambda(Lambda { args, body }) => {
+            let func = Value::Function {
+                name: SymbolValue::empty(),
+                args: args.to_vec(),
+                body: body.to_vec(),
+                is_macro: false,
+                parent_local: env.head_local.clone(),
+            };
+            let arg_types = args.iter().map(|_| Type::Any).collect();
+            Ok(ValueWithType {
+                value: func,
+                type_: Type::function(arg_types, Type::Any),
+            })
         }
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {

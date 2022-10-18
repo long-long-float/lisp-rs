@@ -23,6 +23,12 @@ pub struct Define {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct Lambda {
+    pub args: Vec<SymbolValue>,
+    pub body: Vec<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
     List(Vec<AnnotatedAst>),
     Quoted(Box<AnnotatedAst>),
@@ -38,6 +44,7 @@ pub enum Ast {
     // Special forms
     DefineMacro(DefineMacro),
     Define(Define),
+    Lambda(Lambda),
 
     /// For optimizing tail recursion
     Continue(String),
@@ -78,6 +85,13 @@ impl AnnotatedAst {
             ast,
             location,
             ty: None,
+        }
+    }
+
+    pub fn with_new_type(self, new_ty: Type) -> Self {
+        Self {
+            ty: Some(new_ty),
+            ..self
         }
     }
 }
@@ -175,14 +189,23 @@ impl From<&str> for Ast {
     }
 }
 
+fn write_values<T: Display>(f: &mut std::fmt::Formatter<'_>, vs: &[T]) -> std::fmt::Result {
+    if let Some((last, vs)) = vs.split_last() {
+        for v in vs {
+            write!(f, "{} ", v)?;
+        }
+        write!(f, "{}", last)?;
+    }
+
+    Ok(())
+}
+
 impl Display for AnnotatedAst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.ast {
             Ast::List(vs) => {
                 write!(f, "(")?;
-                for v in vs {
-                    write!(f, "{} ", v)?;
-                }
+                write_values(f, vs)?;
                 write!(f, ")")?;
                 Ok(())
             }
@@ -203,19 +226,28 @@ impl Display for AnnotatedAst {
             Ast::Nil => write!(f, "()"),
             Ast::DefineMacro(DefineMacro { id, args, body }) => {
                 write!(f, "(define-macro {} (", id.value)?;
-                for arg in args {
-                    write!(f, "{} ", arg.value)?;
-                }
-                write!(f, ")")?;
-                for ast in body {
-                    write!(f, "{} ", ast)?;
-                }
+                write_values(f, &args.iter().map(|arg| &arg.value).collect::<Vec<_>>())?;
+                write!(f, ") ")?;
+                write_values(f, body)?;
                 write!(f, ")")
             }
             Ast::Define(Define { id, init }) => {
                 write!(f, "(define {} {})", id.value, *init)
             }
+            Ast::Lambda(Lambda { args, body }) => {
+                write!(f, "(lambda (")?;
+                write_values(f, &args.iter().map(|arg| &arg.value).collect::<Vec<_>>())?;
+                write!(f, ") ")?;
+                write_values(f, body)?;
+                write!(f, ")")
+            }
             Ast::Continue(_) => write!(f, "CONTINUE"),
+        }?;
+
+        if let Some(ty) = &self.ty {
+            write!(f, ": {}", ty)
+        } else {
+            Ok(())
         }
     }
 }
@@ -332,6 +364,19 @@ fn parse_list<'a>(
                         Ast::Define(Define {
                             id: id.clone(),
                             init: Box::new(init.clone()),
+                        })
+                        .with_location(location),
+                        tokens,
+                    ))
+                })
+            }
+            "lambda" => {
+                match_special_args_with_rest!(args, body, ast_pat!(Ast::List(args), _loc), {
+                    let args = e::get_symbol_values(args)?;
+                    Ok((
+                        Ast::Lambda(Lambda {
+                            args,
+                            body: body.to_vec(),
                         })
                         .with_location(location),
                         tokens,

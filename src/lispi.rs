@@ -12,7 +12,10 @@ use anyhow::Result;
 
 use crate::lispi::{
     environment as env, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
+    typer as ty,
 };
+
+use self::environment::Environment;
 
 #[derive(Clone, Debug)]
 pub struct SymbolValue {
@@ -128,9 +131,10 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<e::ValueWithType>> {
     let tokens = t::tokenize(program)?;
     let (program, mut sym_table) = p::parse(tokens)?;
     let program = m::expand_macros(program, &mut sym_table)?;
-    // for ast in &program {
-    //     println!("{}", ast);
-    // }
-    let mut env = env::Environment::new();
+    let program = ty::check_and_inference_type(program, Environment::new())?;
+    for ast in &program {
+        println!("{}", ast);
+    }
+    let env = env::Environment::new();
     e::eval_program(&program, env, sym_table)
 }

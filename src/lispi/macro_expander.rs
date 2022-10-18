@@ -70,6 +70,13 @@ pub fn expand_macros_ast(
                 Ast::List(vs)
             }
         }
+        Ast::Lambda(Lambda { args, body }) => {
+            let body = body
+                .into_iter()
+                .map(|ast| expand_macros_ast(ast, menv, sym_env))
+                .collect::<Result<Vec<_>>>()?;
+            Ast::Lambda(Lambda { args, body })
+        }
         Ast::Symbol(_)
         | Ast::SymbolWithType(_, _)
         | Ast::Quoted(_)
