@@ -94,6 +94,14 @@ impl AnnotatedAst {
             ..self
         }
     }
+
+    pub fn with_new_ast_and_type(self, new_ast: Ast, new_ty: Type) -> Self {
+        Self {
+            ast: new_ast,
+            ty: Some(new_ty),
+            ..self
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]

@@ -1,4 +1,4 @@
-use std::fmt::write;
+use std::{fmt::write, result};
 
 use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
@@ -100,16 +100,18 @@ struct TypeVariable {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct TypeAssignment {
-    left: TypeVariable,
+struct TypeEquality {
+    left: Type,
     right: Type,
 }
 
-impl TypeAssignment {
-    fn new(left: TypeVariable, right: Type) -> Self {
+impl TypeEquality {
+    fn new(left: Type, right: Type) -> Self {
         Self { left, right }
     }
 }
+
+type Constraints = Vec<TypeEquality>;
 
 #[derive(Clone, PartialEq, Debug)]
 struct TypeVarGenerator(u32);
@@ -154,14 +156,42 @@ fn type_list(vs: &[AnnotatedAst], ctx: &mut Context) -> Result<()> {
     Ok(())
 }
 
-fn collect_constraints(
+fn collect_constraints_from_ast(
     ast: AnnotatedAst,
     ctx: &mut Context,
-) -> Result<(AnnotatedAst, Vec<TypeAssignment>)> {
+) -> Result<(AnnotatedAst, Constraints)> {
     match &ast.ast {
-        Ast::List(vs) => Ok((ast, Vec::new())),
+        Ast::List(vs) => {
+            if let Some((fun, args)) = vs.split_first() {
+                let (fun, mut fct) = collect_constraints_from_ast(fun.clone(), ctx)?;
+                let (mut args, mut act) = collect_constraints_from_asts(args.to_vec(), ctx)?;
+
+                let arg_types = args
+                    .iter()
+                    .map(|arg| Box::new(arg.ty.as_ref().unwrap().clone()))
+                    .collect();
+                let result_type = ctx.tv_gen.gen_tv();
+
+                let mut ct = vec![TypeEquality::new(
+                    fun.ty.as_ref().unwrap().clone(),
+                    Type::Function {
+                        args: arg_types,
+                        result: Box::new(result_type.clone()),
+                    },
+                )];
+                ct.append(&mut fct);
+                ct.append(&mut act);
+
+                let mut vs = vec![fun];
+                vs.append(&mut args);
+
+                Ok((ast.with_new_ast_and_type(Ast::List(vs), result_type), ct))
+            } else {
+                Ok((ast.with_new_type(Type::list()), Vec::new()))
+            }
+        }
         Ast::Quoted(inner) => {
-            let (inner, c) = collect_constraints(*inner.clone(), ctx)?;
+            let (inner, c) = collect_constraints_from_ast(*inner.clone(), ctx)?;
             Ok((ast.with_new_type(inner.ty.unwrap()), c))
         }
         Ast::Integer(_) => Ok((ast.with_new_type(Type::Int), Vec::new())),
@@ -188,103 +218,63 @@ fn collect_constraints(
         //     }
         // },
         Ast::Define(Define { id, init }) => {
-            let (init, c) = collect_constraints(*init.clone(), ctx)?;
-            println!("{}", init);
-            // init must have a type.
+            let (init, c) = collect_constraints_from_ast(*init.clone(), ctx)?;
             ctx.env
                 .insert_var(id.clone(), init.ty.as_ref().unwrap().clone());
-            Ok((init, c))
+
+            let def = Ast::Define(Define {
+                id: id.clone(),
+                init: Box::new(init),
+            });
+            Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
         }
         Ast::Lambda(Lambda { args, body }) => {
+            let (body, cbt) = collect_constraints_from_asts(body.clone(), ctx)?;
+
+            let result_type = if let Some(last) = body.last() {
+                last.ty.as_ref().unwrap().clone()
+            } else {
+                Type::Nil
+            };
+
+            let fun = Ast::Lambda(Lambda {
+                args: args.to_vec(),
+                body,
+            });
             let fun_ty = Type::Function {
                 args: args.iter().map(|_| Box::new(ctx.tv_gen.gen_tv())).collect(),
-                result: Box::new(ctx.tv_gen.gen_tv()),
+                result: Box::new(result_type),
             };
-            Ok((ast.with_new_type(fun_ty), Vec::new()))
+
+            Ok((ast.with_new_ast_and_type(fun, fun_ty), cbt))
         }
         Ast::Continue(_) | Ast::DefineMacro(_) => Ok((ast, Vec::new())),
     }
 }
 
-// fn collect_constraints(ast: &mut AnnotatedAst, ctx: &mut Context) -> Result<Vec<TypeAssignment>> {
-//     match &ast.ast {
-//         Ast::List(vs) => {
-//             Ok(Vec::new())
-//         }
-//         Ast::Quoted(inner) => {
-//             let ret = collect_constraints(inner.as_mut(), ctx)?;
-//             ast.ty = inner.ty.clone();
-//             Ok(ret)
-//         }
-//         Ast::Integer(v) => {
-//             ast.ty = Some(Type::Int);
-//             Ok(Vec::new())
-//         }
-//         Ast::Float(_) => {
-//             ast.ty = Some(Type::Float);
-//             Ok(Vec::new())
-//         }
-//         Ast::Boolean(_) => {
-//             ast.ty = Some(Type::Boolean);
-//             Ok(Vec::new())
-//         }
-//         Ast::Char(_) => {
-//             ast.ty = Some(Type::Char);
-//             Ok(Vec::new())
-//         }
-//         Ast::String(_) => {
-//             ast.ty = Some(Type::String);
-//             Ok(Vec::new())
-//         }
-//         Ast::Nil => {
-//             ast.ty = Some(Type::Nil);
-//             Ok(Vec::new())
-//         }
-//         Ast::Symbol(id) | Ast::SymbolWithType(id, _) => {
-//             if let Some(ty) = ctx.env.find_var(&id) {
-//                 ast.ty = Some(ty);
-//                 Ok(Vec::new())
-//             } else {
-//                 Err(Error::UndefindVariable(id.value.clone())
-//                     .with_location(ast.location)
-//                     .into())
-//             }
-//         }
-//         // Ast::SymbolWithType(id, anot_ty) => {
-//         //     if let Some(ty) = ctx.env.find_var(&id) {
-//         //         ast.ty = Some(ty);
-//         //         Ok(vec![TypeAssignment::new()])
-//         //     }
-//         //     else {
-//         //     }
-//         // },
-
-//         Ast::Define(Define { id, init }) => {
-//             let ret = collect_constraints(&mut init, ctx)?;
-//             // init must have a type.
-//             ctx.env.insert_var(id.clone(), init.ty.unwrap());
-//             Ok(ret)
-//         }
-//         Ast::Continue(_) |
-//         Ast::DefineMacro(_) => {
-//             Ok(Vec::new())
-//         }
-//     }
-// }
+fn collect_constraints_from_asts(
+    asts: Vec<AnnotatedAst>,
+    ctx: &mut Context,
+) -> Result<(Vec<AnnotatedAst>, Constraints)> {
+    let mut tv_asts = Vec::new();
+    let mut constraints = Vec::new();
+    for ast in asts {
+        let (ast, mut subc) = collect_constraints_from_ast(ast, ctx)?;
+        constraints.append(&mut subc);
+        tv_asts.push(ast);
+    }
+    Ok((tv_asts, constraints))
+}
 
 pub fn check_and_inference_type(asts: Program, mut env: Environment<()>) -> Result<Program> {
     let mut ctx = Context {
         env: TypeEnv::new(),
         tv_gen: TypeVarGenerator::new(),
     };
-
-    let mut tv_asts = Vec::new();
-    let mut constraints = Vec::new();
-    for ast in asts {
-        let (ast, mut subc) = collect_constraints(ast, &mut ctx)?;
-        constraints.append(&mut subc);
-        tv_asts.push(ast);
+    let (ast, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
+    for c in constraints {
+        println!("{} = {}", c.left, c.right);
     }
 
-    Ok(tv_asts)
+    Ok(ast)
 }
