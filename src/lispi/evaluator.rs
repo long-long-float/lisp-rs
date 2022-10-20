@@ -1,6 +1,4 @@
 use anyhow::{anyhow, Result};
-use rustc_hash::FxHashMap;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use super::{
     console::*, environment::*, error::*, parser::*, typer::*, SymbolValue, TokenLocation,
@@ -413,19 +411,6 @@ fn optimize_tail_recursion(
                         let name = name.value.as_str();
                         let mut args = match name {
                             "begin" => optimize_tail_recursion(func_name, locals, args),
-                            // "if" => {
-                            //     let cond = args.get(0)?;
-                            //     if let (Some(then), Some(els)) = (args.get(1), args.get(2)) {
-                            //         let then = _optimize_tail_recursion(func_name, locals, then)?;
-                            //         let els = _optimize_tail_recursion(func_name, locals, els)?;
-                            //         Some(vec![cond.clone(), then, els])
-                            //     } else if let Some(then) = args.get(1) {
-                            //         let then = _optimize_tail_recursion(func_name, locals, then)?;
-                            //         Some(vec![cond.clone(), then])
-                            //     } else {
-                            //         None
-                            //     }
-                            // }
                             "let" | "let*" => {
                                 let (proc_id, rest) = match args.split_first() {
                                     Some((ast_pat!(Ast::Symbol(proc_id)), rest)) => {
@@ -1130,7 +1115,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
         }
         Ast::Assign(Assign {
             var,
-            var_loc,
+            var_loc: _loc,
             value,
         }) => {
             let value = eval_ast(value, env)?;

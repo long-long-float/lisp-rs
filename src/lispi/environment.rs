@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use super::{console::*, error::*, evaluator::*, parser::*, typer::*, SymbolValue, TokenLocation};
+use super::{console::*, error::*, evaluator::*, typer::*, SymbolValue};
 
 pub struct Environment<T> {
     pub head_local: LocalRef<T>,

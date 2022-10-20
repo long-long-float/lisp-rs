@@ -1,11 +1,6 @@
-use std::{fmt::write, result};
+use anyhow::Result;
 
-use anyhow::{anyhow, Result};
-use rustc_hash::FxHashMap;
-
-use crate::{ast_pat, match_special_args};
-
-use super::{environment::*, error::*, evaluator::*, parser::*, SymbolValue, TokenLocation};
+use super::{environment::*, error::*, parser::*, SymbolValue, TokenLocation};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
@@ -135,25 +130,6 @@ impl TypeVarGenerator {
 struct Context {
     env: TypeEnv,
     tv_gen: TypeVarGenerator,
-}
-
-fn type_list(vs: &[AnnotatedAst], ctx: &mut Context) -> Result<()> {
-    // if let Some((name, args)) = vs.split_first() {
-    //     if let Ast::Symbol(name) = &name.ast {
-    //         match name.value.as_str() {
-    //             "define" => {
-    //                 match_special_args!(args, ast_pat!(Ast::Symbol(id), _), mut init, {
-    //                     type_ast(&mut init, env)?;
-    //                     env.table.insert(id.value.clone(), init.ty.unwrap().clone());
-    //                     Ok(())
-    //                 })?;
-    //             }
-    //             _ => {}
-    //         }
-    //     }
-    // }
-
-    Ok(())
 }
 
 fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<Type> {
@@ -343,7 +319,7 @@ fn collect_constraints_from_asts(
     Ok((tv_asts, constraints))
 }
 
-pub fn check_and_inference_type(asts: Program, mut env: Environment<()>) -> Result<Program> {
+pub fn check_and_inference_type(asts: Program, _env: Environment<()>) -> Result<Program> {
     let mut ctx = Context {
         env: TypeEnv::new(),
         tv_gen: TypeVarGenerator::new(),
