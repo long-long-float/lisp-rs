@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 
 use super::{
-    console::*, environment::*, error::*, parser::*, typer::*, SymbolValue, TokenLocation,
+    ast::*, console::*, environment::*, error::*, parser::*, typer::*, SymbolValue, TokenLocation,
 };
 
 macro_rules! bug {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{environment::Environment, evaluator::*, parser::*};
+use super::{ast::*, environment::Environment, evaluator::*, parser::*};
 use anyhow::Result;
 
 type MacroEnv = HashMap<u32, DefineMacro>;

@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::{environment::*, error::*, parser::*, SymbolValue, TokenLocation};
+use super::{ast::*, environment::*, error::*, parser::*, SymbolValue, TokenLocation};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {

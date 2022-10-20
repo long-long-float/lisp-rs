@@ -1,6 +1,7 @@
 pub mod console;
 pub mod error;
 
+pub mod ast;
 pub mod environment;
 pub mod evaluator;
 pub mod macro_expander;
