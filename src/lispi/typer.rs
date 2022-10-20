@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{ast_pat, match_special_args};
 
-use super::{environment::*, error::*, evaluator::*, parser::*};
+use super::{environment::*, error::*, evaluator::*, parser::*, SymbolValue, TokenLocation};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
@@ -156,6 +156,16 @@ fn type_list(vs: &[AnnotatedAst], ctx: &mut Context) -> Result<()> {
     Ok(())
 }
 
+fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<Type> {
+    if let Some(ty) = ctx.env.find_var(id) {
+        Ok(ty)
+    } else {
+        Err(Error::UndefindVariable(id.value.clone())
+            .with_location(loc.clone())
+            .into())
+    }
+}
+
 fn collect_constraints_from_ast(
     ast: AnnotatedAst,
     ctx: &mut Context,
@@ -201,13 +211,8 @@ fn collect_constraints_from_ast(
         Ast::String(_) => Ok((ast.with_new_type(Type::String), Vec::new())),
         Ast::Nil => Ok((ast.with_new_type(Type::Nil), Vec::new())),
         Ast::Symbol(id) | Ast::SymbolWithType(id, _) => {
-            if let Some(ty) = ctx.env.find_var(&id) {
-                Ok((ast.with_new_type(ty), Vec::new()))
-            } else {
-                Err(Error::UndefindVariable(id.value.clone())
-                    .with_location(ast.location)
-                    .into())
-            }
+            let ty = find_var(id, &ast.location, ctx)?;
+            Ok((ast.with_new_type(ty), Vec::new()))
         }
         // Ast::SymbolWithType(id, anot_ty) => {
         //     if let Some(ty) = ctx.env.find_var(&id) {
@@ -247,6 +252,78 @@ fn collect_constraints_from_ast(
             };
 
             Ok((ast.with_new_ast_and_type(fun, fun_ty), cbt))
+        }
+        Ast::Assign(Assign {
+            var,
+            var_loc,
+            value,
+        }) => {
+            let var_ty = find_var(var, var_loc, ctx)?;
+            let (value, mut vct) = collect_constraints_from_ast(*value.clone(), ctx)?;
+
+            vct.push(TypeEquality::new(
+                var_ty,
+                value.ty.as_ref().unwrap().clone(),
+            ));
+
+            let assign = Ast::Assign(Assign {
+                var: var.clone(),
+                var_loc: var_loc.clone(),
+                value: Box::new(value),
+            });
+
+            Ok((ast.with_new_ast_and_type(assign, Type::Nil), vct))
+        }
+        Ast::IfExpr(IfExpr {
+            cond,
+            then_ast,
+            else_ast,
+        }) => {
+            let (cond, mut cct) = collect_constraints_from_ast(*cond.clone(), ctx)?;
+            let (then_ast, mut tct) = collect_constraints_from_ast(*then_ast.clone(), ctx)?;
+
+            let mut ct = Vec::new();
+            ct.append(&mut cct);
+            ct.append(&mut tct);
+            ct.push(TypeEquality::new(
+                cond.ty.as_ref().unwrap().clone(),
+                Type::Boolean,
+            ));
+
+            let (if_expr, result_ty) = if let Some(else_ast) = else_ast {
+                let (else_ast, mut ect) = collect_constraints_from_ast(*else_ast.clone(), ctx)?;
+
+                ct.append(&mut ect);
+                ct.push(TypeEquality::new(
+                    then_ast.ty.as_ref().unwrap().clone(),
+                    else_ast.ty.as_ref().unwrap().clone(),
+                ));
+
+                let result_ty = then_ast.ty.as_ref().unwrap().clone();
+
+                (
+                    IfExpr {
+                        cond: Box::new(cond),
+                        then_ast: Box::new(then_ast),
+                        else_ast: Some(Box::new(else_ast)),
+                    },
+                    result_ty,
+                )
+            } else {
+                (
+                    IfExpr {
+                        cond: Box::new(cond),
+                        then_ast: Box::new(then_ast),
+                        else_ast: None,
+                    },
+                    Type::Nil,
+                )
+            };
+
+            Ok((
+                ast.with_new_ast_and_type(Ast::IfExpr(if_expr), result_ty),
+                ct,
+            ))
         }
         Ast::Continue(_) | Ast::DefineMacro(_) => Ok((ast, Vec::new())),
     }

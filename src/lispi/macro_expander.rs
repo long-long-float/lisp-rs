@@ -21,6 +21,19 @@ pub fn expand_macros_ast(
             def.init = Box::new(expand_macros_ast(*def.init, menv, sym_env)?);
             Ast::Define(def)
         }
+        Ast::Assign(mut assign) => {
+            assign.value = Box::new(expand_macros_ast(*assign.value, menv, sym_env)?);
+            Ast::Assign(assign)
+        }
+        Ast::IfExpr(mut if_expr) => {
+            if_expr.cond = Box::new(expand_macros_ast(*if_expr.cond, menv, sym_env)?);
+            if_expr.then_ast = Box::new(expand_macros_ast(*if_expr.then_ast, menv, sym_env)?);
+            if let Some(else_ast) = if_expr.else_ast {
+                if_expr.else_ast = Some(Box::new(expand_macros_ast(*else_ast, menv, sym_env)?))
+            }
+
+            Ast::IfExpr(if_expr)
+        }
         Ast::List(vs) => {
             if let Some((
                 AnnotatedAst {

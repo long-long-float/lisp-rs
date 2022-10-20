@@ -29,6 +29,20 @@ pub struct Lambda {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct Assign {
+    pub var: SymbolValue,
+    pub var_loc: TokenLocation,
+    pub value: Box<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct IfExpr {
+    pub cond: Box<AnnotatedAst>,
+    pub then_ast: Box<AnnotatedAst>,
+    pub else_ast: Option<Box<AnnotatedAst>>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub enum Ast {
     List(Vec<AnnotatedAst>),
     Quoted(Box<AnnotatedAst>),
@@ -45,6 +59,8 @@ pub enum Ast {
     DefineMacro(DefineMacro),
     Define(Define),
     Lambda(Lambda),
+    Assign(Assign),
+    IfExpr(IfExpr),
 
     /// For optimizing tail recursion
     Continue(String),
@@ -85,6 +101,13 @@ impl AnnotatedAst {
             ast,
             location,
             ty: None,
+        }
+    }
+
+    pub fn with_new_ast(self, new_ast: Ast) -> Self {
+        Self {
+            ast: new_ast,
+            ..self
         }
     }
 
@@ -229,8 +252,8 @@ impl Display for AnnotatedAst {
                     write!(f, "#f")
                 }
             }
-            Ast::Char(v) => write!(f, "{}", v),
-            Ast::String(v) => write!(f, "{}", v),
+            Ast::Char(v) => write!(f, "'{}'", v),
+            Ast::String(v) => write!(f, "\"{}\"", v),
             Ast::Nil => write!(f, "()"),
             Ast::DefineMacro(DefineMacro { id, args, body }) => {
                 write!(f, "(define-macro {} (", id.value)?;
@@ -247,6 +270,24 @@ impl Display for AnnotatedAst {
                 write_values(f, &args.iter().map(|arg| &arg.value).collect::<Vec<_>>())?;
                 write!(f, ") ")?;
                 write_values(f, body)?;
+                write!(f, ")")
+            }
+            Ast::Assign(Assign {
+                var,
+                var_loc: _,
+                value,
+            }) => {
+                write!(f, "(set! {} {})", var.value, value)
+            }
+            Ast::IfExpr(IfExpr {
+                cond,
+                then_ast,
+                else_ast,
+            }) => {
+                write!(f, "(if {} {}", cond, then_ast)?;
+                if let Some(else_ast) = else_ast {
+                    write!(f, " {}", else_ast)?;
+                }
                 write!(f, ")")
             }
             Ast::Continue(_) => write!(f, "CONTINUE"),
@@ -390,6 +431,43 @@ fn parse_list<'a>(
                         tokens,
                     ))
                 })
+            }
+            "set!" => {
+                match_special_args!(args, ast_pat!(Ast::Symbol(name), loc), value, {
+                    Ok((
+                        Ast::Assign(Assign {
+                            var: name.clone(),
+                            var_loc: *loc,
+                            value: Box::new(value.clone()),
+                        })
+                        .with_location(location),
+                        tokens,
+                    ))
+                })
+            }
+            "if" => {
+                if let (Some(cond), Some(then_ast)) = (args.get(0), args.get(1)) {
+                    let if_expr = if let Some(else_ast) = args.get(2) {
+                        IfExpr {
+                            cond: Box::new(cond.clone()),
+                            then_ast: Box::new(then_ast.clone()),
+                            else_ast: Some(Box::new(else_ast.clone())),
+                        }
+                    } else {
+                        IfExpr {
+                            cond: Box::new(cond.clone()),
+                            then_ast: Box::new(then_ast.clone()),
+                            else_ast: None,
+                        }
+                    };
+                    Ok((Ast::IfExpr(if_expr).with_location(location), tokens))
+                } else {
+                    Err(
+                        Error::Parse("'if' is formed as (if cond then else)".to_string())
+                            .with_location(TokenLocation::Range(location))
+                            .into(),
+                    )
+                }
             }
             _ => Ok((Ast::List(items).with_location(location), tokens)),
         }

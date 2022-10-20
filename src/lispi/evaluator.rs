@@ -257,11 +257,14 @@ impl From<&Ast> for Value {
                 let vs = vs.iter().map(|v| Value::from(&v.ast).with_type()).collect();
                 Value::List(vs)
             }
-            // This must be converted in eval_ast.
-            Ast::Lambda(_) => Value::nil(),
             Ast::Nil => Value::nil(),
-            Ast::DefineMacro(_) => Value::nil(),
-            Ast::Define(_) => Value::nil(),
+            // These must be converted in eval_ast.
+            Ast::Lambda(_)
+            | Ast::DefineMacro(_)
+            | Ast::Define(_)
+            | Ast::Assign(_)
+            | Ast::IfExpr(_) => Value::nil(),
+
             Ast::Continue(v) => Value::Continue(v.clone()),
         }
     }
@@ -410,19 +413,19 @@ fn optimize_tail_recursion(
                         let name = name.value.as_str();
                         let mut args = match name {
                             "begin" => optimize_tail_recursion(func_name, locals, args),
-                            "if" => {
-                                let cond = args.get(0)?;
-                                if let (Some(then), Some(els)) = (args.get(1), args.get(2)) {
-                                    let then = _optimize_tail_recursion(func_name, locals, then)?;
-                                    let els = _optimize_tail_recursion(func_name, locals, els)?;
-                                    Some(vec![cond.clone(), then, els])
-                                } else if let Some(then) = args.get(1) {
-                                    let then = _optimize_tail_recursion(func_name, locals, then)?;
-                                    Some(vec![cond.clone(), then])
-                                } else {
-                                    None
-                                }
-                            }
+                            // "if" => {
+                            //     let cond = args.get(0)?;
+                            //     if let (Some(then), Some(els)) = (args.get(1), args.get(2)) {
+                            //         let then = _optimize_tail_recursion(func_name, locals, then)?;
+                            //         let els = _optimize_tail_recursion(func_name, locals, els)?;
+                            //         Some(vec![cond.clone(), then, els])
+                            //     } else if let Some(then) = args.get(1) {
+                            //         let then = _optimize_tail_recursion(func_name, locals, then)?;
+                            //         Some(vec![cond.clone(), then])
+                            //     } else {
+                            //         None
+                            //     }
+                            // }
                             "let" | "let*" => {
                                 let (proc_id, rest) = match args.split_first() {
                                     Some((ast_pat!(Ast::Symbol(proc_id)), rest)) => {
@@ -518,6 +521,47 @@ fn optimize_tail_recursion(
                     Some(ast.clone())
                 }
             }
+            Ast::Assign(assign) => Some(ast.clone().with_new_ast(Ast::Assign(Assign {
+                value: Box::new(_optimize_tail_recursion(
+                    func_name,
+                    locals,
+                    assign.value.as_ref(),
+                )?),
+                ..assign.clone()
+            }))),
+            Ast::IfExpr(if_expr) => {
+                let cond = Box::new(_optimize_tail_recursion(
+                    func_name,
+                    locals,
+                    if_expr.cond.as_ref(),
+                )?);
+                let then_ast = Box::new(_optimize_tail_recursion(
+                    func_name,
+                    locals,
+                    if_expr.then_ast.as_ref(),
+                )?);
+
+                let if_expr = if let Some(else_ast) = &if_expr.else_ast {
+                    let else_ast = Some(Box::new(_optimize_tail_recursion(
+                        func_name,
+                        locals,
+                        else_ast.as_ref(),
+                    )?));
+                    IfExpr {
+                        cond,
+                        then_ast,
+                        else_ast,
+                    }
+                } else {
+                    IfExpr {
+                        cond,
+                        then_ast,
+                        else_ast: None,
+                    }
+                };
+
+                Some(ast.clone().with_new_ast(Ast::IfExpr(if_expr)))
+            }
             Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, &v),
             Ast::Symbol(_)
             | Ast::SymbolWithType(_, _)
@@ -540,6 +584,21 @@ fn optimize_tail_recursion(
             Ast::Quoted(v) => includes_symbol(sym, &v.ast),
             Ast::Symbol(v) => &v.value == sym,
             Ast::SymbolWithType(v, _) => &v.value == sym,
+            Ast::Assign(assign) => {
+                &assign.var.value == sym || includes_symbol(sym, &assign.value.ast)
+            }
+            Ast::IfExpr(IfExpr {
+                cond,
+                then_ast,
+                else_ast,
+            }) => {
+                includes_symbol(sym, &cond.ast)
+                    || includes_symbol(sym, &then_ast.ast)
+                    || else_ast
+                        .as_ref()
+                        .map(|else_ast| includes_symbol(sym, &else_ast.ast))
+                        .unwrap_or(false)
+            }
             Ast::Integer(_)
             | Ast::Float(_)
             | Ast::Boolean(_)
@@ -589,23 +648,6 @@ fn eval_special_form(
     if let Ast::Symbol(name) = &name_ast.ast {
         let name = name.value.as_str();
         match name {
-            "set!" => {
-                match_special_args!(raw_args, ast_pat!(Ast::Symbol(name), _loc), value, {
-                    let value = eval_ast(value, env)?;
-                    if env.update_var(name.clone(), &value).is_ok() {
-                        return Ok(Value::nil().with_type());
-                    }
-
-                    if let Some(local) = env.lambda_local.clone() {
-                        if local.borrow_mut().update_var(name.id, &value) {
-                            return Ok(Value::nil().with_type());
-                        }
-                    }
-
-                    // .or_else(|err| Err(anyhow!(err.with_location(name_ast.location))))?;
-                    Ok(Value::nil().with_type())
-                })
-            }
             "let" | "let*" => {
                 let err = Err(Error::Eval(
                     "'let' is formed as (let ([id expr] ...) body ...) or named let (let proc-id ([id expr] ...) body ...)".to_string(),
@@ -724,26 +766,6 @@ fn eval_special_form(
             }
 
             "begin" => Ok(get_last_result(eval_asts(raw_args, env)?)),
-            "if" => {
-                if let (Some(cond), Some(then_ast)) = (raw_args.get(0), raw_args.get(1)) {
-                    let cond = eval_ast(cond, env)?.value.is_true();
-                    if cond {
-                        eval_ast(then_ast, env)
-                    } else {
-                        if let Some(else_ast) = raw_args.get(2) {
-                            eval_ast(else_ast, env)
-                        } else {
-                            Ok(Value::nil().with_type())
-                        }
-                    }
-                } else {
-                    Err(
-                        Error::Eval("'if' is formed as (if cond then else)".to_string())
-                            .with_location(name_ast.location)
-                            .into(),
-                    )
-                }
-            }
             "when" | "unless" => {
                 let invert = name == "unless";
                 if let Some((cond, forms)) = raw_args.split_first() {
@@ -1105,6 +1127,41 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 value: func,
                 type_: Type::function(arg_types, Type::Any),
             })
+        }
+        Ast::Assign(Assign {
+            var,
+            var_loc,
+            value,
+        }) => {
+            let value = eval_ast(value, env)?;
+            if env.update_var(var.clone(), &value).is_ok() {
+                return Ok(Value::nil().with_type());
+            }
+
+            if let Some(local) = env.lambda_local.clone() {
+                if local.borrow_mut().update_var(var.id, &value) {
+                    return Ok(Value::nil().with_type());
+                }
+            }
+
+            // .or_else(|err| Err(anyhow!(err.with_location(name_ast.location))))?;
+            Ok(Value::nil().with_type())
+        }
+        Ast::IfExpr(IfExpr {
+            cond,
+            then_ast,
+            else_ast,
+        }) => {
+            let cond = eval_ast(cond, env)?.value.is_true();
+            if cond {
+                eval_ast(then_ast, env)
+            } else {
+                if let Some(else_ast) = else_ast {
+                    eval_ast(else_ast, env)
+                } else {
+                    Ok(Value::nil().with_type())
+                }
+            }
         }
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
