@@ -23,7 +23,7 @@ pub enum Type {
     },
     Any,
 
-    Variable(String),
+    Variable(TypeVariable),
 }
 
 impl Type {
@@ -50,6 +50,63 @@ impl Type {
         Type::Function {
             args: args.iter().map(|a| Box::new(a.clone())).collect(),
             result: Box::new(result),
+        }
+    }
+
+    fn has_free_var(&self, tv: &TypeVariable) -> bool {
+        match self {
+            Type::Numeric
+            | Type::Int
+            | Type::Float
+            | Type::Boolean
+            | Type::Char
+            | Type::String
+            | Type::Nil
+            | Type::Any
+            | Type::Scala(_) => false,
+
+            Type::Composite { name: _, inner } => inner.iter().any(|i| i.has_free_var(tv)),
+            Type::Function { args, result } => {
+                args.iter().any(|arg| arg.has_free_var(tv)) | result.has_free_var(tv)
+            }
+            Type::Variable(ttv) => ttv == tv,
+        }
+    }
+
+    fn replace(self, assign: &TypeAssignment) -> Self {
+        match self {
+            Type::Numeric
+            | Type::Int
+            | Type::Float
+            | Type::Boolean
+            | Type::Char
+            | Type::String
+            | Type::Nil
+            | Type::Any
+            | Type::Scala(_) => self,
+
+            Type::Composite { name, inner } => {
+                let inner = inner
+                    .into_iter()
+                    .map(|i| Box::new(i.replace(assign)))
+                    .collect();
+                Type::Composite { name, inner }
+            }
+            Type::Function { args, result } => {
+                let args = args
+                    .into_iter()
+                    .map(|arg| Box::new(arg.replace(assign)))
+                    .collect();
+                let result = Box::new(result.replace(assign));
+                Type::Function { args, result }
+            }
+            Type::Variable(ref tv) => {
+                if tv == &assign.left {
+                    assign.right.clone()
+                } else {
+                    self
+                }
+            }
         }
     }
 }
@@ -82,7 +139,7 @@ impl std::fmt::Display for Type {
                 write!(f, "({}) -> {}", args, *result)
             }
             Type::Any => write!(f, "any"),
-            Type::Variable(v) => write!(f, "{}", v),
+            Type::Variable(v) => write!(f, "{}", v.name),
         }
     }
 }
@@ -90,7 +147,7 @@ impl std::fmt::Display for Type {
 type TypeEnv = Environment<Type>;
 
 #[derive(Clone, PartialEq, Debug)]
-struct TypeVariable {
+pub struct TypeVariable {
     name: String,
 }
 
@@ -109,6 +166,18 @@ impl TypeEquality {
 type Constraints = Vec<TypeEquality>;
 
 #[derive(Clone, PartialEq, Debug)]
+struct TypeAssignment {
+    left: TypeVariable,
+    right: Type,
+}
+
+impl TypeAssignment {
+    fn new(left: TypeVariable, right: Type) -> Self {
+        Self { left, right }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
 struct TypeVarGenerator(u32);
 
 impl TypeVarGenerator {
@@ -123,7 +192,9 @@ impl TypeVarGenerator {
     }
 
     fn gen_tv(&mut self) -> Type {
-        Type::Variable(self.gen_string())
+        Type::Variable(TypeVariable {
+            name: self.gen_string(),
+        })
     }
 }
 
@@ -319,15 +390,155 @@ fn collect_constraints_from_asts(
     Ok((tv_asts, constraints))
 }
 
+fn replace_constraints(constraints: &[TypeEquality], assign: &TypeAssignment) -> Vec<TypeEquality> {
+    constraints
+        .iter()
+        .map(|c| {
+            let c = c.clone();
+            TypeEquality::new(c.left.replace(assign), c.right.replace(assign))
+        })
+        .collect()
+}
+
+fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
+    if let Some((c, rest)) = constraints.split_first() {
+        match (&c.left, &c.right) {
+            (s, t) if s == t => unify(rest.to_vec()),
+            (Type::Variable(x), t) | (t, Type::Variable(x)) if !t.has_free_var(&x) => {
+                let assign = TypeAssignment::new(x.clone(), t.clone());
+                let rest = replace_constraints(rest, &assign);
+                let mut rest = unify(rest)?;
+                rest.push(assign);
+                Ok(rest)
+            }
+            (
+                f0 @ Type::Function {
+                    args: args0,
+                    result: result0,
+                },
+                f1 @ Type::Function {
+                    args: args1,
+                    result: result1,
+                },
+            ) => {
+                if args0.len() != args1.len() {
+                    return Err(
+                        Error::Type(format!("Types {} and {} are not matched.", f0, f1))
+                            .with_null_location()
+                            .into(),
+                    );
+                }
+
+                let mut rest = rest.to_vec();
+                for (a0, a1) in args0.iter().zip(args1) {
+                    rest.push(TypeEquality::new(*a0.clone(), *a1.clone()));
+                }
+                rest.push(TypeEquality::new(*result0.clone(), *result1.clone()));
+
+                unify(rest)
+            }
+            (t0, t1) => Err(
+                Error::Type(format!("Types {} and {} are not matched.", t0, t1))
+                    .with_null_location()
+                    .into(),
+            ),
+        }
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
+    let new_ty = ast.ty.as_ref().unwrap().clone().replace(assign);
+
+    let iast = ast.ast.clone();
+
+    match iast {
+        Ast::List(vs) => {
+            ast.with_new_ast_and_type(Ast::List(replace_asts(vs.to_vec(), assign)), new_ty)
+        }
+        Ast::Quoted(v) => {
+            ast.with_new_ast_and_type(Ast::Quoted(Box::new(replace_ast(*v, assign))), new_ty)
+        }
+
+        Ast::Integer(_)
+        | Ast::Float(_)
+        | Ast::Boolean(_)
+        | Ast::Char(_)
+        | Ast::String(_)
+        | Ast::Nil
+        | Ast::Symbol(_)
+        | Ast::SymbolWithType(_, _)
+        | Ast::DefineMacro(_)
+        | Ast::Continue(_) => ast.with_new_type(new_ty),
+
+        Ast::Define(def) => ast.with_new_ast_and_type(
+            Ast::Define(Define {
+                init: Box::new(replace_ast(*def.init, assign)),
+                ..def
+            }),
+            new_ty,
+        ),
+        Ast::Lambda(lambda) => ast.with_new_ast_and_type(
+            Ast::Lambda(Lambda {
+                body: replace_asts(lambda.body, assign),
+                ..lambda
+            }),
+            new_ty,
+        ),
+        Ast::Assign(ast_assign) => ast.with_new_ast_and_type(
+            Ast::Assign(Assign {
+                value: Box::new(replace_ast(*ast_assign.value, assign)),
+                ..ast_assign
+            }),
+            new_ty,
+        ),
+        Ast::IfExpr(if_expr) => {
+            let cond = Box::new(replace_ast(*if_expr.cond, assign));
+            let then_ast = Box::new(replace_ast(*if_expr.then_ast, assign));
+
+            let if_expr = if let Some(else_ast) = if_expr.else_ast {
+                let else_ast = Some(Box::new(replace_ast(*else_ast, assign)));
+                IfExpr {
+                    cond,
+                    then_ast,
+                    else_ast,
+                }
+            } else {
+                IfExpr {
+                    cond,
+                    then_ast,
+                    else_ast: None,
+                }
+            };
+            ast.with_new_ast_and_type(Ast::IfExpr(if_expr), new_ty)
+        }
+    }
+}
+
+fn replace_asts(asts: Program, assign: &TypeAssignment) -> Program {
+    asts.into_iter()
+        .map(|ast| replace_ast(ast, assign))
+        .collect()
+}
+
 pub fn check_and_inference_type(asts: Program, _env: Environment<()>) -> Result<Program> {
     let mut ctx = Context {
         env: TypeEnv::new(),
         tv_gen: TypeVarGenerator::new(),
     };
-    let (ast, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
-    for c in constraints {
+    let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
+    for c in &constraints {
         println!("{} = {}", c.left, c.right);
     }
 
-    Ok(ast)
+    let assigns = unify(constraints)?;
+    let mut asts = asts;
+    for assign in &assigns {
+        println!("{} = {}", assign.left.name, assign.right);
+
+        asts = replace_asts(asts, &assign);
+    }
+
+    Ok(asts)
 }
