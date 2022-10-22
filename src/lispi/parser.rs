@@ -201,6 +201,61 @@ fn parse_list<'a>(
                     )
                 }
             }
+            "let" | "let*" => {
+                let err = Error::Eval(
+                    "'let' is formed as (let ([id expr] ...) body ...) or named let (let proc-id ([id expr] ...) body ...)".to_string(),
+                ).with_location(TokenLocation::Range(location));
+
+                let sequential = name == "let*";
+
+                let parse_inits =
+                    |inits: &[AnnotatedAst]| -> Result<Vec<(SymbolValue, AnnotatedAst)>> {
+                        inits
+                            .iter()
+                            .map(|init| {
+                                if let ast_pat!(Ast::List(init)) = init {
+                                    match_special_args!(init, ast_pat!(Ast::Symbol(id)), expr, {
+                                        Ok((id.clone(), expr.clone()))
+                                    })
+                                } else {
+                                    Err(err.clone().into())
+                                }
+                            })
+                            .collect::<Result<Vec<_>>>()
+                    };
+
+                let let_expr =
+                    if let Some((ast_pat!(Ast::List(inits), _loc), body)) = args.split_first() {
+                        let inits = parse_inits(inits)?;
+
+                        Let {
+                            sequential,
+                            proc_id: None,
+                            inits,
+                            body: body.to_vec(),
+                        }
+                    } else if let (
+                        Some(ast_pat!(Ast::Symbol(proc_id))),
+                        Some(ast_pat!(Ast::List(inits))),
+                        (_, body),
+                    ) = (args.get(0), args.get(1), args.split_at(2))
+                    {
+                        // named let
+
+                        let inits = parse_inits(inits)?;
+
+                        Let {
+                            sequential,
+                            proc_id: Some(proc_id.clone()),
+                            inits,
+                            body: body.to_vec(),
+                        }
+                    } else {
+                        return Err(err.into());
+                    };
+
+                Ok((Ast::Let(let_expr).with_location(location), tokens))
+            }
             _ => Ok((Ast::List(items).with_location(location), tokens)),
         }
     } else {

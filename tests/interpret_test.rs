@@ -3,10 +3,7 @@ use std::stringify;
 use lisp_rs::lispi::{
     error::{Error, ErrorWithLocation},
     evaluator::*,
-    interpret,
-    parser::*,
-    tokenizer::*,
-    SymbolValue,
+    interpret, SymbolValue,
 };
 
 fn interp(program: &str) -> Result<Value, Error> {

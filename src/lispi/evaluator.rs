@@ -261,7 +261,8 @@ impl From<&Ast> for Value {
             | Ast::DefineMacro(_)
             | Ast::Define(_)
             | Ast::Assign(_)
-            | Ast::IfExpr(_) => Value::nil(),
+            | Ast::IfExpr(_)
+            | Ast::Let(_) => Value::nil(),
 
             Ast::Continue(v) => Value::Continue(v.clone()),
         }
@@ -411,47 +412,6 @@ fn optimize_tail_recursion(
                         let name = name.value.as_str();
                         let mut args = match name {
                             "begin" => optimize_tail_recursion(func_name, locals, args),
-                            "let" | "let*" => {
-                                let (proc_id, rest) = match args.split_first() {
-                                    Some((ast_pat!(Ast::Symbol(proc_id)), rest)) => {
-                                        (Some(proc_id), rest)
-                                    }
-                                    _ => (None, args),
-                                };
-                                if let Some((ast_pat!(Ast::List(vars)), body)) = rest.split_first()
-                                {
-                                    let includes_sym_in_vars = vars.iter().any(|var| {
-                                        if let ast_pat!(Ast::List(var)) = var {
-                                            if let Some(expr) = var.get(1) {
-                                                includes_symbol(func_name, &expr.ast)
-                                            } else {
-                                                false
-                                            }
-                                        } else {
-                                            false
-                                        }
-                                    });
-
-                                    if includes_sym_in_vars {
-                                        return None;
-                                    }
-
-                                    let mut body =
-                                        optimize_tail_recursion(func_name, locals, body)?;
-
-                                    let mut form = Vec::new();
-                                    if let Some(proc_id) = proc_id {
-                                        form.push(
-                                            Ast::Symbol(proc_id.clone()).with_null_location(),
-                                        );
-                                    }
-                                    form.push(Ast::List(vars.clone()).with_null_location());
-                                    form.append(&mut body);
-                                    Some(form)
-                                } else {
-                                    None
-                                }
-                            }
                             _ => {
                                 let not_in_args =
                                     args.iter().all(|arg| !includes_symbol(func_name, &arg.ast));
@@ -547,6 +507,38 @@ fn optimize_tail_recursion(
 
                 Some(ast.clone().with_new_ast(Ast::IfExpr(if_expr)))
             }
+            Ast::Let(Let {
+                sequential,
+                proc_id,
+                inits,
+                body,
+            }) => {
+                let sequential = *sequential;
+                let proc_id = proc_id.clone();
+
+                let includes_sym_in_vars = inits
+                    .iter()
+                    .any(|(_k, v)| includes_symbol(func_name, &v.ast));
+
+                if includes_sym_in_vars {
+                    return None;
+                }
+
+                let inits = inits
+                    .iter()
+                    .map(|(k, v)| {
+                        Some((k.clone(), _optimize_tail_recursion(func_name, locals, v)?))
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                let body = optimize_tail_recursion(func_name, locals, body)?;
+
+                Some(ast.clone().with_new_ast(Ast::Let(Let {
+                    sequential,
+                    proc_id,
+                    inits,
+                    body,
+                })))
+            }
             Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, &v),
             Ast::Symbol(_)
             | Ast::SymbolWithType(_, _)
@@ -583,6 +575,10 @@ fn optimize_tail_recursion(
                         .as_ref()
                         .map(|else_ast| includes_symbol(sym, &else_ast.ast))
                         .unwrap_or(false)
+            }
+            Ast::Let(Let { inits, body, .. }) => {
+                inits.iter().any(|(_k, v)| includes_symbol(sym, &v.ast))
+                    | body.iter().any(|b| includes_symbol(sym, &b.ast))
             }
             Ast::Integer(_)
             | Ast::Float(_)
@@ -633,123 +629,6 @@ fn eval_special_form(
     if let Ast::Symbol(name) = &name_ast.ast {
         let name = name.value.as_str();
         match name {
-            "let" | "let*" => {
-                let err = Err(Error::Eval(
-                    "'let' is formed as (let ([id expr] ...) body ...) or named let (let proc-id ([id expr] ...) body ...)".to_string(),
-                ).with_location(name_ast.location).into());
-
-                let sequence = name == "let*";
-
-                if let Some((ast_pat!(Ast::List(vars), _loc), body)) = raw_args.split_first() {
-                    env.push_local();
-
-                    let mut exprs = Vec::new();
-
-                    for var in vars {
-                        if let ast_pat!(Ast::List(var)) = var {
-                            match_special_args!(var, ast_pat!(Ast::Symbol(id)), expr, {
-                                let expr = eval_ast(expr, env)?;
-                                if sequence {
-                                    env.insert_var(id.clone(), expr);
-                                } else {
-                                    exprs.push((id, expr));
-                                }
-                                Ok(())
-                            })?
-                        } else {
-                            return err;
-                        }
-                    }
-
-                    if !sequence {
-                        for (id, expr) in exprs {
-                            env.insert_var(id.clone(), expr);
-                        }
-                    }
-
-                    let result = eval_asts(body, env);
-
-                    env.pop_local();
-
-                    Ok(get_last_result(result?))
-                } else if let (
-                    Some(ast_pat!(Ast::Symbol(proc_id))),
-                    Some(ast_pat!(Ast::List(args))),
-                    (_, body),
-                ) = (raw_args.get(0), raw_args.get(1), raw_args.split_at(2))
-                {
-                    // named let
-
-                    let mut arg_exprs = Vec::new();
-                    for arg in args {
-                        if let ast_pat!(Ast::List(var)) = arg {
-                            match_special_args!(var, ast_pat!(Ast::Symbol(id)), expr, {
-                                arg_exprs.push((id.clone(), expr.clone()));
-                                Ok(())
-                            })?
-                        } else {
-                            return err;
-                        }
-                    }
-                    let (args, exprs): (Vec<SymbolValue>, Vec<_>) = arg_exprs.into_iter().unzip();
-
-                    if let Some(optimized) = optimize_tail_recursion(&proc_id.value, &args, body) {
-                        // println!("Tail recursion!");
-                        // println!("{:#?}", optimized);
-
-                        env.push_local();
-
-                        // Sequencial initialization
-                        for (id, expr) in args.iter().zip(exprs) {
-                            let expr = eval_ast(&expr, env)?;
-                            env.insert_var(id.clone(), expr);
-                        }
-
-                        let result = loop {
-                            let results = eval_asts(&optimized, env);
-                            let result = get_last_result(results?);
-                            if let Value::Continue(id) = &result.value {
-                                if id == &proc_id.value {
-                                    // continue
-                                } else {
-                                    break result;
-                                }
-                            } else {
-                                break result;
-                            }
-                        };
-
-                        env.pop_local();
-
-                        Ok(result)
-                    } else {
-                        let func = Value::Function {
-                            name: proc_id.clone(),
-                            args,
-                            body: body.to_vec(),
-                            is_macro: false,
-                            parent_local: None,
-                        };
-
-                        env.push_local();
-                        env.insert_var(proc_id.clone(), func.with_type());
-
-                        let mut call_args = vec![Ast::Symbol(proc_id.clone()).with_null_location()];
-                        let mut exprs = exprs;
-                        call_args.append(&mut exprs);
-
-                        let result =
-                            eval_asts(&vec![Ast::List(call_args).with_null_location()], env);
-
-                        env.pop_local();
-
-                        Ok(get_last_result(result?))
-                    }
-                } else {
-                    err
-                }
-            }
-
             "begin" => Ok(get_last_result(eval_asts(raw_args, env)?)),
             "when" | "unless" => {
                 let invert = name == "unless";
@@ -1146,6 +1025,98 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 } else {
                     Ok(Value::nil().with_type())
                 }
+            }
+        }
+        Ast::Let(Let {
+            sequential,
+            proc_id,
+            inits,
+            body,
+        }) => {
+            let sequential = *sequential;
+
+            if let Some(proc_id) = proc_id {
+                // named let
+
+                let mut arg_exprs = Vec::new();
+                for (id, expr) in inits {
+                    arg_exprs.push((id.clone(), expr.clone()));
+                }
+                let (args, exprs): (Vec<SymbolValue>, Vec<_>) = arg_exprs.into_iter().unzip();
+
+                if let Some(optimized) = optimize_tail_recursion(&proc_id.value, &args, body) {
+                    env.push_local();
+
+                    // Sequencial initialization
+                    for (id, expr) in args.iter().zip(exprs) {
+                        let expr = eval_ast(&expr, env)?;
+                        env.insert_var(id.clone(), expr);
+                    }
+
+                    let result = loop {
+                        let results = eval_asts(&optimized, env);
+                        let result = get_last_result(results?);
+                        if let Value::Continue(id) = &result.value {
+                            if id == &proc_id.value {
+                                // continue
+                            } else {
+                                break result;
+                            }
+                        } else {
+                            break result;
+                        }
+                    };
+
+                    env.pop_local();
+
+                    Ok(result)
+                } else {
+                    let func = Value::Function {
+                        name: proc_id.clone(),
+                        args,
+                        body: body.to_vec(),
+                        is_macro: false,
+                        parent_local: None,
+                    };
+
+                    env.push_local();
+                    env.insert_var(proc_id.clone(), func.with_type());
+
+                    let mut call_args = vec![Ast::Symbol(proc_id.clone()).with_null_location()];
+                    let mut exprs = exprs;
+                    call_args.append(&mut exprs);
+
+                    let result = eval_asts(&vec![Ast::List(call_args).with_null_location()], env);
+
+                    env.pop_local();
+
+                    Ok(get_last_result(result?))
+                }
+            } else {
+                env.push_local();
+
+                let mut exprs = Vec::new();
+
+                for (id, expr) in inits {
+                    let expr = eval_ast(expr, env)?;
+                    if sequential {
+                        env.insert_var(id.clone(), expr);
+                    } else {
+                        exprs.push((id, expr));
+                    }
+                }
+
+                if !sequential {
+                    for (id, expr) in exprs {
+                        env.insert_var(id.clone(), expr);
+                    }
+                }
+
+                let result = eval_asts(body, env);
+
+                env.pop_local();
+
+                Ok(get_last_result(result?))
             }
         }
         Ast::List(elements) => {

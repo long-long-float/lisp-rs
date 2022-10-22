@@ -21,6 +21,7 @@ pub enum Ast {
     Lambda(Lambda),
     Assign(Assign),
     IfExpr(IfExpr),
+    Let(Let),
 
     /// For optimizing tail recursion
     Continue(String),
@@ -150,6 +151,14 @@ pub struct IfExpr {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct Let {
+    pub sequential: bool,
+    pub proc_id: Option<SymbolValue>,
+    pub inits: Vec<(SymbolValue, AnnotatedAst)>,
+    pub body: Vec<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct AnnotatedAst {
     pub ast: Ast,
     pub location: TokenLocation,
@@ -256,6 +265,28 @@ impl Display for AnnotatedAst {
                 if let Some(else_ast) = else_ast {
                     write!(f, " {}", else_ast)?;
                 }
+                write!(f, ")")
+            }
+            Ast::Let(Let {
+                inits,
+                body,
+                sequential,
+                proc_id,
+            }) => {
+                let star = if *sequential { "*" } else { "" };
+                write!(f, "(let{} ", star)?;
+                if let Some(proc_id) = proc_id {
+                    write!(f, "{} ", proc_id.value)?;
+                }
+                write!(f, "(")?;
+                let inits = inits
+                    .iter()
+                    .map(|(k, v)| format!("[{} {}]", k.value, v))
+                    .collect::<Vec<_>>();
+                write_values(f, &inits)?;
+                write!(f, ") ")?;
+
+                write_values(f, body)?;
                 write!(f, ")")
             }
             Ast::Continue(_) => write!(f, "CONTINUE"),

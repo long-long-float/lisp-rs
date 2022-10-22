@@ -372,6 +372,63 @@ fn collect_constraints_from_ast(
                 ct,
             ))
         }
+        Ast::Let(Let {
+            sequential,
+            proc_id,
+            inits,
+            body,
+        }) => {
+            let sequential = *sequential;
+            let proc_id = proc_id.clone();
+
+            let mut ict = Vec::new();
+            let mut new_inits = Vec::new();
+            let mut vars = Vec::new();
+
+            ctx.env.push_local();
+
+            for (k, v) in inits {
+                let (v, mut vct) = collect_constraints_from_ast(v.clone(), ctx)?;
+                new_inits.push((k.clone(), v.clone()));
+                ict.append(&mut vct);
+                if sequential {
+                    ctx.env.insert_var(k.clone(), v.ty.unwrap());
+                } else {
+                    vars.push((k, v.ty));
+                }
+            }
+
+            if !sequential {
+                for (k, t) in vars {
+                    ctx.env.insert_var(k.clone(), t.unwrap());
+                }
+            }
+
+            let (body, mut bct) = collect_constraints_from_asts(body.clone(), ctx)?;
+
+            ctx.env.pop_local();
+
+            let mut ct = ict;
+            ct.append(&mut bct);
+
+            let result_ty = body
+                .last()
+                .map(|a| a.ty.as_ref().unwrap().clone())
+                .unwrap_or(Type::Nil);
+
+            Ok((
+                ast.with_new_ast_and_type(
+                    Ast::Let(Let {
+                        sequential,
+                        proc_id,
+                        inits: new_inits,
+                        body,
+                    }),
+                    result_ty,
+                ),
+                ct,
+            ))
+        }
         Ast::Continue(_) | Ast::DefineMacro(_) => Ok((ast, Vec::new())),
     }
 }
@@ -512,6 +569,28 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
                 }
             };
             ast.with_new_ast_and_type(Ast::IfExpr(if_expr), new_ty)
+        }
+        Ast::Let(Let {
+            sequential,
+            proc_id,
+            inits,
+            body,
+        }) => {
+            let inits = inits
+                .into_iter()
+                .map(|(k, v)| (k, replace_ast(v, assign)))
+                .collect();
+            let body = replace_asts(body, assign);
+
+            ast.with_new_ast_and_type(
+                Ast::Let(Let {
+                    sequential,
+                    proc_id,
+                    inits,
+                    body,
+                }),
+                new_ty,
+            )
         }
     }
 }
