@@ -1,5 +1,9 @@
 use rustc_hash::FxHashMap;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
 use super::{console::*, error::*, evaluator::*, typer::*, SymbolValue};
 
@@ -38,6 +42,10 @@ where
         // local_stack must have least one local
         let mut local = self.head_local.as_ref().unwrap().borrow_mut();
         local.variables.insert(name.id, value);
+    }
+
+    pub fn current_local(&self) -> Ref<Local<T>> {
+        self.head_local.as_ref().unwrap().borrow()
     }
 
     pub fn find_var(&mut self, name: &SymbolValue) -> Option<T> {
@@ -105,7 +113,7 @@ pub type LocalRef<T> = Option<Rc<RefCell<Local<T>>>>;
 /// ```
 #[derive(PartialEq, Debug)]
 pub struct Local<T> {
-    variables: FxHashMap<u32, T>,
+    pub variables: FxHashMap<u32, T>,
     parent: LocalRef<T>,
 }
 

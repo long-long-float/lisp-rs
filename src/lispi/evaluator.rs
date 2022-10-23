@@ -1288,17 +1288,12 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
     env.insert_variable_as_symbol(s("map"));
 
     // For visibility of Environment.dump_local()
-    env.push_local();
+    // env.push_local();
 }
 
 /// Evaluate ASTs and return the these results.
 ///
 /// This function visits AST node recursively and process each nodes.
-pub fn eval_program(
-    asts: &Program,
-    mut env: Env,
-    mut sym_table: SymbolTable,
-) -> Result<Vec<ValueWithType>> {
-    init_env(&mut env, &mut sym_table);
+pub fn eval_program(asts: &Program, mut env: Env) -> Result<Vec<ValueWithType>> {
     eval_asts(asts, &mut env)
 }

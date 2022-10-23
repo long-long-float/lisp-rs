@@ -1,6 +1,9 @@
 use anyhow::Result;
 
-use super::{ast::*, environment::*, error::*, parser::*, SymbolValue, TokenLocation};
+use super::{
+    ast::*, environment::*, error::*, evaluator::ValueWithType, parser::*, SymbolValue,
+    TokenLocation,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
@@ -249,7 +252,10 @@ fn collect_constraints_from_ast(
         }
         Ast::Quoted(inner) => {
             let (inner, c) = collect_constraints_from_ast(*inner.clone(), ctx)?;
-            Ok((ast.with_new_type(inner.ty.unwrap()), c))
+            Ok((
+                ast.with_new_ast_and_type(Ast::Quoted(Box::new(inner.clone())), inner.ty.unwrap()),
+                c,
+            ))
         }
         Ast::Integer(_) => Ok((ast.with_new_type(Type::Int), Vec::new())),
         Ast::Float(_) => Ok((ast.with_new_type(Type::Float), Vec::new())),
@@ -468,6 +474,7 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
                 rest.push(assign);
                 Ok(rest)
             }
+            (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
             (
                 f0 @ Type::Function {
                     args: args0,
@@ -601,20 +608,34 @@ fn replace_asts(asts: Program, assign: &TypeAssignment) -> Program {
         .collect()
 }
 
-pub fn check_and_inference_type(asts: Program, _env: Environment<()>) -> Result<Program> {
+pub fn check_and_inference_type(
+    asts: Program,
+    env: &Environment<ValueWithType>,
+) -> Result<Program> {
+    let mut ty_env = TypeEnv::new();
+    for (id, ty) in &env.current_local().variables {
+        ty_env.insert_var(
+            SymbolValue {
+                id: *id,
+                value: "".to_string(),
+            },
+            ty.type_.clone(),
+        );
+    }
+
     let mut ctx = Context {
-        env: TypeEnv::new(),
+        env: ty_env,
         tv_gen: TypeVarGenerator::new(),
     };
     let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
-    for c in &constraints {
-        println!("{} = {}", c.left, c.right);
-    }
+    // for c in &constraints {
+    //     println!("{} = {}", c.left, c.right);
+    // }
 
     let assigns = unify(constraints)?;
     let mut asts = asts;
     for assign in &assigns {
-        println!("{} = {}", assign.left.name, assign.right);
+        // println!("{} = {}", assign.left.name, assign.right);
 
         asts = replace_asts(asts, &assign);
     }
