@@ -15,11 +15,17 @@ pub enum Type {
     String,
     Nil,
 
+    ForAll {
+        tv: TypeVariable,
+        ty: Box<Type>,
+    },
+
     Scala(String),
     Composite {
         name: String,
         inner: Vec<Box<Type>>,
     },
+    List(Box<Type>),
     Function {
         args: Vec<Box<Type>>,
         result: Box<Type>,
@@ -43,16 +49,27 @@ impl Type {
     }
 
     pub fn list() -> Type {
-        Type::Composite {
-            name: "list".to_string(),
-            inner: Vec::new(),
-        }
+        Type::List(Box::new(Type::Any))
     }
 
     pub fn function(args: Vec<Type>, result: Type) -> Type {
         Type::Function {
             args: args.iter().map(|a| Box::new(a.clone())).collect(),
             result: Box::new(result),
+        }
+    }
+
+    pub fn for_all<F>(ty: F) -> Type
+    where
+        F: Fn(Type) -> Type,
+    {
+        let tv = TypeVariable {
+            name: "X".to_string(),
+        };
+        let ttv = Type::Variable(tv.clone());
+        Type::ForAll {
+            tv,
+            ty: Box::new(ty(ttv)),
         }
     }
 
@@ -68,11 +85,14 @@ impl Type {
             | Type::Any
             | Type::Scala(_) => false,
 
+            Type::List(e) => e.has_free_var(tv),
+
             Type::Composite { name: _, inner } => inner.iter().any(|i| i.has_free_var(tv)),
             Type::Function { args, result } => {
                 args.iter().any(|arg| arg.has_free_var(tv)) | result.has_free_var(tv)
             }
             Type::Variable(ttv) => ttv == tv,
+            Type::ForAll { tv: ttv, ty } => tv != ttv && ty.has_free_var(tv),
         }
     }
 
@@ -87,6 +107,8 @@ impl Type {
             | Type::Nil
             | Type::Any
             | Type::Scala(_) => self,
+
+            Type::List(e) => Type::List(Box::new(e.replace(assign))),
 
             Type::Composite { name, inner } => {
                 let inner = inner
@@ -110,6 +132,16 @@ impl Type {
                     self
                 }
             }
+            Type::ForAll { ref tv, ref ty } => {
+                if tv != &assign.left {
+                    Type::ForAll {
+                        tv: tv.clone(),
+                        ty: Box::new(ty.clone().replace(assign)),
+                    }
+                } else {
+                    self
+                }
+            }
         }
     }
 }
@@ -125,6 +157,7 @@ impl std::fmt::Display for Type {
             Type::String => write!(f, "string"),
             Type::Nil => write!(f, "nil"),
             Type::Scala(name) => write!(f, "{}", name),
+            Type::List(e) => write!(f, "list<{}>", e),
             Type::Composite { name, inner } => {
                 let inner = inner
                     .iter()
@@ -143,6 +176,7 @@ impl std::fmt::Display for Type {
             }
             Type::Any => write!(f, "any"),
             Type::Variable(v) => write!(f, "{}", v.name),
+            Type::ForAll { tv, ty } => write!(f, "∀{}. {}", tv.name, ty),
         }
     }
 }
@@ -232,8 +266,15 @@ fn collect_constraints_from_ast(
                     .collect();
                 let result_type = ctx.tv_gen.gen_tv();
 
+                let fun_ty = if let Some(Type::ForAll { tv, ty }) = &fun.ty {
+                    ty.clone()
+                        .replace(&TypeAssignment::new(tv.clone(), ctx.tv_gen.gen_tv()))
+                } else {
+                    fun.ty.as_ref().unwrap().clone()
+                };
+
                 let mut ct = vec![TypeEquality::new(
-                    fun.ty.as_ref().unwrap().clone(),
+                    fun_ty,
                     Type::Function {
                         args: arg_types,
                         result: Box::new(result_type.clone()),
@@ -475,6 +516,11 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
                 Ok(rest)
             }
             (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
+            (Type::List(e0), Type::List(e1)) => {
+                let mut rest = rest.to_vec();
+                rest.push(TypeEquality::new(*e0.clone(), *e1.clone()));
+                unify(rest)
+            }
             (
                 f0 @ Type::Function {
                     args: args0,

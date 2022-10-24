@@ -1140,12 +1140,14 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             }
         }
         Ast::Symbol(value) => {
-            if let Some(var) = env.find_var(&value) {
+            if let Some(mut var) = env.find_var(&value) {
+                var.type_ = ast.ty.as_ref().unwrap().clone();
                 return Ok(var);
             }
 
             if let Some(local) = env.lambda_local.clone() {
-                if let Some(var) = local.borrow_mut().find_var(value.id) {
+                if let Some(mut var) = local.borrow_mut().find_var(value.id) {
+                    var.type_ = ast.ty.as_ref().unwrap().clone();
                     return Ok(var);
                 }
             }
@@ -1185,7 +1187,7 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
     );
     env.insert_function(
         s("car"),
-        Type::function(vec![Type::list()], Type::Any),
+        Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv.clone()))], tv.clone())),
         |args| {
             match_call_args!(args, Value::List(vs), {
                 let first = vs.first().map(|v| (*v).clone());
@@ -1195,7 +1197,12 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
     );
     env.insert_function(
         s("cdr"),
-        Type::function(vec![Type::list()], Type::Any),
+        Type::for_all(|tv| {
+            Type::function(
+                vec![Type::List(Box::new(tv.clone()))],
+                Type::List(Box::new(tv.clone())),
+            )
+        }),
         |args| {
             match_call_args!(args, Value::List(vs), {
                 if let Some((_, rest)) = vs.split_first() {
@@ -1222,7 +1229,12 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
     );
     env.insert_function(
         s("cons"),
-        Type::function(vec![Type::Any, Type::list()], Type::list()),
+        Type::for_all(|tv| {
+            Type::function(
+                vec![tv.clone(), Type::List(Box::new(tv.clone()))],
+                Type::List(Box::new(tv)),
+            )
+        }),
         |args| {
             match_call_args!(args, v, Value::List(vs), {
                 let mut vs = vs.clone();
@@ -1233,7 +1245,7 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
     );
     env.insert_function(
         s("length"),
-        Type::function(vec![Type::list()], Type::Int),
+        Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv.clone()))], Type::Int)),
         |args| {
             match_call_args!(args, Value::List(vs), {
                 Ok(Value::Integer(vs.len() as i32).with_type())
@@ -1242,7 +1254,12 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
     );
     env.insert_function(
         s("list-ref"),
-        Type::function(vec![Type::list(), Type::Int], Type::Any),
+        Type::for_all(|tv| {
+            Type::function(
+                vec![Type::List(Box::new(tv.clone())), Type::Int],
+                tv.clone(),
+            )
+        }),
         |args| {
             match_call_args!(args, Value::List(vs), Value::Integer(idx), {
                 if let Some(v) = vs.get(*idx as usize) {
@@ -1258,7 +1275,7 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
     );
     env.insert_function(
         s("string->list"),
-        Type::function(vec![Type::String], Type::list()),
+        Type::function(vec![Type::String], Type::List(Box::new(Type::Char))),
         |args| {
             match_call_args!(args, Value::String(value), {
                 let chars = value.chars().map(|c| Value::Char(c).with_type()).collect();
