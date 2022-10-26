@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use super::{console::*, error::*, evaluator::*, typer::*, SymbolValue};
+use super::{console::*, error::*, SymbolValue};
 
 pub struct Environment<T> {
     pub head_local: LocalRef<T>,
@@ -74,37 +74,6 @@ where
             let parent = local.borrow().parent.clone();
             self.head_local = parent;
         }
-    }
-}
-
-impl Environment<ValueWithType> {
-    pub fn insert_function(
-        &mut self,
-        name: SymbolValue,
-        type_: Type,
-        func: fn(Vec<ValueWithType>) -> EvalResult,
-    ) {
-        self.insert_var(
-            name.clone(),
-            ValueWithType {
-                value: Value::NativeFunction { name, func },
-                type_,
-            },
-        );
-    }
-
-    pub fn insert_variable_as_symbol(&mut self, name: SymbolValue) {
-        self.insert_var(name.clone(), Value::Symbol(name).with_type());
-    }
-
-    pub fn insert_variable_as_symbol_and_type(&mut self, name: SymbolValue, type_: Type) {
-        self.insert_var(
-            name.clone(),
-            ValueWithType {
-                value: Value::Symbol(name),
-                type_,
-            },
-        );
     }
 }
 

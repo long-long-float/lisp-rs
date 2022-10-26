@@ -68,11 +68,12 @@ pub fn expand_macros_ast(
 
                 if let Some(mac) = menv.get(&name.id) {
                     let mut env = Environment::new();
+                    let mut ty_env = Environment::new();
 
-                    init_env(&mut env, sym_env);
+                    init_env(&mut env, &mut ty_env, sym_env);
 
                     for (name, value) in mac.args.iter().zip(args) {
-                        env.insert_var(name.clone(), Value::RawAst(value.clone()).with_type());
+                        env.insert_var(name.clone(), Value::RawAst(value.clone()));
                     }
 
                     let result = eval_asts(&mac.body, &mut env);
@@ -80,7 +81,7 @@ pub fn expand_macros_ast(
                     env.pop_local();
 
                     let result = get_last_result(result?);
-                    Ast::from(result.value)
+                    Ast::from(result)
                 } else {
                     let name = AnnotatedAst {
                         ast: Ast::Symbol(name.clone()),

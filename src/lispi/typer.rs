@@ -1,9 +1,6 @@
 use anyhow::Result;
 
-use super::{
-    ast::*, environment::*, error::*, evaluator::ValueWithType, parser::*, SymbolValue,
-    TokenLocation,
-};
+use super::{ast::*, environment::*, error::*, parser::*, SymbolValue, TokenLocation};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
@@ -671,10 +668,7 @@ fn replace_asts(asts: Program, assign: &TypeAssignment) -> Program {
         .collect()
 }
 
-pub fn check_and_inference_type(
-    asts: Program,
-    env: &Environment<ValueWithType>,
-) -> Result<Program> {
+pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Result<Program> {
     let mut ty_env = TypeEnv::new();
     for (id, ty) in &env.current_local().variables {
         ty_env.insert_var(
@@ -682,7 +676,7 @@ pub fn check_and_inference_type(
                 id: *id,
                 value: "".to_string(),
             },
-            ty.type_.clone(),
+            ty.clone(),
         );
     }
 

@@ -35,8 +35,8 @@ fn main() -> Result<()> {
         let result = interpret(lines.clone());
         match result {
             Ok(result) => {
-                if let Some(result) = result.last() {
-                    println!("{}: {}", result.value, result.type_);
+                if let Some((result, ty)) = result.last() {
+                    println!("{}: {}", result, ty);
                 }
             }
             Err(err) => show_error(err, filename, lines),
@@ -71,8 +71,9 @@ fn main() -> Result<()> {
         };
 
         let mut env = env::Environment::new();
+        let mut ty_env = env::Environment::new();
         let mut sym_table = p::SymbolTable::new();
-        e::init_env(&mut env, &mut sym_table);
+        e::init_env(&mut env, &mut ty_env, &mut sym_table);
 
         loop {
             let buffer = &mut history[history_pos];
@@ -131,14 +132,11 @@ fn main() -> Result<()> {
                             let lines = vec![buffer.join("")];
                             let results = t::tokenize(lines.clone())
                                 .and_then(|tokens| p::parse_with_env(tokens, &mut sym_table))
-                                .and_then(|asts| e::eval_asts(&asts, &mut env));
+                                .and_then(|asts| Ok((e::eval_asts(&asts, &mut env)?, asts)));
                             match results {
-                                Ok(results) => {
-                                    if let Some(result) = results.last() {
-                                        c::printlnuw(&format!(
-                                            "{}: {}",
-                                            result.value, result.type_
-                                        ));
+                                Ok((results, asts)) => {
+                                    if let Some((result, ast)) = (results.iter().zip(asts)).last() {
+                                        c::printlnuw(&format!("{}: {}", result, ast.ty.unwrap()));
                                     }
                                 }
                                 Err(err) => show_error(err, "".to_string(), lines),

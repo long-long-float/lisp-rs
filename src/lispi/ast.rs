@@ -65,7 +65,7 @@ impl From<Value> for Ast {
                 } else {
                     let vs = vs
                         .into_iter()
-                        .map(|v| Ast::from(v.value).with_null_location())
+                        .map(|v| Ast::from(v).with_null_location())
                         .collect();
                     Ast::List(vs)
                 }

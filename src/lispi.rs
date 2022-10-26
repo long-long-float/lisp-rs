@@ -126,14 +126,15 @@ impl std::fmt::Display for LocationRange {
 /// ```
 ///
 /// Functions of each steps return Result to express errors.
-pub fn interpret(program: Vec<String>) -> Result<Vec<e::ValueWithType>> {
+pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
     let tokens = t::tokenize(program)?;
     let (program, mut sym_table) = p::parse(tokens)?;
     let program = m::expand_macros(program, &mut sym_table)?;
     let mut env = env::Environment::new();
+    let mut ty_env = env::Environment::new();
 
-    e::init_env(&mut env, &mut sym_table);
-    let program = ty::check_and_inference_type(program, &env)?;
+    e::init_env(&mut env, &mut ty_env, &mut sym_table);
+    let program = ty::check_and_inference_type(program, &ty_env)?;
     for ast in &program {
         println!("{}", ast);
     }

@@ -22,7 +22,7 @@ macro_rules! bug {
 /// This macro is for ease to get arguments with patterns.
 macro_rules! match_call_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
-        if let Some(ValueWithType { value: $p, type_: _ }) = $args.get($index) {
+        if let Some($p) = $args.get($index) {
             $b
         }
         else {
@@ -31,7 +31,7 @@ macro_rules! match_call_args {
     };
 
     ( $args:expr, $p:pat, $( $ps:pat ),*, $b:block, $index:expr ) => {
-        if let Some(ValueWithType { value: $p, type_: _ }) = $args.get($index) {
+        if let Some($p) = $args.get($index) {
             match_call_args!($args, $( $ps ),*, $b, ($index + 1))
         }
         else {
@@ -44,7 +44,7 @@ macro_rules! match_call_args {
     };
 }
 
-type Env = Environment<ValueWithType>;
+type Env = Environment<Value>;
 
 pub fn get_location(ast: Option<&AnnotatedAst>) -> TokenLocation {
     ast.and_then(|arg| Some(arg.location))
@@ -130,7 +130,7 @@ macro_rules! ast_pat {
     };
 }
 
-pub type EvalResult = Result<ValueWithType>;
+pub type EvalResult = Result<Value>;
 
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -140,17 +140,17 @@ pub enum Value {
     Char(char),
     String(String),
     Symbol(SymbolValue),
-    List(Vec<ValueWithType>),
+    List(Vec<Value>),
     Function {
         name: SymbolValue,
         args: Vec<SymbolValue>,
         body: Vec<AnnotatedAst>,
         is_macro: bool,
-        parent_local: LocalRef<ValueWithType>,
+        parent_local: LocalRef<Value>,
     },
     NativeFunction {
         name: SymbolValue,
-        func: fn(Vec<ValueWithType>) -> EvalResult,
+        func: fn(Vec<Value>) -> EvalResult,
     },
 
     /// For macro expansion
@@ -171,33 +171,6 @@ impl Value {
             _ => true,
         }
     }
-
-    fn get_type(&self) -> Type {
-        match self {
-            Value::Integer(_) => Type::Int,
-            Value::Float(_) => Type::Float,
-            Value::Symbol(_) => Type::symbol(),
-            Value::Boolean(_) => Type::Boolean,
-            Value::Char(_) => Type::Char,
-            Value::String(_) => Type::String,
-            Value::List(_) => Type::list(),
-            Value::Function { .. } => {
-                // TODO: Return concrete type
-                Type::Any
-            }
-            Value::NativeFunction { name: _, func: _ } => {
-                // TODO: Return concrete type
-                Type::Any
-            }
-            Value::RawAst(_) => Type::Any,
-            Value::Continue(_) => Type::Any,
-        }
-    }
-
-    pub fn with_type(self) -> ValueWithType {
-        let type_ = self.get_type();
-        ValueWithType { value: self, type_ }
-    }
 }
 
 impl std::fmt::Display for Value {
@@ -215,7 +188,7 @@ impl std::fmt::Display for Value {
                 } else {
                     write!(f, "(")?;
                     for (i, v) in vs.iter().enumerate() {
-                        write!(f, "{}", v.value)?;
+                        write!(f, "{}", v)?;
                         if i < vs.len() - 1 {
                             write!(f, " ")?;
                         }
@@ -252,7 +225,7 @@ impl From<&Ast> for Value {
             Ast::SymbolWithType(v, _) => Value::Symbol(v.clone()),
             Ast::Quoted(v) => Value::from(&(*v).ast),
             Ast::List(vs) => {
-                let vs = vs.iter().map(|v| Value::from(&v.ast).with_type()).collect();
+                let vs = vs.iter().map(|v| Value::from(&v.ast)).collect();
                 Value::List(vs)
             }
             Ast::Nil => Value::nil(),
@@ -297,23 +270,14 @@ impl PartialEq for Value {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub struct ValueWithType {
-    pub value: Value,
-    pub type_: Type,
-}
-
-pub fn eval_asts(asts: &[AnnotatedAst], env: &mut Env) -> Result<Vec<ValueWithType>> {
+pub fn eval_asts(asts: &[AnnotatedAst], env: &mut Env) -> Result<Vec<Value>> {
     asts.iter()
         .map(|arg| eval_ast(arg, env))
         .collect::<Result<Vec<_>>>()
 }
 
-pub fn get_last_result(results: Vec<ValueWithType>) -> ValueWithType {
-    results
-        .into_iter()
-        .last()
-        .unwrap_or(Value::nil().with_type())
+pub fn get_last_result(results: Vec<Value>) -> Value {
+    results.into_iter().last().unwrap_or(Value::nil())
 }
 
 pub fn get_symbol_values(symbols: &Vec<AnnotatedAst>) -> Result<Vec<SymbolValue>> {
@@ -329,43 +293,6 @@ pub fn get_symbol_values(symbols: &Vec<AnnotatedAst>) -> Result<Vec<SymbolValue>
             }
         })
         .collect()
-}
-
-fn check_arg_types(
-    func_loc: TokenLocation,
-    args: &[ValueWithType],
-    arg_locs: &[TokenLocation],
-    expected_types: &[Type],
-) -> Result<()> {
-    if args.len() != expected_types.len() {
-        return Err(Error::Type(format!(
-            "{} arguments are expected, but {} arguments are specified.",
-            expected_types.len(),
-            args.len()
-        ))
-        .with_location(func_loc)
-        .into());
-    }
-
-    for (i, (a, expected)) in args.iter().zip(expected_types).enumerate() {
-        match (&a.type_, expected) {
-            (Type::Any, _) | (_, Type::Any) => (), // Pass-through
-            (Type::Int, Type::Numeric) | (Type::Float, Type::Numeric) => (), // numeric includes int and float
-            (actual, expected) => {
-                if actual != expected {
-                    let loc = arg_locs.get(i).unwrap_or(&TokenLocation::Null);
-                    return Err(Error::Type(format!(
-                        "Expected the type {} , but the actual type is {}",
-                        expected, actual
-                    ))
-                    .with_location(*loc)
-                    .into());
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /// Try to optimize tail recursion for body.
@@ -633,12 +560,12 @@ fn eval_special_form(
             "when" | "unless" => {
                 let invert = name == "unless";
                 if let Some((cond, forms)) = raw_args.split_first() {
-                    let cond = eval_ast(cond, env)?.value.is_true();
+                    let cond = eval_ast(cond, env)?.is_true();
                     let cond = if invert { !cond } else { cond };
                     if cond {
                         Ok(get_last_result(eval_asts(forms, env)?))
                     } else {
-                        Ok(Value::nil().with_type())
+                        Ok(Value::nil())
                     }
                 } else {
                     Err(
@@ -659,7 +586,7 @@ fn eval_special_form(
                     if let ast_pat!(Ast::List(arm)) = arg {
                         if let Some((cond, body)) = arm.split_first() {
                             let cond = eval_ast(cond, env)?;
-                            if cond.value.is_true() {
+                            if cond.is_true() {
                                 return Ok(get_last_result(eval_asts(body, env)?));
                             }
                         } else {
@@ -670,12 +597,12 @@ fn eval_special_form(
                     }
                 }
 
-                Ok(Value::nil().with_type())
+                Ok(Value::nil())
             }
             "function" => {
                 if let Some(func) = raw_args.first() {
                     let result = eval_ast(func, env)?;
-                    if let Value::Symbol(name) = result.value {
+                    if let Value::Symbol(name) = result {
                         Ok(eval_ast(&Ast::Symbol(name).with_null_location(), env)?)
                     } else {
                         Ok(result)
@@ -695,12 +622,12 @@ fn eval_special_form(
                     body,
                     is_macro: true,
                     ..
-                } = mac.value
+                } = mac
                 {
                     env.push_local();
 
                     for (name, value) in args.iter().zip(raw_args) {
-                        env.insert_var(name.clone(), Value::RawAst(value.clone()).with_type());
+                        env.insert_var(name.clone(), Value::RawAst(value.clone()));
                     }
 
                     let result = eval_asts(&body, env);
@@ -708,7 +635,7 @@ fn eval_special_form(
                     env.pop_local();
 
                     let result = get_last_result(result?);
-                    eval_ast(&Ast::from(result.value).with_null_location(), env)
+                    eval_ast(&Ast::from(result).with_null_location(), env)
                 } else {
                     Err(Error::DoNothing.with_null_location().into())
                 }
@@ -731,25 +658,13 @@ fn eval_function(name: &AnnotatedAst, args: &[AnnotatedAst], env: &mut Env) -> E
 /// Apply a function to args under env.
 /// It's formed as `(func args...)`.
 fn apply_function(
-    func: &ValueWithType,
+    func: &Value,
     func_loc: TokenLocation,
-    args: &[ValueWithType],
+    args: &[Value],
     arg_locs: &[TokenLocation],
     env: &mut Env,
 ) -> EvalResult {
-    if let ValueWithType {
-        value: _,
-        type_: Type::Function {
-            args: arg_types,
-            result: _,
-        },
-    } = &func
-    {
-        let arg_types = arg_types.iter().map(|a| *a.clone()).collect::<Vec<Type>>();
-        check_arg_types(func_loc, args, arg_locs, &arg_types)?;
-    }
-
-    match &func.value {
+    match &func {
         // Embedded functions
         Value::Symbol(func_name) => {
             let func_name = func_name.value.as_str();
@@ -769,13 +684,13 @@ fn apply_function(
                     let args = args
                         .iter()
                         .zip(arg_locs)
-                        .map(|(arg, loc)| match arg.value {
+                        .map(|(arg, loc)| match *arg {
                             Value::Integer(v) => Ok(Number::Int(v)),
                             Value::Float(v) => {
                                 has_float_arg = true;
                                 Ok(Number::Float(v))
                             }
-                            _ => Err(Error::Eval(format!("`{}` is not an integer.", arg.value))
+                            _ => Err(Error::Eval(format!("`{}` is not an integer.", arg))
                                 .with_location(*loc)
                                 .into()),
                         })
@@ -820,7 +735,7 @@ fn apply_function(
                                         "<=" => x <= y,
                                         _ => return Err(bug!()),
                                     };
-                                    return Ok(Value::from(res).with_type());
+                                    return Ok(Value::from(res));
                                 }
                                 _ => {
                                     return Err(Error::Eval(format!(
@@ -839,29 +754,29 @@ fn apply_function(
                             &Number::Int(v) => v as f32,
                             &Number::Float(v) => v,
                         });
-                        Ok(Value::Float(calc!(args, f32)).with_type())
+                        Ok(Value::Float(calc!(args, f32)))
                     } else {
                         let mut args = args.iter().map(|arg| match arg {
                             &Number::Int(v) => v,
                             &Number::Float(v) => v as i32,
                         });
-                        Ok(Value::Integer(calc!(args, i32)).with_type())
+                        Ok(Value::Integer(calc!(args, i32)))
                     }
                 }
-                "or" => Ok(Value::Boolean(args.iter().any(|arg| arg.value.is_true())).with_type()),
+                "or" => Ok(Value::Boolean(args.iter().any(|arg| arg.is_true()))),
                 "print" => {
                     for arg in args {
-                        printlnuw(&arg.value);
+                        printlnuw(&arg);
                     }
-                    Ok(Value::nil().with_type())
+                    Ok(Value::nil())
                 }
                 "display" => {
                     for arg in args {
-                        print!("{}", arg.value);
+                        print!("{}", arg);
                     }
-                    Ok(Value::nil().with_type())
+                    Ok(Value::nil())
                 }
-                "list" => Ok(Value::List(args.to_vec()).with_type()),
+                "list" => Ok(Value::List(args.to_vec())),
                 "map" => {
                     let err =
                         Error::Eval("'map' is formed as (mapcar function list ...)".to_string())
@@ -871,7 +786,7 @@ fn apply_function(
                         let lists = lists
                             .iter()
                             .map(|list| {
-                                if let Value::List(elements) = &list.value {
+                                if let Value::List(elements) = &list {
                                     Ok(elements)
                                 } else {
                                     Err(anyhow!(err.clone()))
@@ -888,11 +803,7 @@ fn apply_function(
                         for idx in 0..list0_len {
                             let mut args = Vec::new();
                             for list in &lists {
-                                args.push(
-                                    list.get(idx)
-                                        .map(|v| v.clone())
-                                        .unwrap_or(Value::nil().with_type()),
-                                );
+                                args.push(list.get(idx).map(|v| v.clone()).unwrap_or(Value::nil()));
                             }
                             let arg_locs = [TokenLocation::Null].repeat(lists.len());
 
@@ -905,7 +816,7 @@ fn apply_function(
                             )?);
                         }
 
-                        Ok(Value::List(result).with_type())
+                        Ok(Value::List(result))
                     } else {
                         Err(anyhow!(err))
                     }
@@ -944,7 +855,7 @@ fn apply_function(
         }
         // Function defined in Rust (`init_env`).
         Value::NativeFunction { name: _, func } => func(args.to_vec()),
-        _ => Err(Error::Eval(format!("{} is not a function", func.value))
+        _ => Err(Error::Eval(format!("{} is not a function", func))
             .with_location(func_loc)
             .into()),
     }
@@ -955,7 +866,6 @@ fn apply_function(
 fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
     match &ast.ast {
         Ast::DefineMacro(DefineMacro { id, args, body }) => {
-            let arg_types = args.iter().map(|_| Type::Any).collect();
             let func = Value::Function {
                 name: id.clone(),
                 args: args.clone(),
@@ -963,20 +873,14 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 is_macro: true,
                 parent_local: None,
             };
-            env.insert_var(
-                id.clone(),
-                ValueWithType {
-                    value: func,
-                    type_: Type::function(arg_types, Type::Any),
-                },
-            );
+            env.insert_var(id.clone(), func);
 
-            Ok(Value::nil().with_type())
+            Ok(Value::nil())
         }
         Ast::Define(Define { id, init }) => {
             let value = eval_ast(init, env)?;
             env.insert_var(id.clone(), value);
-            Ok(Value::nil().with_type())
+            Ok(Value::nil())
         }
         Ast::Lambda(Lambda { args, body }) => {
             let func = Value::Function {
@@ -986,11 +890,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 is_macro: false,
                 parent_local: env.head_local.clone(),
             };
-            let arg_types = args.iter().map(|_| Type::Any).collect();
-            Ok(ValueWithType {
-                value: func,
-                type_: Type::function(arg_types, Type::Any),
-            })
+            Ok(func)
         }
         Ast::Assign(Assign {
             var,
@@ -999,31 +899,31 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
         }) => {
             let value = eval_ast(value, env)?;
             if env.update_var(var.clone(), &value).is_ok() {
-                return Ok(Value::nil().with_type());
+                return Ok(Value::nil());
             }
 
             if let Some(local) = env.lambda_local.clone() {
                 if local.borrow_mut().update_var(var.id, &value) {
-                    return Ok(Value::nil().with_type());
+                    return Ok(Value::nil());
                 }
             }
 
             // .or_else(|err| Err(anyhow!(err.with_location(name_ast.location))))?;
-            Ok(Value::nil().with_type())
+            Ok(Value::nil())
         }
         Ast::IfExpr(IfExpr {
             cond,
             then_ast,
             else_ast,
         }) => {
-            let cond = eval_ast(cond, env)?.value.is_true();
+            let cond = eval_ast(cond, env)?.is_true();
             if cond {
                 eval_ast(then_ast, env)
             } else {
                 if let Some(else_ast) = else_ast {
                     eval_ast(else_ast, env)
                 } else {
-                    Ok(Value::nil().with_type())
+                    Ok(Value::nil())
                 }
             }
         }
@@ -1056,7 +956,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                     let result = loop {
                         let results = eval_asts(&optimized, env);
                         let result = get_last_result(results?);
-                        if let Value::Continue(id) = &result.value {
+                        if let Value::Continue(id) = &result {
                             if id == &proc_id.value {
                                 // continue
                             } else {
@@ -1080,7 +980,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                     };
 
                     env.push_local();
-                    env.insert_var(proc_id.clone(), func.with_type());
+                    env.insert_var(proc_id.clone(), func);
 
                     let mut call_args = vec![Ast::Symbol(proc_id.clone()).with_null_location()];
                     let mut exprs = exprs;
@@ -1136,18 +1036,16 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                     result
                 }
             } else {
-                Ok(Value::nil().with_type())
+                Ok(Value::nil())
             }
         }
         Ast::Symbol(value) => {
-            if let Some(mut var) = env.find_var(&value) {
-                var.type_ = ast.ty.as_ref().unwrap().clone();
+            if let Some(var) = env.find_var(&value) {
                 return Ok(var);
             }
 
             if let Some(local) = env.lambda_local.clone() {
-                if let Some(mut var) = local.borrow_mut().find_var(value.id) {
-                    var.type_ = ast.ty.as_ref().unwrap().clone();
+                if let Some(var) = local.borrow_mut().find_var(value.id) {
                     return Ok(var);
                 }
             }
@@ -1158,44 +1056,80 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                     .into(),
             )
         }
-        _ => Ok(Value::from(&ast.ast).with_type()),
+        _ => Ok(Value::from(&ast.ast)),
     }
 }
 
 /// Define embedded functions to insert to the root of environment.
-pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
+pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut SymbolTable) {
     let mut s = |value: &str| {
         let value = value.to_string();
         let id = sym_table.find_id_or_insert(&value);
         SymbolValue { value, id }
     };
 
+    fn insert_function(
+        env: &mut Env,
+        ty_env: &mut Environment<Type>,
+        name: SymbolValue,
+        ty: Type,
+        func: fn(Vec<Value>) -> EvalResult,
+    ) {
+        env.insert_var(
+            name.clone(),
+            Value::NativeFunction {
+                name: name.clone(),
+                func,
+            },
+        );
+        ty_env.insert_var(name, ty);
+    }
+
+    fn insert_variable_as_symbol(env: &mut Env, ty_env: &mut Environment<Type>, name: SymbolValue) {
+        env.insert_var(name.clone(), Value::Symbol(name.clone()));
+        ty_env.insert_var(name, Type::symbol());
+    }
+
+    fn insert_variable_as_symbol_and_type(
+        env: &mut Env,
+        ty_env: &mut Environment<Type>,
+        name: SymbolValue,
+        ty: Type,
+    ) {
+        env.insert_var(name.clone(), Value::Symbol(name.clone()));
+        ty_env.insert_var(name, ty);
+    }
+
     // Pre-defined functions and special forms
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("even?"),
         Type::function(vec![Type::int()], Type::Any),
-        |args| {
-            match_call_args!(args, Value::Integer(v), {
-                Ok(Value::from(v % 2 == 0).with_type())
-            })
-        },
+        |args| match_call_args!(args, Value::Integer(v), { Ok(Value::from(v % 2 == 0)) }),
     );
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("="),
         Type::function(vec![Type::Any, Type::Any], Type::Any),
-        |args| match_call_args!(args, v1, v2, { Ok(Value::from(v1 == v2).with_type()) }),
+        |args| match_call_args!(args, v1, v2, { Ok(Value::from(v1 == v2)) }),
     );
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("car"),
         Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv.clone()))], tv.clone())),
         |args| {
             match_call_args!(args, Value::List(vs), {
                 let first = vs.first().map(|v| (*v).clone());
-                Ok(first.unwrap_or(Value::nil().with_type()))
+                Ok(first.unwrap_or(Value::nil()))
             })
         },
     );
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("cdr"),
         Type::for_all(|tv| {
             Type::function(
@@ -1207,27 +1141,31 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
             match_call_args!(args, Value::List(vs), {
                 if let Some((_, rest)) = vs.split_first() {
                     if rest.is_empty() {
-                        Ok(Value::nil().with_type())
+                        Ok(Value::nil())
                     } else {
-                        Ok(Value::List(rest.to_vec()).with_type())
+                        Ok(Value::List(rest.to_vec()))
                     }
                 } else {
-                    Ok(Value::nil().with_type())
+                    Ok(Value::nil())
                 }
             })
         },
     );
     // TODO: Make mod to accept number
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("mod"),
         Type::function(vec![Type::int(), Type::int()], Type::int()),
         |args| {
             match_call_args!(args, Value::Integer(num), Value::Integer(divisor), {
-                Ok(Value::Integer(num % divisor).with_type())
+                Ok(Value::Integer(num % divisor))
             })
         },
     );
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("cons"),
         Type::for_all(|tv| {
             Type::function(
@@ -1238,21 +1176,25 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
         |args| {
             match_call_args!(args, v, Value::List(vs), {
                 let mut vs = vs.clone();
-                vs.insert(0, v.clone().with_type());
-                Ok(Value::List(vs).with_type())
+                vs.insert(0, v.clone());
+                Ok(Value::List(vs))
             })
         },
     );
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("length"),
         Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv.clone()))], Type::Int)),
         |args| {
             match_call_args!(args, Value::List(vs), {
-                Ok(Value::Integer(vs.len() as i32).with_type())
+                Ok(Value::Integer(vs.len() as i32))
             })
         },
     );
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("list-ref"),
         Type::for_all(|tv| {
             Type::function(
@@ -1273,33 +1215,43 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
             })
         },
     );
-    env.insert_function(
+    insert_function(
+        env,
+        ty_env,
         s("string->list"),
         Type::function(vec![Type::String], Type::List(Box::new(Type::Char))),
         |args| {
             match_call_args!(args, Value::String(value), {
-                let chars = value.chars().map(|c| Value::Char(c).with_type()).collect();
-                Ok(Value::List(chars).with_type())
+                let chars = value.chars().map(|c| Value::Char(c)).collect();
+                Ok(Value::List(chars))
             })
         },
     );
-    env.insert_function(s("newline"), Type::function(vec![], Type::Any), |_| {
-        newlineuw();
-        Ok(Value::List(vec![]).with_type())
-    });
+    insert_function(
+        env,
+        ty_env,
+        s("newline"),
+        Type::function(vec![], Type::Any),
+        |_| {
+            newlineuw();
+            Ok(Value::List(vec![]))
+        },
+    );
 
     // These functions cannot be defined using `match_call_args!` due to variable arguments.
     // These are defined at `apply_function`.
-    env.insert_variable_as_symbol(s("print"));
-    env.insert_variable_as_symbol(s("display"));
-    env.insert_variable_as_symbol(s("list"));
-    env.insert_variable_as_symbol(s("+"));
-    env.insert_variable_as_symbol(s("-"));
-    env.insert_variable_as_symbol(s("*"));
-    env.insert_variable_as_symbol(s("/"));
-    env.insert_variable_as_symbol(s("or"));
+    insert_variable_as_symbol(env, ty_env, s("print"));
+    insert_variable_as_symbol(env, ty_env, s("display"));
+    insert_variable_as_symbol(env, ty_env, s("list"));
+    insert_variable_as_symbol(env, ty_env, s("+"));
+    insert_variable_as_symbol(env, ty_env, s("-"));
+    insert_variable_as_symbol(env, ty_env, s("*"));
+    insert_variable_as_symbol(env, ty_env, s("/"));
+    insert_variable_as_symbol(env, ty_env, s("or"));
 
-    env.insert_variable_as_symbol_and_type(
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
         s("map"),
         Type::for_all_with_tv("X", |tv| {
             Type::for_all_with_tv("Y", |result| {
@@ -1313,19 +1265,27 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
             })
         }),
     );
-    env.insert_variable_as_symbol_and_type(
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
         s(">"),
         Type::function(vec![Type::Numeric, Type::Numeric], Type::Boolean),
     );
-    env.insert_variable_as_symbol_and_type(
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
         s(">="),
         Type::function(vec![Type::Numeric, Type::Numeric], Type::Boolean),
     );
-    env.insert_variable_as_symbol_and_type(
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
         s("<"),
         Type::function(vec![Type::Numeric, Type::Numeric], Type::Boolean),
     );
-    env.insert_variable_as_symbol_and_type(
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
         s("<="),
         Type::function(vec![Type::Numeric, Type::Numeric], Type::Boolean),
     );
@@ -1337,6 +1297,10 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
 /// Evaluate ASTs and return the these results.
 ///
 /// This function visits AST node recursively and process each nodes.
-pub fn eval_program(asts: &Program, mut env: Env) -> Result<Vec<ValueWithType>> {
-    eval_asts(asts, &mut env)
+pub fn eval_program(asts: &Program, mut env: Env) -> Result<Vec<(Value, Type)>> {
+    let types = asts
+        .iter()
+        .map(|ast| ast.ty.as_ref().unwrap().clone())
+        .collect::<Vec<_>>();
+    Ok(eval_asts(asts, &mut env)?.into_iter().zip(types).collect())
 }

@@ -10,7 +10,7 @@ fn interp(program: &str) -> Result<Value, Error> {
     let lines = program.split('\n').map(|l| l.to_string()).collect();
     let result = interpret(lines);
     match result {
-        Ok(result) => Ok(result.last().unwrap().clone().value),
+        Ok(result) => Ok(result.last().unwrap().0.clone()),
         Err(err) => {
             if let Some(err) = err.downcast_ref::<ErrorWithLocation>() {
                 Err(err.err.clone())
@@ -56,14 +56,14 @@ macro_rules! assert_eq_eps {
 }
 
 fn build_list(vs: Vec<i32>) -> Value {
-    let vs = vs.iter().map(|v| Value::Integer(*v).with_type()).collect();
+    let vs = vs.iter().map(|v| Value::Integer(*v)).collect();
     Value::List(vs)
 }
 
 fn build_sym_list(vs: Vec<&str>) -> Value {
     let vs = vs
         .iter()
-        .map(|v| Value::Symbol(SymbolValue::without_id((*v).to_owned())).with_type())
+        .map(|v| Value::Symbol(SymbolValue::without_id((*v).to_owned())))
         .collect();
     Value::List(vs)
 }
@@ -188,8 +188,8 @@ xs"#
     );
     assert_eq!(
         Ok(Value::List(vec![
-            build_sym_list(vec!["c", "d"]).with_type(),
-            build_sym_list(vec!["e", "f"]).with_type(),
+            build_sym_list(vec!["c", "d"]),
+            build_sym_list(vec!["e", "f"]),
         ])),
         interp("(cdr '((a b) (c d) (e f)))")
     );
