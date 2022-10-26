@@ -1297,12 +1297,38 @@ pub fn init_env(env: &mut Env, sym_table: &mut SymbolTable) {
     env.insert_variable_as_symbol(s("-"));
     env.insert_variable_as_symbol(s("*"));
     env.insert_variable_as_symbol(s("/"));
-    env.insert_variable_as_symbol(s(">"));
-    env.insert_variable_as_symbol(s(">="));
-    env.insert_variable_as_symbol(s("<"));
-    env.insert_variable_as_symbol(s("<="));
     env.insert_variable_as_symbol(s("or"));
-    env.insert_variable_as_symbol(s("map"));
+
+    env.insert_variable_as_symbol_and_type(
+        s("map"),
+        Type::for_all_with_tv("X", |tv| {
+            Type::for_all_with_tv("Y", |result| {
+                Type::function(
+                    vec![
+                        Type::function(vec![tv.clone()], result.clone()),
+                        Type::List(Box::new(tv.clone())),
+                    ],
+                    Type::List(Box::new(result)),
+                )
+            })
+        }),
+    );
+    env.insert_variable_as_symbol_and_type(
+        s(">"),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Boolean),
+    );
+    env.insert_variable_as_symbol_and_type(
+        s(">="),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Boolean),
+    );
+    env.insert_variable_as_symbol_and_type(
+        s("<"),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Boolean),
+    );
+    env.insert_variable_as_symbol_and_type(
+        s("<="),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Boolean),
+    );
 
     // For visibility of Environment.dump_local()
     // env.push_local();

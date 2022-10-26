@@ -96,6 +96,16 @@ impl Environment<ValueWithType> {
     pub fn insert_variable_as_symbol(&mut self, name: SymbolValue) {
         self.insert_var(name.clone(), Value::Symbol(name).with_type());
     }
+
+    pub fn insert_variable_as_symbol_and_type(&mut self, name: SymbolValue, type_: Type) {
+        self.insert_var(
+            name.clone(),
+            ValueWithType {
+                value: Value::Symbol(name),
+                type_,
+            },
+        );
+    }
 }
 
 /// Reference of Local. `None` represents the root.

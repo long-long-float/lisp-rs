@@ -63,8 +63,15 @@ impl Type {
     where
         F: Fn(Type) -> Type,
     {
+        Self::for_all_with_tv("X", ty)
+    }
+
+    pub fn for_all_with_tv<F>(tv: &str, ty: F) -> Type
+    where
+        F: Fn(Type) -> Type,
+    {
         let tv = TypeVariable {
-            name: "X".to_string(),
+            name: tv.to_string(),
         };
         let ttv = Type::Variable(tv.clone());
         Type::ForAll {
@@ -250,6 +257,16 @@ fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<
     }
 }
 
+/// Replace all outer universal quantification type variable with refresh type variable.
+fn resolve_for_all(ty: Type, ctx: &mut Context) -> Type {
+    if let Type::ForAll { tv, ty } = ty {
+        let ty = resolve_for_all(*ty, ctx);
+        ty.replace(&TypeAssignment::new(tv, ctx.tv_gen.gen_tv()))
+    } else {
+        ty
+    }
+}
+
 fn collect_constraints_from_ast(
     ast: AnnotatedAst,
     ctx: &mut Context,
@@ -266,12 +283,7 @@ fn collect_constraints_from_ast(
                     .collect();
                 let result_type = ctx.tv_gen.gen_tv();
 
-                let fun_ty = if let Some(Type::ForAll { tv, ty }) = &fun.ty {
-                    ty.clone()
-                        .replace(&TypeAssignment::new(tv.clone(), ctx.tv_gen.gen_tv()))
-                } else {
-                    fun.ty.as_ref().unwrap().clone()
-                };
+                let fun_ty = resolve_for_all(fun.ty.as_ref().unwrap().clone(), ctx);
 
                 let mut ct = vec![TypeEquality::new(
                     fun_ty,
@@ -512,10 +524,15 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
                 let assign = TypeAssignment::new(x.clone(), t.clone());
                 let rest = replace_constraints(rest, &assign);
                 let mut rest = unify(rest)?;
-                rest.push(assign);
-                Ok(rest)
+                let mut ct = vec![assign];
+                ct.append(&mut rest);
+                Ok(ct)
             }
             (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
+            (Type::Numeric, Type::Int)
+            | (Type::Int, Type::Numeric)
+            | (Type::Numeric, Type::Float)
+            | (Type::Float, Type::Numeric) => unify(rest.to_vec()),
             (Type::List(e0), Type::List(e1)) => {
                 let mut rest = rest.to_vec();
                 rest.push(TypeEquality::new(*e0.clone(), *e1.clone()));
