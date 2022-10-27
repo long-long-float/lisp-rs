@@ -11,6 +11,7 @@ pub enum Type {
     Char,
     String,
     Nil,
+    None,
 
     ForAll {
         tv: TypeVariable,
@@ -87,7 +88,8 @@ impl Type {
             | Type::String
             | Type::Nil
             | Type::Any
-            | Type::Scala(_) => false,
+            | Type::Scala(_)
+            | Type::None => false,
 
             Type::List(e) => e.has_free_var(tv),
 
@@ -110,7 +112,8 @@ impl Type {
             | Type::String
             | Type::Nil
             | Type::Any
-            | Type::Scala(_) => self,
+            | Type::Scala(_)
+            | Type::None => self,
 
             Type::List(e) => Type::List(Box::new(e.replace(assign))),
 
@@ -181,6 +184,8 @@ impl std::fmt::Display for Type {
             Type::Any => write!(f, "any"),
             Type::Variable(v) => write!(f, "{}", v.name),
             Type::ForAll { tv, ty } => write!(f, "∀{}. {}", tv.name, ty),
+
+            Type::None => write!(f, "(none)"),
         }
     }
 }
@@ -274,13 +279,10 @@ fn collect_constraints_from_ast(
                 let (fun, mut fct) = collect_constraints_from_ast(fun.clone(), ctx)?;
                 let (mut args, mut act) = collect_constraints_from_asts(args.to_vec(), ctx)?;
 
-                let arg_types = args
-                    .iter()
-                    .map(|arg| Box::new(arg.ty.as_ref().unwrap().clone()))
-                    .collect();
+                let arg_types = args.iter().map(|arg| Box::new(arg.ty.clone())).collect();
                 let result_type = ctx.tv_gen.gen_tv();
 
-                let fun_ty = resolve_for_all(fun.ty.as_ref().unwrap().clone(), ctx);
+                let fun_ty = resolve_for_all(fun.ty.clone(), ctx);
 
                 let mut ct = vec![TypeEquality::new(
                     fun_ty,
@@ -303,7 +305,7 @@ fn collect_constraints_from_ast(
         Ast::Quoted(inner) => {
             let (inner, c) = collect_constraints_from_ast(*inner.clone(), ctx)?;
             Ok((
-                ast.with_new_ast_and_type(Ast::Quoted(Box::new(inner.clone())), inner.ty.unwrap()),
+                ast.with_new_ast_and_type(Ast::Quoted(Box::new(inner.clone())), inner.ty),
                 c,
             ))
         }
@@ -327,8 +329,7 @@ fn collect_constraints_from_ast(
         // },
         Ast::Define(Define { id, init }) => {
             let (init, c) = collect_constraints_from_ast(*init.clone(), ctx)?;
-            ctx.env
-                .insert_var(id.clone(), init.ty.as_ref().unwrap().clone());
+            ctx.env.insert_var(id.clone(), init.ty.clone());
 
             let def = Ast::Define(Define {
                 id: id.clone(),
@@ -340,7 +341,7 @@ fn collect_constraints_from_ast(
             let (body, cbt) = collect_constraints_from_asts(body.clone(), ctx)?;
 
             let result_type = if let Some(last) = body.last() {
-                last.ty.as_ref().unwrap().clone()
+                last.ty.clone()
             } else {
                 Type::Nil
             };
@@ -364,10 +365,7 @@ fn collect_constraints_from_ast(
             let var_ty = find_var(var, var_loc, ctx)?;
             let (value, mut vct) = collect_constraints_from_ast(*value.clone(), ctx)?;
 
-            vct.push(TypeEquality::new(
-                var_ty,
-                value.ty.as_ref().unwrap().clone(),
-            ));
+            vct.push(TypeEquality::new(var_ty, value.ty.clone()));
 
             let assign = Ast::Assign(Assign {
                 var: var.clone(),
@@ -388,21 +386,15 @@ fn collect_constraints_from_ast(
             let mut ct = Vec::new();
             ct.append(&mut cct);
             ct.append(&mut tct);
-            ct.push(TypeEquality::new(
-                cond.ty.as_ref().unwrap().clone(),
-                Type::Boolean,
-            ));
+            ct.push(TypeEquality::new(cond.ty.clone(), Type::Boolean));
 
             let (if_expr, result_ty) = if let Some(else_ast) = else_ast {
                 let (else_ast, mut ect) = collect_constraints_from_ast(*else_ast.clone(), ctx)?;
 
                 ct.append(&mut ect);
-                ct.push(TypeEquality::new(
-                    then_ast.ty.as_ref().unwrap().clone(),
-                    else_ast.ty.as_ref().unwrap().clone(),
-                ));
+                ct.push(TypeEquality::new(then_ast.ty.clone(), else_ast.ty.clone()));
 
-                let result_ty = then_ast.ty.as_ref().unwrap().clone();
+                let result_ty = then_ast.ty.clone();
 
                 (
                     IfExpr {
@@ -448,7 +440,7 @@ fn collect_constraints_from_ast(
                 new_inits.push((k.clone(), v.clone()));
                 ict.append(&mut vct);
                 if sequential {
-                    ctx.env.insert_var(k.clone(), v.ty.unwrap());
+                    ctx.env.insert_var(k.clone(), v.ty);
                 } else {
                     vars.push((k, v.ty));
                 }
@@ -456,7 +448,7 @@ fn collect_constraints_from_ast(
 
             if !sequential {
                 for (k, t) in vars {
-                    ctx.env.insert_var(k.clone(), t.unwrap());
+                    ctx.env.insert_var(k.clone(), t);
                 }
             }
 
@@ -467,10 +459,7 @@ fn collect_constraints_from_ast(
             let mut ct = ict;
             ct.append(&mut bct);
 
-            let result_ty = body
-                .last()
-                .map(|a| a.ty.as_ref().unwrap().clone())
-                .unwrap_or(Type::Nil);
+            let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Nil);
 
             Ok((
                 ast.with_new_ast_and_type(
@@ -573,7 +562,7 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
 }
 
 fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
-    let new_ty = ast.ty.as_ref().unwrap().clone().replace(assign);
+    let new_ty = ast.ty.clone().replace(assign);
 
     let iast = ast.ast.clone();
 

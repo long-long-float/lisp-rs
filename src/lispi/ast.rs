@@ -162,7 +162,7 @@ pub struct Let {
 pub struct AnnotatedAst {
     pub ast: Ast,
     pub location: TokenLocation,
-    pub ty: Option<Type>,
+    pub ty: Type,
 }
 
 impl AnnotatedAst {
@@ -170,7 +170,7 @@ impl AnnotatedAst {
         Self {
             ast,
             location,
-            ty: None,
+            ty: Type::None,
         }
     }
 
@@ -182,16 +182,13 @@ impl AnnotatedAst {
     }
 
     pub fn with_new_type(self, new_ty: Type) -> Self {
-        Self {
-            ty: Some(new_ty),
-            ..self
-        }
+        Self { ty: new_ty, ..self }
     }
 
     pub fn with_new_ast_and_type(self, new_ast: Ast, new_ty: Type) -> Self {
         Self {
             ast: new_ast,
-            ty: Some(new_ty),
+            ty: new_ty,
             ..self
         }
     }
@@ -292,8 +289,8 @@ impl Display for AnnotatedAst {
             Ast::Continue(_) => write!(f, "CONTINUE"),
         }?;
 
-        if let Some(ty) = &self.ty {
-            write!(f, ": {}", ty)
+        if self.ty != Type::None {
+            write!(f, ": {}", self.ty)
         } else {
             Ok(())
         }

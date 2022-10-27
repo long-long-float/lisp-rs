@@ -136,7 +136,7 @@ fn main() -> Result<()> {
                             match results {
                                 Ok((results, asts)) => {
                                     if let Some((result, ast)) = (results.iter().zip(asts)).last() {
-                                        c::printlnuw(&format!("{}: {}", result, ast.ty.unwrap()));
+                                        c::printlnuw(&format!("{}: {}", result, ast.ty));
                                     }
                                 }
                                 Err(err) => show_error(err, "".to_string(), lines),

@@ -1298,9 +1298,6 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
 ///
 /// This function visits AST node recursively and process each nodes.
 pub fn eval_program(asts: &Program, mut env: Env) -> Result<Vec<(Value, Type)>> {
-    let types = asts
-        .iter()
-        .map(|ast| ast.ty.as_ref().unwrap().clone())
-        .collect::<Vec<_>>();
+    let types = asts.iter().map(|ast| ast.ty.clone()).collect::<Vec<_>>();
     Ok(eval_asts(asts, &mut env)?.into_iter().zip(types).collect())
 }
