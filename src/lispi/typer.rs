@@ -466,6 +466,19 @@ fn collect_constraints_from_ast(
                 }
             }
 
+            let proc_result;
+            if let Some(proc_id) = &proc_id {
+                let proc_args = new_inits
+                    .iter()
+                    .map(|(_, ast)| ast.ty.clone())
+                    .collect::<Vec<_>>();
+                proc_result = ctx.tv_gen.gen_tv();
+                let proc_ty = Type::function(proc_args, proc_result.clone());
+                ctx.env.insert_var(proc_id.clone(), proc_ty);
+            } else {
+                proc_result = Type::None;
+            }
+
             let (body, mut bct) = collect_constraints_from_asts(body.clone(), ctx)?;
 
             ctx.env.pop_local();
@@ -474,6 +487,10 @@ fn collect_constraints_from_ast(
             ct.append(&mut bct);
 
             let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Nil);
+
+            if proc_result != Type::None {
+                ct.push(TypeEquality::new(result_ty.clone(), proc_result));
+            }
 
             Ok((
                 ast.with_new_ast_and_type(
