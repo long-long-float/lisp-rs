@@ -235,7 +235,8 @@ impl From<&Ast> for Value {
             | Ast::Define(_)
             | Ast::Assign(_)
             | Ast::IfExpr(_)
-            | Ast::Let(_) => Value::nil(),
+            | Ast::Let(_)
+            | Ast::Begin(_) => Value::nil(),
 
             Ast::Continue(v) => Value::Continue(v.clone()),
         }
@@ -466,6 +467,11 @@ fn optimize_tail_recursion(
                     body,
                 })))
             }
+            Ast::Begin(Begin { body }) => {
+                let body = optimize_tail_recursion(func_name, locals, body)?;
+
+                Some(ast.clone().with_new_ast(Ast::Begin(Begin { body })))
+            }
             Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, &v),
             Ast::Symbol(_)
             | Ast::SymbolWithType(_, _)
@@ -507,6 +513,7 @@ fn optimize_tail_recursion(
                 inits.iter().any(|(_k, v)| includes_symbol(sym, &v.ast))
                     | body.iter().any(|b| includes_symbol(sym, &b.ast))
             }
+            Ast::Begin(Begin { body }) => body.iter().any(|b| includes_symbol(sym, &b.ast)),
             Ast::Integer(_)
             | Ast::Float(_)
             | Ast::Boolean(_)
@@ -556,7 +563,6 @@ fn eval_special_form(
     if let Ast::Symbol(name) = &name_ast.ast {
         let name = name.value.as_str();
         match name {
-            "begin" => Ok(get_last_result(eval_asts(raw_args, env)?)),
             "when" | "unless" => {
                 let invert = name == "unless";
                 if let Some((cond, forms)) = raw_args.split_first() {
@@ -1019,6 +1025,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 Ok(get_last_result(result?))
             }
         }
+        Ast::Begin(Begin { body }) => Ok(get_last_result(eval_asts(body, env)?)),
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
                 let result = eval_special_form(first, rest, env);

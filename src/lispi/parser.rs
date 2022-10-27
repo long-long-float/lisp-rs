@@ -31,6 +31,14 @@ impl SymbolTable {
             id
         }
     }
+
+    pub fn dump(&self) {
+        let mut kvs = self.table.iter().collect::<Vec<_>>();
+        kvs.sort_by_key(|(_, v)| **v);
+        for (name, id) in kvs {
+            println!("{}: '{}'", id, name);
+        }
+    }
 }
 
 pub type Program = Vec<AnnotatedAst>;
@@ -256,6 +264,13 @@ fn parse_list<'a>(
 
                 Ok((Ast::Let(let_expr).with_location(location), tokens))
             }
+            "begin" => Ok((
+                Ast::Begin(Begin {
+                    body: args.to_vec(),
+                })
+                .with_location(location),
+                tokens,
+            )),
             _ => Ok((Ast::List(items).with_location(location), tokens)),
         }
     } else {

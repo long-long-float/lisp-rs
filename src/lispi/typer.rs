@@ -253,7 +253,8 @@ fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<
     if let Some(ty) = ctx.env.find_var(id) {
         Ok(ty)
     } else {
-        Err(Error::UndefindVariable(id.value.clone())
+        // ctx.env.dump_local();
+        Err(Error::UndefinedVariable(id.value.clone())
             .with_location(loc.clone())
             .into())
     }
@@ -338,7 +339,20 @@ fn collect_constraints_from_ast(
             Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
         }
         Ast::Lambda(Lambda { args, body }) => {
+            let arg_types = args
+                .iter()
+                .map(|_| Box::new(ctx.tv_gen.gen_tv()))
+                .collect::<Vec<_>>();
+
+            ctx.env.push_local();
+
+            for (arg, ty) in args.iter().zip(arg_types.clone()) {
+                ctx.env.insert_var(arg.clone(), *ty);
+            }
+
             let (body, cbt) = collect_constraints_from_asts(body.clone(), ctx)?;
+
+            ctx.env.pop_local();
 
             let result_type = if let Some(last) = body.last() {
                 last.ty.clone()
@@ -351,7 +365,7 @@ fn collect_constraints_from_ast(
                 body,
             });
             let fun_ty = Type::Function {
-                args: args.iter().map(|_| Box::new(ctx.tv_gen.gen_tv())).collect(),
+                args: arg_types,
                 result: Box::new(result_type),
             };
 
@@ -472,6 +486,15 @@ fn collect_constraints_from_ast(
                     result_ty,
                 ),
                 ct,
+            ))
+        }
+        Ast::Begin(Begin { body }) => {
+            let (body, bct) = collect_constraints_from_asts(body.clone(), ctx)?;
+            let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Nil);
+
+            Ok((
+                ast.with_new_ast_and_type(Ast::Begin(Begin { body }), result_ty),
+                bct,
             ))
         }
         Ast::Continue(_) | Ast::DefineMacro(_) => Ok((ast, Vec::new())),
@@ -647,6 +670,11 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
                 }),
                 new_ty,
             )
+        }
+        Ast::Begin(Begin { body }) => {
+            let body = replace_asts(body, assign);
+
+            ast.with_new_ast_and_type(Ast::Begin(Begin { body }), new_ty)
         }
     }
 }

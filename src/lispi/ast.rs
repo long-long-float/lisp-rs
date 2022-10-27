@@ -22,6 +22,7 @@ pub enum Ast {
     Assign(Assign),
     IfExpr(IfExpr),
     Let(Let),
+    Begin(Begin),
 
     /// For optimizing tail recursion
     Continue(String),
@@ -159,6 +160,11 @@ pub struct Let {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct Begin {
+    pub body: Vec<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct AnnotatedAst {
     pub ast: Ast,
     pub location: TokenLocation,
@@ -283,6 +289,11 @@ impl Display for AnnotatedAst {
                 write_values(f, &inits)?;
                 write!(f, ") ")?;
 
+                write_values(f, body)?;
+                write!(f, ")")
+            }
+            Ast::Begin(Begin { body }) => {
+                write!(f, "(begin ")?;
                 write_values(f, body)?;
                 write!(f, ")")
             }

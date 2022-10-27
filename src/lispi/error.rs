@@ -16,8 +16,8 @@ pub enum Error {
     #[error("Type error: {0}")]
     Type(String),
 
-    #[error("Undefind variable: {0}")]
-    UndefindVariable(String),
+    #[error("Undefined variable: {0}")]
+    UndefinedVariable(String),
 
     #[error("Bug: {message:?} at {file:?}:{line:?}")]
     Bug {

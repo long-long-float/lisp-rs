@@ -134,6 +134,8 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
     let mut ty_env = env::Environment::new();
 
     e::init_env(&mut env, &mut ty_env, &mut sym_table);
+    // sym_table.dump();
+
     let program = ty::check_and_inference_type(program, &ty_env)?;
     for ast in &program {
         println!("{}", ast);

@@ -57,7 +57,7 @@ where
     }
 
     #[allow(dead_code)]
-    fn dump_local(&self) {
+    pub fn dump_local(&self) {
         let local = self.head_local.as_ref().unwrap().borrow();
         printlnuw("--- Locals ---");
         local.dump();
