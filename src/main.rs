@@ -221,7 +221,7 @@ fn show_error(err: anyhow::Error, filename: String, lines: Vec<String>) {
                     .enumerate()
                     .find(|(_, line)| !line.is_empty());
                 let (line, column) = last_line
-                    .map(|(lineno, line)| (lineno - 1, line.len()))
+                    .map(|(lineno, line)| (if lineno >= 1 { lineno - 1 } else { 0 }, line.len()))
                     .unwrap_or((0, 0));
                 Some(LocationRange {
                     begin: Location { line, column },

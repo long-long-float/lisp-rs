@@ -338,47 +338,35 @@ fn optimize_tail_recursion(
                 if let Some((name_ast, args)) = vs.split_first() {
                     if let Ast::Symbol(name) = &name_ast.ast {
                         let name = name.value.as_str();
-                        let mut args = match name {
-                            "begin" => optimize_tail_recursion(func_name, locals, args),
-                            _ => {
-                                let not_in_args =
-                                    args.iter().all(|arg| !includes_symbol(func_name, &arg.ast));
-                                if name == func_name && not_in_args {
-                                    let mut form = vec![Ast::Symbol(SymbolValue::without_id(
-                                        "begin".to_string(),
-                                    ))
-                                    .with_null_location()];
-
-                                    let mut args = args
-                                        .iter()
-                                        .zip(locals)
-                                        .map(|(arg, sym)| {
-                                            Ast::List(vec![
-                                                Ast::Symbol(SymbolValue::without_id(
-                                                    "set!".to_string(),
-                                                ))
-                                                .with_null_location(),
-                                                Ast::Symbol(sym.clone()).with_null_location(),
-                                                arg.clone(),
-                                            ])
-                                            .with_null_location()
+                        let mut args = {
+                            let not_in_args =
+                                args.iter().all(|arg| !includes_symbol(func_name, &arg.ast));
+                            if name == func_name && not_in_args {
+                                let mut body = args
+                                    .iter()
+                                    .zip(locals)
+                                    .map(|(arg, sym)| {
+                                        Ast::Assign(Assign {
+                                            var: sym.clone(),
+                                            var_loc: TokenLocation::Null,
+                                            value: Box::new(arg.clone()),
                                         })
-                                        .collect::<Vec<_>>();
+                                        .with_null_location()
+                                    })
+                                    .collect::<Vec<_>>();
 
-                                    form.append(&mut args);
-                                    form.push(Ast::Continue(name.to_string()).with_null_location());
+                                body.push(Ast::Continue(name.to_string()).with_null_location());
 
-                                    return Some(Ast::List(form).with_null_location());
-                                } else {
-                                    // println!("[Warn] '{}' is treated as an ordinay function in optimizing tail recursion", name);
+                                return Some(Ast::Begin(Begin { body }).with_null_location());
+                            } else {
+                                // println!("[Warn] '{}' is treated as an ordinay function in optimizing tail recursion", name);
 
-                                    let args = args
-                                        .iter()
-                                        .map(|arg| _optimize_tail_recursion(func_name, locals, arg))
-                                        .collect::<Option<Vec<_>>>()?;
+                                let args = args
+                                    .iter()
+                                    .map(|arg| _optimize_tail_recursion(func_name, locals, arg))
+                                    .collect::<Option<Vec<_>>>()?;
 
-                                    Some(args)
-                                }
+                                Some(args)
                             }
                         };
                         args.as_mut().map(|args| {
@@ -770,6 +758,7 @@ fn apply_function(
                     }
                 }
                 "or" => Ok(Value::Boolean(args.iter().any(|arg| arg.is_true()))),
+                "and" => Ok(Value::Boolean(args.iter().all(|arg| arg.is_true()))),
                 "print" => {
                     for arg in args {
                         printlnuw(&arg);
@@ -1247,14 +1236,56 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
 
     // These functions cannot be defined using `match_call_args!` due to variable arguments.
     // These are defined at `apply_function`.
-    insert_variable_as_symbol(env, ty_env, s("print"));
-    insert_variable_as_symbol(env, ty_env, s("display"));
     insert_variable_as_symbol(env, ty_env, s("list"));
-    insert_variable_as_symbol(env, ty_env, s("+"));
-    insert_variable_as_symbol(env, ty_env, s("-"));
-    insert_variable_as_symbol(env, ty_env, s("*"));
-    insert_variable_as_symbol(env, ty_env, s("/"));
-    insert_variable_as_symbol(env, ty_env, s("or"));
+
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("print"),
+        Type::for_all(|tv| Type::function(vec![tv], Type::Nil)),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("display"),
+        Type::for_all(|tv| Type::function(vec![tv], Type::Nil)),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("+"),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Numeric),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("-"),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Numeric),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("*"),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Numeric),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("/"),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Numeric),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("or"),
+        Type::function(vec![Type::Boolean, Type::Boolean], Type::Boolean),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("and"),
+        Type::function(vec![Type::Boolean, Type::Boolean], Type::Boolean),
+    );
 
     insert_variable_as_symbol_and_type(
         env,

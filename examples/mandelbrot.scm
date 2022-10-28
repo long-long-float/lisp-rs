@@ -12,7 +12,7 @@
             (if (or (> (+ im-sq re-sq) 4.0) (>= nb-iters MAX_ITERS))
                 nb-iters
                 (begin
-                    (set! im (+ (* 2.0 re im) pty))
+                    (set! im (+ (* 2.0 (* re im)) pty))
                     (set! re (+ (- re-sq im-sq) ptx))
                     
                     (set! im-sq (* im im))
@@ -34,13 +34,13 @@
     (step-y step)
     (lines 53)
     (columns 151)
-    (center-x (- 0.6))
+    (center-x (- 0.0 0.6))
     (center-y 0)
     )
     (let loop1 ((cur-line 0)) (if (< cur-line lines)
-        (let ((y (+ center-y (* step-y (- (* 0.5 lines) cur-line 0.5)))))
+        (let ((y (+ center-y (* step-y (- (- (* 0.5 lines) cur-line) 0.5)))))
             (let loop2 ((cur-col 0)) (if (< cur-col columns)
-                (let ((x (- center-x (* step-x (- (* 0.5 columns) cur-col 0.5)))))
+                (let ((x (- center-x (* step-x (- (- (* 0.5 columns) cur-col) 0.5)))))
                    (draw-point x y)
                    (loop2 (+ cur-col 1))
                 )))
