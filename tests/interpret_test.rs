@@ -120,7 +120,7 @@ fn map_test() {
         interp(
             r#"
 (define square (lambda (x) (* x x)))
-(map square '(1 3 4))
+(map square (list 1 3 4))
 "#
         )
     );
@@ -173,32 +173,21 @@ fn if_test() {
 
 #[test]
 fn list_test() {
-    assert_eq!(Ok(build_list(vec![1, 2, 3])), interp("'(1 2 3)"));
     assert_eq!(Ok(build_list(vec![1, 2, 3])), interp("(list 1 2 3)"));
-
     assert_error!(interp("(list 1 \"2\" 3)"), Error::Type(_));
 
     assert_eq!(
         Ok(build_list(vec![1, 2, 3])),
         interp(
             r#"
-(define xs '(1 2 3))
+(define xs (list 1 2 3))
 xs"#
         )
     );
-    assert_eq!(
-        Ok(build_sym_list(vec!["a", "b"])),
-        interp("(car '((a b) (c d) (e f)))")
-    );
-    assert_eq!(
-        Ok(Value::List(vec![
-            build_sym_list(vec!["c", "d"]),
-            build_sym_list(vec!["e", "f"]),
-        ])),
-        interp("(cdr '((a b) (c d) (e f)))")
-    );
+    assert_eq!(Ok(Value::Integer(1)), interp("(car (list 1 2))"));
+    assert_eq!(Ok(build_list(vec![2]),), interp("(cdr (list 1 2))"));
 
-    assert_eq!(Ok(Value::nil()), interp("(cdr '(a))"));
+    assert_eq!(Ok(Value::nil()), interp("(cdr (list 0))"));
 }
 
 #[test]
@@ -329,7 +318,10 @@ a"#
         )
     );
 
-    assert_error!(interp("(let ([a 1] [b a]) (+ a b))"), Error::Type(_));
+    assert_error!(
+        interp("(let ([a 1] [b a]) (+ a b))"),
+        Error::UndefinedVariable(_)
+    );
 }
 
 #[test]
