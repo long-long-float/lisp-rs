@@ -5,6 +5,7 @@ use crossterm::event;
 use crossterm::event::{read, Event, KeyEvent};
 use crossterm::terminal;
 use crossterm::ExecutableCommand;
+use lisp_rs::lispi::interpret_with_env;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, stdout, BufRead};
@@ -12,9 +13,7 @@ use std::path::Path;
 
 use lisp_rs::lispi::error::ErrorWithLocation;
 use lisp_rs::lispi::interpret;
-use lisp_rs::lispi::{
-    console as c, environment as env, error::Error, evaluator as e, parser as p, tokenizer as t,
-};
+use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e, parser as p};
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
 #[derive(Parser)]
@@ -130,13 +129,17 @@ fn main() -> Result<()> {
 
                         if !buffer.is_empty() {
                             let lines = vec![buffer.join("")];
-                            let results = t::tokenize(lines.clone())
-                                .and_then(|tokens| p::parse_with_env(tokens, &mut sym_table))
-                                .and_then(|asts| Ok((e::eval_asts(&asts, &mut env)?, asts)));
+
+                            let results = interpret_with_env(
+                                lines.clone(),
+                                &mut env,
+                                &mut ty_env,
+                                &mut sym_table,
+                            );
                             match results {
-                                Ok((results, asts)) => {
-                                    if let Some((result, ast)) = (results.iter().zip(asts)).last() {
-                                        c::printlnuw(&format!("{}: {}", result, ast.ty));
+                                Ok(results) => {
+                                    if let Some((result, ty)) = results.iter().last() {
+                                        c::printlnuw(&format!("{}: {}", result, ty));
                                     }
                                 }
                                 Err(err) => show_error(err, "".to_string(), lines),

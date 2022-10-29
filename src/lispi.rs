@@ -16,6 +16,8 @@ use crate::lispi::{
     typer as ty,
 };
 
+use self::parser::SymbolTable;
+
 #[derive(Clone, Debug)]
 pub struct SymbolValue {
     pub value: String,
@@ -140,5 +142,18 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
     // for ast in &program {
     //     println!("{}", ast);
     // }
+    e::eval_program(&program, &mut env)
+}
+
+pub fn interpret_with_env(
+    program: Vec<String>,
+    env: &mut env::Environment<e::Value>,
+    ty_env: &mut env::Environment<ty::Type>,
+    sym_table: &mut SymbolTable,
+) -> Result<Vec<(e::Value, ty::Type)>> {
+    let tokens = t::tokenize(program)?;
+    let program = p::parse_with_env(tokens, sym_table)?;
+    let program = m::expand_macros(program, sym_table)?;
+    let program = ty::check_and_inference_type(program, &ty_env)?;
     e::eval_program(&program, env)
 }
