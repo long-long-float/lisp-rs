@@ -343,6 +343,7 @@ fn optimize_tail_recursion(
                         let mut args = {
                             let not_in_args =
                                 args.iter().all(|arg| !includes_symbol(func_name, &arg.ast));
+
                             if name == func_name && not_in_args {
                                 let mut body = args
                                     .iter()
@@ -361,14 +362,7 @@ fn optimize_tail_recursion(
 
                                 return Some(Ast::Begin(Begin { body }).with_null_location());
                             } else {
-                                // println!("[Warn] '{}' is treated as an ordinay function in optimizing tail recursion", name);
-
-                                let args = args
-                                    .iter()
-                                    .map(|arg| _optimize_tail_recursion(func_name, locals, arg))
-                                    .collect::<Option<Vec<_>>>()?;
-
-                                Some(args)
+                                None
                             }
                         };
                         args.as_mut().map(|args| {
@@ -393,11 +387,12 @@ fn optimize_tail_recursion(
                 ..assign.clone()
             }))),
             Ast::IfExpr(if_expr) => {
-                let cond = Box::new(_optimize_tail_recursion(
-                    func_name,
-                    locals,
-                    if_expr.cond.as_ref(),
-                )?);
+                // let cond = Box::new(_optimize_tail_recursion(
+                //     func_name,
+                //     locals,
+                //     if_expr.cond.as_ref(),
+                // )?);
+                let cond = if_expr.cond.clone();
                 let then_ast = Box::new(_optimize_tail_recursion(
                     func_name,
                     locals,
@@ -945,6 +940,9 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 let (args, exprs): (Vec<SymbolValue>, Vec<_>) = arg_exprs.into_iter().unzip();
 
                 if let Some(optimized) = optimize_tail_recursion(&proc_id.value, &args, body) {
+                    // for ast in &optimized {
+                    //     println!("{}", ast);
+                    // }
                     env.push_local();
 
                     // Sequencial initialization
@@ -1053,7 +1051,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             }
 
             Err(
-                Error::Eval(format!("A variable `{}` is not defined", value.value))
+                Error::Eval(format!("A variable `{}` is not defined!", value.value))
                     .with_location(ast.location)
                     .into(),
             )

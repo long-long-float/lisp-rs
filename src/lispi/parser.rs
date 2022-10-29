@@ -1,11 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::collections::HashMap;
 
-use crate::{ast_pat, match_special_args, match_special_args_with_rest};
-
-use super::{
-    ast::*, error::*, evaluator as e, tokenizer::*, LocationRange, SymbolValue, TokenLocation,
-};
+use super::{ast::*, error::*, tokenizer::*, LocationRange, SymbolValue, TokenLocation};
 
 #[derive(Clone, PartialEq, Debug)]
 /// Maps symbols such as 'x' to unique integer.

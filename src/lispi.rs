@@ -137,8 +137,8 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
     // sym_table.dump();
 
     let program = ty::check_and_inference_type(program, &ty_env)?;
-    for ast in &program {
-        println!("{}", ast);
-    }
+    // for ast in &program {
+    //     println!("{}", ast);
+    // }
     e::eval_program(&program, env)
 }

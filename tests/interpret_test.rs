@@ -3,7 +3,7 @@ use std::stringify;
 use lisp_rs::lispi::{
     error::{Error, ErrorWithLocation},
     evaluator::*,
-    interpret, SymbolValue,
+    interpret,
 };
 
 fn interp(program: &str) -> Result<Value, Error> {
@@ -57,14 +57,6 @@ macro_rules! assert_eq_eps {
 
 fn build_list(vs: Vec<i32>) -> Value {
     let vs = vs.iter().map(|v| Value::Integer(*v)).collect();
-    Value::List(vs)
-}
-
-fn build_sym_list(vs: Vec<&str>) -> Value {
-    let vs = vs
-        .iter()
-        .map(|v| Value::Symbol(SymbolValue::without_id((*v).to_owned())))
-        .collect();
     Value::List(vs)
 }
 
