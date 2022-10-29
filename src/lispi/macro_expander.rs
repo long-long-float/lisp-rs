@@ -95,7 +95,7 @@ pub fn expand_macros_ast(
                     env.pop_local();
 
                     let result = get_last_result(result?);
-                    Ast::from(result)
+                    Ast::from_value(result)?
                 } else {
                     let name = AnnotatedAst {
                         ast: Ast::Symbol(name.clone()),

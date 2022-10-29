@@ -635,7 +635,7 @@ fn eval_special_form(
                     env.pop_local();
 
                     let result = get_last_result(result?);
-                    eval_ast(&Ast::from(result).with_null_location(), env)
+                    eval_ast(&Ast::from_value(result)?.with_null_location(), env)
                 } else {
                     Err(Error::DoNothing.with_null_location().into())
                 }
