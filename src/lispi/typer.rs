@@ -280,7 +280,10 @@ fn collect_constraints_from_ast(
                 let (fun, mut fct) = collect_constraints_from_ast(fun.clone(), ctx)?;
                 let (mut args, mut act) = collect_constraints_from_asts(args.to_vec(), ctx)?;
 
-                let arg_types = args.iter().map(|arg| Box::new(arg.ty.clone())).collect();
+                let arg_types = args
+                    .iter()
+                    .map(|arg| Box::new(arg.ty.clone()))
+                    .collect::<Vec<_>>();
                 let result_type = ctx.tv_gen.gen_tv();
 
                 let fun_ty = resolve_for_all(fun.ty.clone(), ctx);
@@ -288,7 +291,7 @@ fn collect_constraints_from_ast(
                 let mut ct = vec![TypeEquality::new(
                     fun_ty,
                     Type::Function {
-                        args: arg_types,
+                        args: arg_types.clone(),
                         result: Box::new(result_type.clone()),
                     },
                 )];
@@ -514,6 +517,20 @@ fn collect_constraints_from_ast(
                 bct,
             ))
         }
+        Ast::BuildList(vs) => {
+            let (vs, mut ct) = collect_constraints_from_asts(vs.clone(), ctx)?;
+
+            let result_ty = if let Some((fst_arg, rest_args)) = vs.split_first() {
+                for rest in rest_args {
+                    ct.push(TypeEquality::new(fst_arg.ty.clone(), rest.ty.clone()));
+                }
+                Type::List(Box::new(fst_arg.ty.clone()))
+            } else {
+                Type::Nil
+            };
+
+            Ok((ast.with_new_ast_and_type(Ast::BuildList(vs), result_ty), ct))
+        }
         Ast::Continue(_) | Ast::DefineMacro(_) => Ok((ast, Vec::new())),
     }
 }
@@ -690,8 +707,11 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
         }
         Ast::Begin(Begin { body }) => {
             let body = replace_asts(body, assign);
-
             ast.with_new_ast_and_type(Ast::Begin(Begin { body }), new_ty)
+        }
+        Ast::BuildList(vs) => {
+            let vs = replace_asts(vs, assign);
+            ast.with_new_ast_and_type(Ast::BuildList(vs), new_ty)
         }
     }
 }

@@ -228,6 +228,7 @@ impl From<&Ast> for Value {
                 let vs = vs.iter().map(|v| Value::from(&v.ast)).collect();
                 Value::List(vs)
             }
+
             Ast::Nil => Value::nil(),
             // These must be converted in eval_ast.
             Ast::Lambda(_)
@@ -236,7 +237,8 @@ impl From<&Ast> for Value {
             | Ast::Assign(_)
             | Ast::IfExpr(_)
             | Ast::Let(_)
-            | Ast::Begin(_) => Value::nil(),
+            | Ast::Begin(_)
+            | Ast::BuildList(_) => Value::nil(),
 
             Ast::Continue(v) => Value::Continue(v.clone()),
         }
@@ -457,8 +459,11 @@ fn optimize_tail_recursion(
             }
             Ast::Begin(Begin { body }) => {
                 let body = optimize_tail_recursion(func_name, locals, body)?;
-
                 Some(ast.clone().with_new_ast(Ast::Begin(Begin { body })))
+            }
+            Ast::BuildList(vs) => {
+                let vs = optimize_tail_recursion(func_name, locals, vs)?;
+                Some(ast.clone().with_new_ast(Ast::BuildList(vs)))
             }
             Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, &v),
             Ast::Symbol(_)
@@ -502,6 +507,7 @@ fn optimize_tail_recursion(
                     | body.iter().any(|b| includes_symbol(sym, &b.ast))
             }
             Ast::Begin(Begin { body }) => body.iter().any(|b| includes_symbol(sym, &b.ast)),
+            Ast::BuildList(vs) => vs.iter().any(|v| includes_symbol(sym, &v.ast)),
             Ast::Integer(_)
             | Ast::Float(_)
             | Ast::Boolean(_)
@@ -771,7 +777,6 @@ fn apply_function(
                     }
                     Ok(Value::nil())
                 }
-                "list" => Ok(Value::List(args.to_vec())),
                 "map" => {
                     let err =
                         Error::Eval("'map' is formed as (mapcar function list ...)".to_string())
@@ -1015,6 +1020,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             }
         }
         Ast::Begin(Begin { body }) => Ok(get_last_result(eval_asts(body, env)?)),
+        Ast::BuildList(vs) => Ok(Value::List(eval_asts(vs, env)?)),
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
                 let result = eval_special_form(first, rest, env);
@@ -1079,11 +1085,6 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
             },
         );
         ty_env.insert_var(name, ty);
-    }
-
-    fn insert_variable_as_symbol(env: &mut Env, ty_env: &mut Environment<Type>, name: SymbolValue) {
-        env.insert_var(name.clone(), Value::Symbol(name.clone()));
-        ty_env.insert_var(name, Type::symbol());
     }
 
     fn insert_variable_as_symbol_and_type(
@@ -1236,8 +1237,6 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
 
     // These functions cannot be defined using `match_call_args!` due to variable arguments.
     // These are defined at `apply_function`.
-    insert_variable_as_symbol(env, ty_env, s("list"));
-
     insert_variable_as_symbol_and_type(
         env,
         ty_env,

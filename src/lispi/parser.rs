@@ -271,6 +271,10 @@ fn parse_list<'a>(
                 .with_location(location),
                 tokens,
             )),
+            "list" => Ok((
+                Ast::BuildList(args.to_vec()).with_location(location),
+                tokens,
+            )),
             _ => Ok((Ast::List(items).with_location(location), tokens)),
         }
     } else {

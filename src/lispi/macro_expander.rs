@@ -58,6 +58,13 @@ pub fn expand_macros_ast(
                 .collect::<Result<Vec<_>>>()?;
             Ast::Begin(Begin { body })
         }
+        Ast::BuildList(values) => {
+            let values = values
+                .into_iter()
+                .map(|value| expand_macros_ast(value, menv, sym_env))
+                .collect::<Result<Vec<_>>>()?;
+            Ast::BuildList(values)
+        }
         Ast::List(vs) => {
             if let Some((
                 AnnotatedAst {

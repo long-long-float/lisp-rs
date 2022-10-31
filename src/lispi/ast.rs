@@ -23,6 +23,7 @@ pub enum Ast {
     IfExpr(IfExpr),
     Let(Let),
     Begin(Begin),
+    BuildList(Vec<AnnotatedAst>),
 
     /// For optimizing tail recursion
     Continue(String),
@@ -295,6 +296,11 @@ impl Display for AnnotatedAst {
             Ast::Begin(Begin { body }) => {
                 write!(f, "(begin ")?;
                 write_values(f, body)?;
+                write!(f, ")")
+            }
+            Ast::BuildList(values) => {
+                write!(f, "(begin ")?;
+                write_values(f, values)?;
                 write!(f, ")")
             }
             Ast::Continue(_) => write!(f, "CONTINUE"),
