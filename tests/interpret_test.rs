@@ -139,7 +139,7 @@ fn variable_test() {
 
 #[test]
 fn type_test() {
-    assert_error!(&interp("(car 1)"), Error::Type(_));
+    assert_error!(&interp("(car 1)"), Error::TypeNotMatched(_, _, _, _));
     assert_error!(&interp("(car '(1 2) 1)"), Error::Type(_));
 }
 
@@ -166,7 +166,10 @@ fn if_test() {
 #[test]
 fn list_test() {
     assert_eq!(Ok(build_list(vec![1, 2, 3])), interp("(list 1 2 3)"));
-    assert_error!(interp("(list 1 \"2\" 3)"), Error::Type(_));
+    assert_error!(
+        interp("(list 1 \"2\" 3)"),
+        Error::TypeNotMatched(_, _, _, _)
+    );
 
     assert_eq!(
         Ok(build_list(vec![1, 2, 3])),

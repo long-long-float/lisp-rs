@@ -1,3 +1,5 @@
+use std::iter;
+
 use anyhow::Result;
 
 use super::{ast::*, environment::*, error::*, parser::*, SymbolValue, TokenLocation};
@@ -151,6 +153,24 @@ impl Type {
             }
         }
     }
+
+    pub fn with_location(self, loc: TokenLocation) -> TypeWithLocation {
+        TypeWithLocation {
+            ty: self,
+            loc: vec![loc],
+        }
+    }
+
+    pub fn with_locations(self, loc: &Vec<TokenLocation>) -> TypeWithLocation {
+        TypeWithLocation {
+            ty: self,
+            loc: loc.clone(),
+        }
+    }
+
+    pub fn with_null_location(self) -> TypeWithLocation {
+        self.with_location(TokenLocation::Null)
+    }
 }
 
 impl std::fmt::Display for Type {
@@ -190,6 +210,24 @@ impl std::fmt::Display for Type {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct TypeWithLocation {
+    pub ty: Type,
+    /// If ty is scalar, loc has just one location.
+    /// If ty is a function type, loc has ty itself and argument types.
+    pub loc: Vec<TokenLocation>,
+}
+
+impl TypeWithLocation {
+    fn replace(self, assign: &TypeAssignment) -> Self {
+        let TypeWithLocation { ty, loc } = self;
+        TypeWithLocation {
+            ty: ty.replace(assign),
+            loc,
+        }
+    }
+}
+
 type TypeEnv = Environment<Type>;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -199,12 +237,12 @@ pub struct TypeVariable {
 
 #[derive(Clone, PartialEq, Debug)]
 struct TypeEquality {
-    left: Type,
-    right: Type,
+    left: TypeWithLocation,
+    right: TypeWithLocation,
 }
 
 impl TypeEquality {
-    fn new(left: Type, right: Type) -> Self {
+    fn new(left: TypeWithLocation, right: TypeWithLocation) -> Self {
         Self { left, right }
     }
 }
@@ -288,12 +326,21 @@ fn collect_constraints_from_ast(
 
                 let fun_ty = resolve_for_all(fun.ty.clone(), ctx);
 
+                let mut fun_ty_locs = vec![fun.location];
+                let mut arg_locs = args.iter().map(|arg| arg.location).collect::<Vec<_>>();
+                fun_ty_locs.append(&mut arg_locs);
+
                 let mut ct = vec![TypeEquality::new(
-                    fun_ty,
+                    fun_ty.with_locations(
+                        &iter::repeat(TokenLocation::Null)
+                            .take(args.len() + 1)
+                            .collect(),
+                    ),
                     Type::Function {
                         args: arg_types.clone(),
                         result: Box::new(result_type.clone()),
-                    },
+                    }
+                    .with_locations(&fun_ty_locs),
                 )];
                 ct.append(&mut fct);
                 ct.append(&mut act);
@@ -382,7 +429,10 @@ fn collect_constraints_from_ast(
             let var_ty = find_var(var, var_loc, ctx)?;
             let (value, mut vct) = collect_constraints_from_ast(*value.clone(), ctx)?;
 
-            vct.push(TypeEquality::new(var_ty, value.ty.clone()));
+            vct.push(TypeEquality::new(
+                var_ty.with_location(var_loc.clone()),
+                value.ty.clone().with_location(value.location),
+            ));
 
             let assign = Ast::Assign(Assign {
                 var: var.clone(),
@@ -403,13 +453,20 @@ fn collect_constraints_from_ast(
             let mut ct = Vec::new();
             ct.append(&mut cct);
             ct.append(&mut tct);
-            ct.push(TypeEquality::new(cond.ty.clone(), Type::Boolean));
+            ct.push(TypeEquality::new(
+                // cond.ty.clone().with_location(cond.location),
+                cond.ty.clone().with_null_location(),
+                Type::Boolean.with_null_location(),
+            ));
 
             let (if_expr, result_ty) = if let Some(else_ast) = else_ast {
                 let (else_ast, mut ect) = collect_constraints_from_ast(*else_ast.clone(), ctx)?;
 
                 ct.append(&mut ect);
-                ct.push(TypeEquality::new(then_ast.ty.clone(), else_ast.ty.clone()));
+                ct.push(TypeEquality::new(
+                    then_ast.ty.clone().with_location(then_ast.location),
+                    else_ast.ty.clone().with_location(else_ast.location),
+                ));
 
                 let result_ty = then_ast.ty.clone();
 
@@ -489,10 +546,16 @@ fn collect_constraints_from_ast(
             let mut ct = ict;
             ct.append(&mut bct);
 
-            let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Nil);
+            let result_ty = body
+                .last()
+                .map(|a| a.ty.clone().with_location(a.location))
+                .unwrap_or(Type::Nil.with_location(ast.location));
 
             if proc_result != Type::None {
-                ct.push(TypeEquality::new(result_ty.clone(), proc_result));
+                ct.push(TypeEquality::new(
+                    result_ty.clone(),
+                    proc_result.with_null_location(),
+                ));
             }
 
             Ok((
@@ -503,7 +566,7 @@ fn collect_constraints_from_ast(
                         inits: new_inits,
                         body,
                     }),
-                    result_ty,
+                    result_ty.ty,
                 ),
                 ct,
             ))
@@ -522,7 +585,10 @@ fn collect_constraints_from_ast(
 
             let result_ty = if let Some((fst_arg, rest_args)) = vs.split_first() {
                 for rest in rest_args {
-                    ct.push(TypeEquality::new(fst_arg.ty.clone(), rest.ty.clone()));
+                    ct.push(TypeEquality::new(
+                        fst_arg.ty.clone().with_location(fst_arg.location),
+                        rest.ty.clone().with_location(rest.location),
+                    ));
                 }
                 Type::List(Box::new(fst_arg.ty.clone()))
             } else {
@@ -561,7 +627,7 @@ fn replace_constraints(constraints: &[TypeEquality], assign: &TypeAssignment) ->
 
 fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
     if let Some((c, rest)) = constraints.split_first() {
-        match (&c.left, &c.right) {
+        match (&c.left.ty, &c.right.ty) {
             (s, t) if s == t => unify(rest.to_vec()),
             (Type::Variable(x), t) | (t, Type::Variable(x)) if !t.has_free_var(&x) => {
                 let assign = TypeAssignment::new(x.clone(), t.clone());
@@ -578,7 +644,10 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
             | (Type::Float, Type::Numeric) => unify(rest.to_vec()),
             (Type::List(e0), Type::List(e1)) => {
                 let mut rest = rest.to_vec();
-                rest.push(TypeEquality::new(*e0.clone(), *e1.clone()));
+                rest.push(TypeEquality::new(
+                    e0.clone().with_locations(&c.left.loc),
+                    e1.clone().with_locations(&c.right.loc),
+                ));
                 unify(rest)
             }
             (
@@ -600,18 +669,28 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
                 }
 
                 let mut rest = rest.to_vec();
-                for (a0, a1) in args0.iter().zip(args1) {
-                    rest.push(TypeEquality::new(*a0.clone(), *a1.clone()));
+                let args0 = args0.iter().zip(c.left.loc.iter().skip(1));
+                let args1 = args1.iter().zip(c.right.loc.iter().skip(1));
+                for ((a0, l0), (a1, l1)) in args0.zip(args1) {
+                    rest.push(TypeEquality::new(
+                        a0.clone().with_location(l0.clone()),
+                        a1.clone().with_location(l1.clone()),
+                    ));
                 }
-                rest.push(TypeEquality::new(*result0.clone(), *result1.clone()));
+                rest.push(TypeEquality::new(
+                    result0.clone().with_location(c.left.loc[0]),
+                    result1.clone().with_location(c.right.loc[0]),
+                ));
 
                 unify(rest)
             }
-            (t0, t1) => Err(
-                Error::Type(format!("Types {} and {} are not matched.", t0, t1))
-                    .with_null_location()
-                    .into(),
-            ),
+            (t0, t1) => {
+                Err(
+                    Error::TypeNotMatched(t0.clone(), t1.clone(), c.left.loc[0], c.right.loc[0])
+                        .with_null_location()
+                        .into(),
+                )
+            }
         }
     } else {
         Ok(Vec::new())
@@ -740,13 +819,13 @@ pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Resul
     };
     let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
     // for c in &constraints {
-    //     println!("{} = {}", c.left, c.right);
+    //     println!("{} = {}", c.left.ty, c.right.ty);
     // }
 
     let assigns = unify(constraints)?;
     let mut asts = asts;
     for assign in &assigns {
-        // println!("{} = {}", assign.left.name, assign.right);
+        // println!("{} => {}", assign.left.name, assign.right);
 
         asts = replace_asts(asts, &assign);
     }

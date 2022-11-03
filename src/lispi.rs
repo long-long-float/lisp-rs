@@ -115,7 +115,11 @@ impl LocationRange {
 
 impl std::fmt::Display for LocationRange {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{} - {}", self.begin, self.end)
+        if self.begin.line == self.end.line {
+            write!(f, "{}", self.begin)
+        } else {
+            write!(f, "{} - {}", self.begin, self.end)
+        }
     }
 }
 
@@ -129,9 +133,13 @@ impl std::fmt::Display for LocationRange {
 ///
 /// Functions of each steps return Result to express errors.
 pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
+    // println!("{:#?}", program);
     let tokens = t::tokenize(program)?;
+    // println!("{:#?}", tokens);
     let (program, mut sym_table) = p::parse(tokens)?;
+    // println!("{:#?}", program);
     let program = m::expand_macros(program, &mut sym_table)?;
+    // println!("{:#?}", program);
     let mut env = env::Environment::new();
     let mut ty_env = env::Environment::new();
 

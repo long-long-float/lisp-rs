@@ -1,7 +1,7 @@
 use std::{error, fmt::Display};
 use thiserror;
 
-use super::{Location, LocationRange, TokenLocation};
+use super::{typer::Type, Location, LocationRange, TokenLocation};
 
 #[derive(PartialEq, Debug, Clone, thiserror::Error)]
 pub enum Error {
@@ -15,6 +15,8 @@ pub enum Error {
     Eval(String),
     #[error("Type error: {0}")]
     Type(String),
+    #[error("Types {0} and {1} are not matched")]
+    TypeNotMatched(Type, Type, TokenLocation, TokenLocation),
 
     #[error("Undefined variable: {0}")]
     UndefinedVariable(String),

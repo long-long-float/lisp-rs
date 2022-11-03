@@ -215,82 +215,110 @@ where
 /// Show an error as human readable format (like rustc)
 fn show_error(err: anyhow::Error, filename: String, lines: Vec<String>) {
     if let Some(ErrorWithLocation { err, location }) = err.downcast_ref::<ErrorWithLocation>() {
-        let range = match location {
-            TokenLocation::Range(range) => Some(*range),
-            TokenLocation::EOF => {
-                let last_line = lines
-                    .iter()
-                    .rev()
-                    .enumerate()
-                    .find(|(_, line)| !line.is_empty());
-                let (line, column) = last_line
-                    .map(|(lineno, line)| (if lineno >= 1 { lineno - 1 } else { 0 }, line.len()))
-                    .unwrap_or((0, 0));
-                Some(LocationRange {
-                    begin: Location { line, column },
-                    end: Location {
-                        line,
-                        column: column + 1,
-                    },
-                })
-            }
-            TokenLocation::Null => None,
-        };
-        if let Some(LocationRange { begin, end }) = range {
-            let Location {
-                line: bline,
-                column: bcol,
-            } = begin.humanize();
-            let Location {
-                line: eline,
-                column: ecol,
-            } = end.humanize();
-
-            if bline == eline {
-                c::printlnuw(&format!("{} at {}:{}:{}", err, filename, bline, bcol));
-
-                let lineno = bline.to_string();
-                let left = " ".repeat(lineno.len()) + " |";
-                c::printlnuw(&left);
-                let underline = " ".repeat(bcol - 1) + "^".repeat(ecol - bcol).as_str();
-
-                c::printlnuw(&format!(
-                    "{} | {}",
-                    lineno,
-                    lines
-                        .get(bline - 1)
-                        .map(|l| l.to_string())
-                        .unwrap_or_else(|| "".to_string())
-                ));
-                c::printlnuw(&format!("{} {}", left, underline));
-            } else {
-                c::printlnuw(&format!(
-                    "{} at {}:{}:{} - {}:{}",
-                    err, filename, bline, bcol, eline, ecol
-                ));
-
-                let max_lineno_len = eline.to_string().len();
-                let left = " ".repeat(max_lineno_len) + " |";
-                c::printlnuw(&left);
-
-                for line in bline..=eline {
-                    let lineno = line.to_string();
+        match err {
+            Error::TypeNotMatched(t0, t1, loc0, loc1) => {
+                if loc0 == &TokenLocation::Null || loc1 == &TokenLocation::Null {
+                    let (expected_ty, actual_ty, loc) = match (loc0, loc1) {
+                        (&TokenLocation::Null, &TokenLocation::Null) => {
+                            c::printlnuw(&err);
+                            return;
+                        }
+                        (loc, &TokenLocation::Null) => (t1, t0, loc),
+                        (&TokenLocation::Null, loc) => (t0, t1, loc),
+                        (_, _) => {
+                            c::printlnuw(&err);
+                            return;
+                        }
+                    };
                     c::printlnuw(&format!(
-                        "{}{} | > {}",
-                        lineno,
-                        " ".repeat(max_lineno_len - lineno.len()),
-                        lines
-                            .get(line - 1)
-                            .map(|l| l.to_string())
-                            .unwrap_or_else(|| "".to_string())
+                        "Type error: {} is expected but {} is taken at {}:{}",
+                        expected_ty, actual_ty, filename, loc
                     ));
+                    show_error_location(loc, &lines);
+                } else {
+                    c::printlnuw(&err);
                 }
-                c::printlnuw(&left);
             }
-        } else {
-            c::printlnuw(&err);
+            _ => {
+                match location {
+                    TokenLocation::Range(_) | TokenLocation::EOF => {
+                        c::printlnuw(&format!("{} at {}:{}", err, filename, location))
+                    }
+                    TokenLocation::Null => c::printlnuw(&format!("{} at {}", err, filename)),
+                }
+                show_error_location(location, &lines);
+            }
         }
     } else {
         c::printlnuw(&err);
+    }
+}
+
+fn show_error_location(location: &TokenLocation, lines: &[String]) {
+    let range = match location {
+        TokenLocation::Range(range) => Some(*range),
+        TokenLocation::EOF => {
+            let last_line = lines
+                .iter()
+                .rev()
+                .enumerate()
+                .find(|(_, line)| !line.is_empty());
+            let (line, column) = last_line
+                .map(|(lineno, line)| (if lineno >= 1 { lineno - 1 } else { 0 }, line.len()))
+                .unwrap_or((0, 0));
+            Some(LocationRange {
+                begin: Location { line, column },
+                end: Location {
+                    line,
+                    column: column + 1,
+                },
+            })
+        }
+        TokenLocation::Null => None,
+    };
+    if let Some(LocationRange { begin, end }) = range {
+        let Location {
+            line: bline,
+            column: bcol,
+        } = begin.humanize();
+        let Location {
+            line: eline,
+            column: ecol,
+        } = end.humanize();
+
+        if bline == eline {
+            let lineno = bline.to_string();
+            let left = " ".repeat(lineno.len()) + " |";
+            c::printlnuw(&left);
+            let underline = " ".repeat(bcol - 1) + "^".repeat(ecol - bcol).as_str();
+
+            c::printlnuw(&format!(
+                "{} | {}",
+                lineno,
+                lines
+                    .get(bline - 1)
+                    .map(|l| l.to_string())
+                    .unwrap_or_else(|| "".to_string())
+            ));
+            c::printlnuw(&format!("{} {}", left, underline));
+        } else {
+            let max_lineno_len = eline.to_string().len();
+            let left = " ".repeat(max_lineno_len) + " |";
+            c::printlnuw(&left);
+
+            for line in bline..=eline {
+                let lineno = line.to_string();
+                c::printlnuw(&format!(
+                    "{}{} | > {}",
+                    lineno,
+                    " ".repeat(max_lineno_len - lineno.len()),
+                    lines
+                        .get(line - 1)
+                        .map(|l| l.to_string())
+                        .unwrap_or_else(|| "".to_string())
+                ));
+            }
+            c::printlnuw(&left);
+        }
     }
 }

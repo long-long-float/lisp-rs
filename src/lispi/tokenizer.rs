@@ -129,6 +129,15 @@ fn current_char(line: &Vec<char>, loc: &Location) -> Option<char> {
     }
 }
 
+fn move_to_next_line<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Location) {
+    loc.newline();
+    if let Some(new_line) = program.get(loc.line) {
+        *line = new_line.chars().collect();
+    } else {
+        *line = Vec::new();
+    }
+}
+
 /// Move loc to next location.
 ///
 /// Returned value is moved location, however it is not next line when the column reaches the end of line.
@@ -149,12 +158,7 @@ fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Locatio
     };
 
     if nl {
-        loc.newline();
-        if let Some(new_line) = program.get(loc.line) {
-            *line = new_line.chars().collect();
-        } else {
-            *line = Vec::new();
-        }
+        move_to_next_line(program, line, loc);
     }
 
     result
@@ -247,7 +251,7 @@ fn tokenize_single<'a>(
                 ret.with_location(begin, loc.clone())
             }
             ';' => {
-                let _ = take_while(program, line, loc, |c| c != '\n');
+                move_to_next_line(program, line, loc);
                 return Ok(None);
             }
             ':' => {
