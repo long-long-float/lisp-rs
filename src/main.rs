@@ -217,27 +217,34 @@ fn show_error(err: anyhow::Error, filename: String, lines: Vec<String>) {
     if let Some(ErrorWithLocation { err, location }) = err.downcast_ref::<ErrorWithLocation>() {
         match err {
             Error::TypeNotMatched(t0, t1, loc0, loc1) => {
-                if loc0 == &TokenLocation::Null || loc1 == &TokenLocation::Null {
-                    let (expected_ty, actual_ty, loc) = match (loc0, loc1) {
-                        (&TokenLocation::Null, &TokenLocation::Null) => {
-                            c::printlnuw(&err);
+                let (expected_ty, actual_ty, loc) = match (loc0, loc1) {
+                    (&TokenLocation::Null, &TokenLocation::Null) => {
+                        c::printlnuw(&err);
+                        return;
+                    }
+                    (loc, &TokenLocation::Null) => (t1, t0, loc),
+                    (&TokenLocation::Null, loc) => (t0, t1, loc),
+                    (loc0, loc1) => {
+                        if loc0 != loc1 {
+                            c::printlnuw(&format!(
+                                "Type error: {} and {} are not matched at {}",
+                                t0, t1, filename,
+                            ));
+                            c::printlnuw(&format!("First type: {}", t0));
+                            show_error_location(loc0, &lines);
+                            c::printlnuw(&format!("Second type: {}", t1));
+                            show_error_location(loc1, &lines);
                             return;
+                        } else {
+                            (t1, t0, loc0)
                         }
-                        (loc, &TokenLocation::Null) => (t1, t0, loc),
-                        (&TokenLocation::Null, loc) => (t0, t1, loc),
-                        (_, _) => {
-                            c::printlnuw(&err);
-                            return;
-                        }
-                    };
-                    c::printlnuw(&format!(
-                        "Type error: {} is expected but {} is taken at {}:{}",
-                        expected_ty, actual_ty, filename, loc
-                    ));
-                    show_error_location(loc, &lines);
-                } else {
-                    c::printlnuw(&err);
-                }
+                    }
+                };
+                c::printlnuw(&format!(
+                    "Type error: {} is expected but {} is taken at {}:{}",
+                    expected_ty, actual_ty, filename, loc
+                ));
+                show_error_location(loc, &lines);
             }
             _ => {
                 match location {
