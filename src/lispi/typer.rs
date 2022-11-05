@@ -332,6 +332,12 @@ fn resolve_for_all(ty: Type, ctx: &mut Context) -> Type {
     }
 }
 
+fn get_result_type_with_loc(body: &[AnnotatedAst]) -> TypeWithLocation {
+    body.last()
+        .map(|a| a.ty.clone().with_location(a.location, false))
+        .unwrap_or(Type::Nil.with_null_location())
+}
+
 fn collect_constraints_from_ast(
     ast: AnnotatedAst,
     ctx: &mut Context,
@@ -510,6 +516,52 @@ fn collect_constraints_from_ast(
 
             Ok((
                 ast.with_new_ast_and_type(Ast::IfExpr(if_expr), result_ty),
+                ct,
+            ))
+        }
+        Ast::Cond(Cond { clauses }) => {
+            let mut ct = Vec::new();
+            let clauses = clauses
+                .iter()
+                .map(|CondClause { cond, body }| {
+                    let (cond, mut cct) = collect_constraints_from_ast(*cond.clone(), ctx)?;
+                    let (body, mut bct) = collect_constraints_from_asts(body.clone(), ctx)?;
+
+                    ct.append(&mut cct);
+                    ct.append(&mut bct);
+
+                    Ok(CondClause {
+                        cond: Box::new(cond),
+                        body,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            let result_ty = if let Some((fst, rest)) = clauses.split_first() {
+                let fst_cond_ty = fst.cond.ty.clone().with_location(fst.cond.location, false);
+                let fst_body_ty = get_result_type_with_loc(&fst.body);
+                ct.push(TypeEquality::new(
+                    fst_cond_ty,
+                    Type::Boolean.with_null_location(),
+                ));
+
+                for c in rest {
+                    let cond_ty = c.cond.ty.clone().with_location(c.cond.location, false);
+                    let body_ty = get_result_type_with_loc(&c.body);
+                    ct.push(TypeEquality::new(
+                        cond_ty,
+                        Type::Boolean.with_null_location(),
+                    ));
+                    ct.push(TypeEquality::new(body_ty, fst_body_ty.clone()));
+                }
+
+                fst_body_ty.ty
+            } else {
+                Type::Nil
+            };
+
+            Ok((
+                ast.with_new_ast_and_type(Ast::Cond(Cond { clauses }), result_ty),
                 ct,
             ))
         }
@@ -833,6 +885,16 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
                 }),
                 new_ty,
             )
+        }
+        Ast::Cond(Cond { clauses }) => {
+            let clauses = clauses
+                .into_iter()
+                .map(|CondClause { cond, body }| CondClause {
+                    cond: Box::new(replace_ast(*cond, assign)),
+                    body: replace_asts(body, assign),
+                })
+                .collect();
+            ast.with_new_ast_and_type(Ast::Cond(Cond { clauses }), new_ty)
         }
         Ast::Begin(Begin { body }) => {
             let body = replace_asts(body, assign);

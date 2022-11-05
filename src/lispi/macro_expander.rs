@@ -5,6 +5,16 @@ use anyhow::Result;
 
 type MacroEnv = HashMap<u32, DefineMacro>;
 
+pub fn expand_macros_asts(
+    asts: Vec<AnnotatedAst>,
+    menv: &mut MacroEnv,
+    sym_env: &mut SymbolTable,
+) -> Result<Vec<AnnotatedAst>> {
+    asts.into_iter()
+        .map(|ast| expand_macros_ast(ast, menv, sym_env))
+        .collect::<Result<Vec<_>>>()
+}
+
 pub fn expand_macros_ast(
     ast: AnnotatedAst,
     menv: &mut MacroEnv,
@@ -33,6 +43,20 @@ pub fn expand_macros_ast(
             }
 
             Ast::IfExpr(if_expr)
+        }
+        Ast::Cond(mut cond) => {
+            cond.clauses = cond
+                .clauses
+                .into_iter()
+                .map(|CondClause { cond, body }| {
+                    Ok(CondClause {
+                        cond: Box::new(expand_macros_ast(*cond, menv, sym_env)?),
+                        body: expand_macros_asts(body, menv, sym_env)?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            Ast::Cond(cond)
         }
         Ast::Let(mut let_expr) => {
             let_expr.inits = let_expr

@@ -27,6 +27,7 @@ pub enum Ast {
     Lambda(Lambda),
     Assign(Assign),
     IfExpr(IfExpr),
+    Cond(Cond),
     Let(Let),
     Begin(Begin),
     BuildList(Vec<AnnotatedAst>),
@@ -171,6 +172,30 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
                 body: args.to_vec(),
             })),
             "list" => Ok(Ast::BuildList(args.to_vec())),
+            "cond" => {
+                let err = Error::Eval("'cond' is formed as (cond (cond body ...) ...)".to_string())
+                    .with_location(location);
+
+                let clauses = args
+                    .iter()
+                    .map(|clause| {
+                        if let ast_pat!(Ast::List(arm)) = clause {
+                            if let Some((cond, body)) = arm.split_first() {
+                                Ok(CondClause {
+                                    cond: Box::new(cond.clone()),
+                                    body: body.to_vec(),
+                                })
+                            } else {
+                                Err(err.clone().into())
+                            }
+                        } else {
+                            Err(err.clone().into())
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(Ast::Cond(Cond { clauses }))
+            }
             _ => Ok(Ast::List(asts.to_vec())),
         }
     } else {
@@ -296,6 +321,17 @@ pub struct IfExpr {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct Cond {
+    pub clauses: Vec<CondClause>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct CondClause {
+    pub cond: Box<AnnotatedAst>,
+    pub body: Vec<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct Let {
     pub sequential: bool,
     pub proc_id: Option<SymbolValue>,
@@ -414,6 +450,15 @@ impl Display for AnnotatedAst {
                 }
                 write!(f, ")")
             }
+            Ast::Cond(Cond { clauses }) => {
+                writeln!(f, "(cond ")?;
+                for CondClause { cond, body } in clauses {
+                    write!(f, "  ({} ", cond)?;
+                    write_values(f, body)?;
+                    write!(f, ")")?;
+                }
+                write!(f, ")")
+            }
             Ast::Let(Let {
                 inits,
                 body,
@@ -450,7 +495,8 @@ impl Display for AnnotatedAst {
         }?;
 
         if self.ty != Type::None {
-            write!(f, ": {}", self.ty)
+            // write!(f, ": {}", self.ty)
+            Ok(())
         } else {
             Ok(())
         }

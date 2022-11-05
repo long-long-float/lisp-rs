@@ -238,7 +238,8 @@ impl From<&Ast> for Value {
             | Ast::IfExpr(_)
             | Ast::Let(_)
             | Ast::Begin(_)
-            | Ast::BuildList(_) => Value::nil(),
+            | Ast::BuildList(_)
+            | Ast::Cond(_) => Value::nil(),
 
             Ast::Continue(v) => Value::Continue(v.clone()),
         }
@@ -460,6 +461,18 @@ fn optimize_tail_recursion(
                 let vs = optimize_tail_recursion(func_name, locals, vs)?;
                 Some(ast.clone().with_new_ast(Ast::BuildList(vs)))
             }
+            Ast::Cond(Cond { clauses }) => {
+                let clauses = clauses
+                    .into_iter()
+                    .map(|CondClause { cond, body }| {
+                        Some(CondClause {
+                            cond: Box::new(_optimize_tail_recursion(func_name, locals, cond)?),
+                            body: optimize_tail_recursion(func_name, locals, body)?,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                Some(ast.clone().with_new_ast(Ast::Cond(Cond { clauses })))
+            }
             Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, &v),
             Ast::Symbol(_)
             | Ast::SymbolWithType(_, _)
@@ -503,6 +516,9 @@ fn optimize_tail_recursion(
             }
             Ast::Begin(Begin { body }) => body.iter().any(|b| includes_symbol(sym, &b.ast)),
             Ast::BuildList(vs) => vs.iter().any(|v| includes_symbol(sym, &v.ast)),
+            Ast::Cond(Cond { clauses }) => clauses.iter().any(|CondClause { cond, body }| {
+                includes_symbol(sym, &cond.ast) || body.iter().any(|b| includes_symbol(sym, &b.ast))
+            }),
             Ast::Integer(_)
             | Ast::Float(_)
             | Ast::Boolean(_)
@@ -569,30 +585,6 @@ fn eval_special_form(
                             .into(),
                     )
                 }
-            }
-            "cond" => {
-                let err = Err(Error::Eval(
-                    "'cond' is formed as (cond (cond body ...) ...)".to_string(),
-                )
-                .with_location(name_ast.location)
-                .into());
-
-                for arg in raw_args {
-                    if let ast_pat!(Ast::List(arm)) = arg {
-                        if let Some((cond, body)) = arm.split_first() {
-                            let cond = eval_ast(cond, env)?;
-                            if cond.is_true() {
-                                return Ok(get_last_result(eval_asts(body, env)?));
-                            }
-                        } else {
-                            return err;
-                        }
-                    } else {
-                        return err;
-                    }
-                }
-
-                Ok(Value::nil())
             }
             "function" => {
                 if let Some(func) = raw_args.first() {
@@ -940,9 +932,9 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 let (args, exprs): (Vec<SymbolValue>, Vec<_>) = arg_exprs.into_iter().unzip();
 
                 if let Some(optimized) = optimize_tail_recursion(&proc_id.value, &args, body) {
-                    // for ast in &optimized {
-                    //     println!("{}", ast);
-                    // }
+                    for ast in &optimized {
+                        println!("{}", ast);
+                    }
                     env.push_local();
 
                     // Sequencial initialization
@@ -1019,6 +1011,16 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
         }
         Ast::Begin(Begin { body }) => Ok(get_last_result(eval_asts(body, env)?)),
         Ast::BuildList(vs) => Ok(Value::List(eval_asts(vs, env)?)),
+        Ast::Cond(Cond { clauses }) => {
+            for CondClause { cond, body } in clauses {
+                let cond = eval_ast(cond, env)?;
+                if cond.is_true() {
+                    return Ok(get_last_result(eval_asts(body, env)?));
+                }
+            }
+
+            Ok(Value::nil())
+        }
         Ast::List(elements) => {
             if let Some((first, rest)) = elements.split_first() {
                 let result = eval_special_form(first, rest, env);

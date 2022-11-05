@@ -164,6 +164,29 @@ fn if_test() {
 }
 
 #[test]
+fn cond_test() {
+    assert_eq!(
+        Ok(Value::List(
+            vec!["zero", "one", "other"]
+                .iter()
+                .map(|s| Value::String(s.to_string()))
+                .collect()
+        )),
+        interp(
+            r#"
+(define f (lambda (x)
+  (cond
+   ((= x 0) "zero")
+   ((= x 1) "one")
+   (#t "other"))))
+
+(list (f 0) (f 1) (f 2))
+"#
+        )
+    );
+}
+
+#[test]
 fn list_test() {
     assert_eq!(Ok(build_list(vec![1, 2, 3])), interp("(list 1 2 3)"));
     assert_error!(
