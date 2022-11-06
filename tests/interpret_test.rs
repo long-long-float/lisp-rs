@@ -3,7 +3,7 @@ use std::stringify;
 use lisp_rs::lispi::{
     error::{Error, ErrorWithLocation},
     evaluator::*,
-    interpret,
+    interpret, SymbolValue,
 };
 
 fn interp(program: &str) -> Result<Value, Error> {
@@ -71,6 +71,16 @@ fn literal_test() {
         Ok(Value::String("Hello World! こんにちは".to_string())),
         interp("\"Hello World! こんにちは\"")
     );
+
+    assert_eq!(
+        Ok(Value::Symbol(SymbolValue {
+            value: "hello".to_string(),
+            id: 0
+        })),
+        interp("'hello")
+    );
+
+    assert_error!(interp("'(1 2 3)"), Error::Type(_));
 }
 
 #[test]
@@ -312,7 +322,7 @@ fn macro_test() {
         place
         (list 'cons item place)))
 
-(define stack '())
+(define stack (list))
 (my-push 10 stack)
 (my-push 20 stack)
 stack"#

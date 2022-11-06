@@ -10,6 +10,7 @@ pub enum Type {
     Boolean,
     Char,
     String,
+    Symbol,
     Nil,
     None,
 
@@ -34,16 +35,12 @@ pub enum Type {
 }
 
 impl Type {
-    fn scala(name: &str) -> Type {
-        Type::Scala(name.to_string())
-    }
-
     pub fn int() -> Type {
         Type::Int
     }
 
     pub fn symbol() -> Type {
-        Type::scala("symbol")
+        Type::Symbol
     }
 
     pub fn list() -> Type {
@@ -89,6 +86,7 @@ impl Type {
             | Type::Nil
             | Type::Any
             | Type::Scala(_)
+            | Type::Symbol
             | Type::None => false,
 
             Type::List(e) => e.has_free_var(tv),
@@ -113,6 +111,7 @@ impl Type {
             | Type::Nil
             | Type::Any
             | Type::Scala(_)
+            | Type::Symbol
             | Type::None => self,
 
             Type::List(e) => Type::List(Box::new(e.replace(assign))),
@@ -182,6 +181,7 @@ impl std::fmt::Display for Type {
             Type::Boolean => write!(f, "boolean"),
             Type::Char => write!(f, "char"),
             Type::String => write!(f, "string"),
+            Type::Symbol => write!(f, "symbol"),
             Type::Nil => write!(f, "nil"),
             Type::Scala(name) => write!(f, "{}", name),
             Type::List(e) => write!(f, "list<{}>", e),
@@ -380,11 +380,19 @@ fn collect_constraints_from_ast(
             }
         }
         Ast::Quoted(inner) => {
-            let (inner, c) = collect_constraints_from_ast(*inner.clone(), ctx)?;
-            Ok((
-                ast.with_new_ast_and_type(Ast::Quoted(Box::new(inner.clone())), inner.ty),
-                c,
-            ))
+            if let AnnotatedAst {
+                ast: Ast::Symbol(_),
+                ..
+            } = *inner.clone()
+            {
+                Ok((ast.with_new_type(Type::symbol()), Vec::new()))
+            } else {
+                Err(
+                    Error::Type("Quote is now supported for only symbols.".to_string())
+                        .with_location(inner.location)
+                        .into(),
+                )
+            }
         }
         Ast::Integer(_) => Ok((ast.with_new_type(Type::Int), Vec::new())),
         Ast::Float(_) => Ok((ast.with_new_type(Type::Float), Vec::new())),
@@ -663,7 +671,7 @@ fn collect_constraints_from_ast(
                 }
                 Type::List(Box::new(fst_arg.ty.clone()))
             } else {
-                Type::Nil
+                Type::List(Box::new(ctx.tv_gen.gen_tv()))
             };
 
             Ok((ast.with_new_ast_and_type(Ast::BuildList(vs), result_ty), ct))

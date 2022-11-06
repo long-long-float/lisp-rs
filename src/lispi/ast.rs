@@ -487,7 +487,7 @@ impl Display for AnnotatedAst {
                 write!(f, ")")
             }
             Ast::BuildList(values) => {
-                write!(f, "(begin ")?;
+                write!(f, "(list ")?;
                 write_values(f, values)?;
                 write!(f, ")")
             }
@@ -495,8 +495,7 @@ impl Display for AnnotatedAst {
         }?;
 
         if self.ty != Type::None {
-            // write!(f, ": {}", self.ty)
-            Ok(())
+            write!(f, ": {}", self.ty)
         } else {
             Ok(())
         }
