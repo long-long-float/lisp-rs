@@ -397,11 +397,10 @@ fn optimize_tail_recursion(
                 ..assign.clone()
             }))),
             Ast::IfExpr(if_expr) => {
-                // let cond = Box::new(_optimize_tail_recursion(
-                //     func_name,
-                //     locals,
-                //     if_expr.cond.as_ref(),
-                // )?);
+                if includes_symbol(func_name, &if_expr.cond.ast) {
+                    return None;
+                }
+
                 let cond = if_expr.cond.clone();
                 let then_ast = Box::new(_optimize_tail_recursion(
                     func_name,
@@ -439,26 +438,20 @@ fn optimize_tail_recursion(
                 let sequential = *sequential;
                 let proc_id = proc_id.clone();
 
-                let includes_sym_in_vars = inits
+                let includes_sym_in_inits = inits
                     .iter()
                     .any(|(_k, v)| includes_symbol(func_name, &v.ast));
 
-                if includes_sym_in_vars {
+                if includes_sym_in_inits {
                     return None;
                 }
 
-                let inits = inits
-                    .iter()
-                    .map(|(k, v)| {
-                        Some((k.clone(), _optimize_tail_recursion(func_name, locals, v)?))
-                    })
-                    .collect::<Option<Vec<_>>>()?;
                 let body = optimize_tail_recursion(func_name, locals, body)?;
 
                 Some(ast.clone().with_new_ast(Ast::Let(Let {
                     sequential,
                     proc_id,
-                    inits,
+                    inits: inits.clone(),
                     body,
                 })))
             }
