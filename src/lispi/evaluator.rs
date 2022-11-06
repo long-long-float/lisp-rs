@@ -197,11 +197,20 @@ impl std::fmt::Display for Value {
                     Ok(())
                 }
             }
-            Value::Function { name, is_macro, .. } => {
+            Value::Function {
+                name,
+                is_macro,
+                body,
+                ..
+            } => {
                 if *is_macro {
                     write!(f, "MACRO {}", name.value)
                 } else {
-                    write!(f, "FUNCTION {}", name.value)
+                    writeln!(f, "FUNCTION {}", name.value)?;
+                    for ast in body {
+                        writeln!(f, "  {}", ast)?;
+                    }
+                    Ok(())
                 }
             }
             Value::NativeFunction { name, func: _ } => {
@@ -568,24 +577,6 @@ fn eval_special_form(
     if let Ast::Symbol(name) = &name_ast.ast {
         let name = name.value.as_str();
         match name {
-            "when" | "unless" => {
-                let invert = name == "unless";
-                if let Some((cond, forms)) = raw_args.split_first() {
-                    let cond = eval_ast(cond, env)?.is_true();
-                    let cond = if invert { !cond } else { cond };
-                    if cond {
-                        Ok(get_last_result(eval_asts(forms, env)?))
-                    } else {
-                        Ok(Value::nil())
-                    }
-                } else {
-                    Err(
-                        Error::Eval(format!("'{}' is formed as (if cond then else)", name))
-                            .with_location(name_ast.location)
-                            .into(),
-                    )
-                }
-            }
             "function" => {
                 if let Some(func) = raw_args.first() {
                     let result = eval_ast(func, env)?;
@@ -932,9 +923,9 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 let (args, exprs): (Vec<SymbolValue>, Vec<_>) = arg_exprs.into_iter().unzip();
 
                 if let Some(optimized) = optimize_tail_recursion(&proc_id.value, &args, body) {
-                    for ast in &optimized {
-                        println!("{}", ast);
-                    }
+                    // for ast in &optimized {
+                    //     println!("{}", ast);
+                    // }
                     env.push_local();
 
                     // Sequencial initialization
@@ -1102,14 +1093,21 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
         env,
         ty_env,
         s("even?"),
-        Type::function(vec![Type::int()], Type::Any),
+        Type::function(vec![Type::int()], Type::Boolean),
         |args| match_call_args!(args, Value::Integer(v), { Ok(Value::from(v % 2 == 0)) }),
     );
     insert_function(
         env,
         ty_env,
+        s("not"),
+        Type::function(vec![Type::Boolean], Type::Boolean),
+        |args| match_call_args!(args, Value::Boolean(v), { Ok(Value::from(!v)) }),
+    );
+    insert_function(
+        env,
+        ty_env,
         s("="),
-        Type::function(vec![Type::Any, Type::Any], Type::Any),
+        Type::function(vec![Type::Any, Type::Any], Type::Boolean),
         |args| match_call_args!(args, v1, v2, { Ok(Value::from(v1 == v2)) }),
     );
     insert_function(
@@ -1221,6 +1219,18 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
             match_call_args!(args, Value::String(value), {
                 let chars = value.chars().map(|c| Value::Char(c)).collect();
                 Ok(Value::List(chars))
+            })
+        },
+    );
+    insert_function(
+        env,
+        ty_env,
+        s("int->string"),
+        Type::function(vec![Type::Int], Type::String),
+        |args| {
+            match_call_args!(args, Value::Integer(value), {
+                let str = value.to_string();
+                Ok(Value::String(str))
             })
         },
     );
