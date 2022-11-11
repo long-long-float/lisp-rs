@@ -33,6 +33,7 @@ pub enum Ast {
     BuildList(Vec<AnnotatedAst>),
 
     /// For optimizing tail recursion
+    Loop(Loop),
     Continue(String),
 }
 
@@ -345,6 +346,13 @@ pub struct Begin {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct Loop {
+    pub inits: Vec<(SymbolValue, AnnotatedAst)>,
+    pub label: String,
+    pub body: Vec<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct AnnotatedAst {
     pub ast: Ast,
     pub location: TokenLocation,
@@ -377,6 +385,146 @@ impl AnnotatedAst {
             ty: new_ty,
             ..self
         }
+    }
+
+    pub fn traverse<F, A>(self, ctx: &A, func: F) -> Result<Self>
+    where
+        F: Fn(Self, &A) -> Result<Self>,
+    {
+        let AnnotatedAst { ast, location, ty } = self;
+        let ast = match ast {
+            Ast::Integer(_)
+            | Ast::Float(_)
+            | Ast::Symbol(_)
+            | Ast::SymbolWithType(_, _)
+            | Ast::Boolean(_)
+            | Ast::Char(_)
+            | Ast::String(_)
+            | Ast::Nil
+            | Ast::Continue(_) => ast,
+            Ast::List(vs) => {
+                let vs = vs
+                    .iter()
+                    .map(|v| func(v.clone(), ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::List(vs)
+            }
+            Ast::Quoted(v) => Ast::Quoted(Box::new(func(*v.clone(), ctx)?)),
+            Ast::DefineMacro(DefineMacro { id, args, body }) => {
+                let body = body
+                    .into_iter()
+                    .map(|v| func(v, ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::DefineMacro(DefineMacro { id, args, body })
+            }
+            Ast::Define(Define { id, init }) => {
+                let init = Box::new(func(*init.clone(), ctx)?);
+                Ast::Define(Define { id, init })
+            }
+            Ast::Lambda(Lambda { args, body }) => {
+                let body = body
+                    .into_iter()
+                    .map(|v| func(v, ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::Lambda(Lambda { args, body })
+            }
+            Ast::Assign(Assign {
+                var,
+                var_loc,
+                value,
+            }) => {
+                let value = Box::new(func(*value.clone(), ctx)?);
+                Ast::Assign(Assign {
+                    var,
+                    var_loc,
+                    value,
+                })
+            }
+            Ast::IfExpr(IfExpr {
+                cond,
+                then_ast,
+                else_ast,
+            }) => {
+                let cond = Box::new(func(*cond.clone(), ctx)?);
+                let then_ast = Box::new(func(*then_ast.clone(), ctx)?);
+                if let Some(else_ast) = else_ast {
+                    let else_ast = Box::new(func(*else_ast.clone(), ctx)?);
+                    Ast::IfExpr(IfExpr {
+                        cond,
+                        then_ast,
+                        else_ast: Some(else_ast),
+                    })
+                } else {
+                    Ast::IfExpr(IfExpr {
+                        cond,
+                        then_ast,
+                        else_ast: None,
+                    })
+                }
+            }
+            Ast::Cond(Cond { clauses }) => {
+                let clauses = clauses
+                    .into_iter()
+                    .map(|CondClause { cond, body }| {
+                        let cond = Box::new(func(*cond.clone(), ctx)?);
+                        let body = body
+                            .into_iter()
+                            .map(|v| func(v, ctx))
+                            .collect::<Result<Vec<_>>>()?;
+                        Ok(CondClause { cond, body })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::Cond(Cond { clauses })
+            }
+            Ast::Let(Let {
+                sequential,
+                proc_id,
+                inits,
+                body,
+            }) => {
+                let inits = inits
+                    .into_iter()
+                    .map(|(var, val)| Ok((var, func(val, ctx)?)))
+                    .collect::<Result<Vec<_>>>()?;
+                let body = body
+                    .into_iter()
+                    .map(|v| func(v, ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::Let(Let {
+                    sequential,
+                    proc_id,
+                    inits,
+                    body,
+                })
+            }
+            Ast::Begin(Begin { body }) => {
+                let body = body
+                    .into_iter()
+                    .map(|v| func(v, ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::Begin(Begin { body })
+            }
+            Ast::Loop(Loop { inits, label, body }) => {
+                let inits = inits
+                    .into_iter()
+                    .map(|(var, val)| Ok((var, func(val, ctx)?)))
+                    .collect::<Result<Vec<_>>>()?;
+                let body = body
+                    .into_iter()
+                    .map(|v| func(v, ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::Loop(Loop { inits, label, body })
+            }
+            Ast::BuildList(vs) => {
+                let vs = vs
+                    .into_iter()
+                    .map(|v| func(v, ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::BuildList(vs)
+            }
+        };
+
+        Ok(AnnotatedAst { ast, location, ty })
     }
 }
 
@@ -486,16 +634,25 @@ impl Display for AnnotatedAst {
                 write_values(f, body)?;
                 write!(f, ")")
             }
+            Ast::Loop(Loop { inits, label, body }) => {
+                write!(f, "(loop:{} ", label)?;
+                for (id, expr) in inits {
+                    write!(f, "(define {} {})", id.value, expr)?;
+                }
+                write_values(f, body)?;
+                write!(f, ")")
+            }
             Ast::BuildList(values) => {
                 write!(f, "(list ")?;
                 write_values(f, values)?;
                 write!(f, ")")
             }
-            Ast::Continue(_) => write!(f, "CONTINUE"),
+            Ast::Continue(label) => write!(f, "(continue {})", label),
         }?;
 
         if self.ty != Type::None {
-            write!(f, ": {}", self.ty)
+            // write!(f, ": {}", self.ty)
+            Ok(())
         } else {
             Ok(())
         }

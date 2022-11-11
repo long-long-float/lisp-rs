@@ -1,6 +1,8 @@
 pub mod console;
 pub mod error;
 
+pub mod opt;
+
 pub mod ast;
 pub mod environment;
 pub mod evaluator;
@@ -12,8 +14,8 @@ pub mod typer;
 use anyhow::Result;
 
 use crate::lispi::{
-    environment as env, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
-    typer as ty,
+    environment as env, evaluator as e, macro_expander as m,
+    parser as p, tokenizer as t, typer as ty,
 };
 
 use self::parser::SymbolTable;
@@ -150,6 +152,10 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
     // for ast in &program {
     //     println!("{}", ast);
     // }
+    let program = opt::tail_recursion::optimize(program)?;
+    // for ast in &program {
+    //     println!("{}", ast);
+    // }
     e::eval_program(&program, &mut env)
 }
 
@@ -163,5 +169,6 @@ pub fn interpret_with_env(
     let program = p::parse_with_env(tokens, sym_table)?;
     let program = m::expand_macros(program, sym_table)?;
     let program = ty::check_and_inference_type(program, &ty_env)?;
+    let program = opt::tail_recursion::optimize(program)?;
     e::eval_program(&program, env)
 }

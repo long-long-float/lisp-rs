@@ -342,6 +342,35 @@ fn collect_constraints_from_ast(
     ast: AnnotatedAst,
     ctx: &mut Context,
 ) -> Result<(AnnotatedAst, Constraints)> {
+    fn collect_constraints_from_let_inits(
+        inits: &Vec<(SymbolValue, AnnotatedAst)>,
+        sequential: bool,
+        ctx: &mut Context,
+    ) -> Result<(Vec<(SymbolValue, AnnotatedAst)>, Constraints)> {
+        let mut ict = Vec::new();
+        let mut new_inits = Vec::new();
+        let mut vars = Vec::new();
+
+        for (k, v) in inits {
+            let (v, mut vct) = collect_constraints_from_ast(v.clone(), ctx)?;
+            new_inits.push((k.clone(), v.clone()));
+            ict.append(&mut vct);
+            if sequential {
+                ctx.env.insert_var(k.clone(), v.ty);
+            } else {
+                vars.push((k, v.ty));
+            }
+        }
+
+        if !sequential {
+            for (k, t) in vars {
+                ctx.env.insert_var(k.clone(), t);
+            }
+        }
+
+        Ok((new_inits, ict))
+    }
+
     match &ast.ast {
         Ast::List(vs) => {
             if let Some((fun, args)) = vs.split_first() {
@@ -582,28 +611,9 @@ fn collect_constraints_from_ast(
             let sequential = *sequential;
             let proc_id = proc_id.clone();
 
-            let mut ict = Vec::new();
-            let mut new_inits = Vec::new();
-            let mut vars = Vec::new();
-
             ctx.env.push_local();
 
-            for (k, v) in inits {
-                let (v, mut vct) = collect_constraints_from_ast(v.clone(), ctx)?;
-                new_inits.push((k.clone(), v.clone()));
-                ict.append(&mut vct);
-                if sequential {
-                    ctx.env.insert_var(k.clone(), v.ty);
-                } else {
-                    vars.push((k, v.ty));
-                }
-            }
-
-            if !sequential {
-                for (k, t) in vars {
-                    ctx.env.insert_var(k.clone(), t);
-                }
-            }
+            let (new_inits, ict) = collect_constraints_from_let_inits(inits, sequential, ctx)?;
 
             let proc_result;
             if let Some(proc_id) = &proc_id {
@@ -657,6 +667,33 @@ fn collect_constraints_from_ast(
             Ok((
                 ast.with_new_ast_and_type(Ast::Begin(Begin { body }), result_ty),
                 bct,
+            ))
+        }
+        Ast::Loop(Loop { inits, label, body }) => {
+            let label = label.to_string();
+
+            ctx.env.push_local();
+
+            let (new_inits, ict) = collect_constraints_from_let_inits(inits, true, ctx)?;
+            let (body, mut bct) = collect_constraints_from_asts(body.clone(), ctx)?;
+
+            ctx.env.pop_local();
+
+            let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Nil);
+
+            let mut ct = ict;
+            ct.append(&mut bct);
+
+            Ok((
+                ast.with_new_ast_and_type(
+                    Ast::Loop(Loop {
+                        inits: new_inits,
+                        label,
+                        body,
+                    }),
+                    result_ty,
+                ),
+                ct,
             ))
         }
         Ast::BuildList(vs) => {
@@ -907,6 +944,14 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
         Ast::Begin(Begin { body }) => {
             let body = replace_asts(body, assign);
             ast.with_new_ast_and_type(Ast::Begin(Begin { body }), new_ty)
+        }
+        Ast::Loop(Loop { inits, label, body }) => {
+            let inits = inits
+                .into_iter()
+                .map(|(k, v)| (k, replace_ast(v, assign)))
+                .collect();
+            let body = replace_asts(body, assign);
+            ast.with_new_ast_and_type(Ast::Loop(Loop { inits, label, body }), new_ty)
         }
         Ast::BuildList(vs) => {
             let vs = replace_asts(vs, assign);

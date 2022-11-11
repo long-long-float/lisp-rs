@@ -58,22 +58,30 @@ pub fn expand_macros_ast(
 
             Ast::Cond(cond)
         }
-        Ast::Let(mut let_expr) => {
-            let_expr.inits = let_expr
-                .inits
+        Ast::Let(Let {
+            sequential,
+            proc_id,
+            inits,
+            body,
+        }) => {
+            let inits = inits
                 .into_iter()
                 .map(|(k, v)| {
                     let v = expand_macros_ast(v, menv, sym_env)?;
                     Ok((k, v))
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let_expr.body = let_expr
-                .body
+            let body = body
                 .into_iter()
                 .map(|body| expand_macros_ast(body, menv, sym_env))
                 .collect::<Result<Vec<_>>>()?;
 
-            Ast::Let(let_expr)
+            Ast::Let(Let {
+                sequential,
+                proc_id,
+                inits,
+                body,
+            })
         }
         Ast::Begin(Begin { body }) => {
             let body = body
@@ -81,6 +89,20 @@ pub fn expand_macros_ast(
                 .map(|body| expand_macros_ast(body, menv, sym_env))
                 .collect::<Result<Vec<_>>>()?;
             Ast::Begin(Begin { body })
+        }
+        Ast::Loop(Loop { inits, label, body }) => {
+            let inits = inits
+                .into_iter()
+                .map(|(k, v)| {
+                    let v = expand_macros_ast(v, menv, sym_env)?;
+                    Ok((k, v))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let body = body
+                .into_iter()
+                .map(|body| expand_macros_ast(body, menv, sym_env))
+                .collect::<Result<Vec<_>>>()?;
+            Ast::Loop(Loop { inits, label, body })
         }
         Ast::BuildList(values) => {
             let values = values
