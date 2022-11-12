@@ -227,7 +227,7 @@ fn optimize_tail_recursion(
                     | body.iter().any(|b| includes_symbol(sym, &b.ast))
             }
             Ast::Begin(Begin { body }) => body.iter().any(|b| includes_symbol(sym, &b.ast)),
-            Ast::Loop(Loop { inits, body , ..}) => {
+            Ast::Loop(Loop { inits, body, .. }) => {
                 inits.iter().any(|(_k, v)| includes_symbol(sym, &v.ast))
                     | body.iter().any(|b| includes_symbol(sym, &b.ast))
             }

@@ -1,6 +1,9 @@
 use anyhow::Result;
 
-use super::{ast::*, environment::*, error::*, parser::*, SymbolValue, TokenLocation};
+use super::{
+    ast::*, environment::*, error::*, parser::*, unique_generator::UniqueGenerator, SymbolValue,
+    TokenLocation,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
@@ -285,30 +288,17 @@ impl TypeAssignment {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
-struct TypeVarGenerator(u32);
-
-impl TypeVarGenerator {
-    fn new() -> Self {
-        Self(0)
-    }
-
-    fn gen_string(&mut self) -> String {
-        let id = self.0;
-        self.0 += 1;
-        format!("T{}", id)
-    }
-
-    fn gen_tv(&mut self) -> Type {
-        Type::Variable(TypeVariable {
-            name: self.gen_string(),
-        })
-    }
-}
-
 struct Context {
     env: TypeEnv,
-    tv_gen: TypeVarGenerator,
+    tv_gen: UniqueGenerator,
+}
+
+impl Context {
+    fn gen_tv(&mut self) -> Type {
+        Type::Variable(TypeVariable {
+            name: self.tv_gen.gen_string(),
+        })
+    }
 }
 
 fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<Type> {
@@ -326,7 +316,7 @@ fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<
 fn resolve_for_all(ty: Type, ctx: &mut Context) -> Type {
     if let Type::ForAll { tv, ty } = ty {
         let ty = resolve_for_all(*ty, ctx);
-        ty.replace(&TypeAssignment::new(tv, ctx.tv_gen.gen_tv()))
+        ty.replace(&TypeAssignment::new(tv, ctx.gen_tv()))
     } else {
         ty
     }
@@ -381,7 +371,7 @@ fn collect_constraints_from_ast(
                     .iter()
                     .map(|arg| Box::new(arg.ty.clone()))
                     .collect::<Vec<_>>();
-                let result_type = ctx.tv_gen.gen_tv();
+                let result_type = ctx.gen_tv();
 
                 let fun_ty = resolve_for_all(fun.ty.clone(), ctx);
 
@@ -454,7 +444,7 @@ fn collect_constraints_from_ast(
         Ast::Lambda(Lambda { args, body }) => {
             let arg_types = args
                 .iter()
-                .map(|_| Box::new(ctx.tv_gen.gen_tv()))
+                .map(|_| Box::new(ctx.gen_tv()))
                 .collect::<Vec<_>>();
 
             ctx.env.push_local();
@@ -621,7 +611,7 @@ fn collect_constraints_from_ast(
                     .iter()
                     .map(|(_, ast)| ast.ty.clone())
                     .collect::<Vec<_>>();
-                proc_result = ctx.tv_gen.gen_tv();
+                proc_result = ctx.gen_tv();
                 let proc_ty = Type::function(proc_args, proc_result.clone());
                 ctx.env.insert_var(proc_id.clone(), proc_ty);
             } else {
@@ -708,7 +698,7 @@ fn collect_constraints_from_ast(
                 }
                 Type::List(Box::new(fst_arg.ty.clone()))
             } else {
-                Type::List(Box::new(ctx.tv_gen.gen_tv()))
+                Type::List(Box::new(ctx.gen_tv()))
             };
 
             Ok((ast.with_new_ast_and_type(Ast::BuildList(vs), result_ty), ct))
@@ -980,7 +970,7 @@ pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Resul
 
     let mut ctx = Context {
         env: ty_env,
-        tv_gen: TypeVarGenerator::new(),
+        tv_gen: UniqueGenerator::new(),
     };
     let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
     // for c in &constraints {

@@ -6,19 +6,26 @@ pub mod opt;
 pub mod ast;
 pub mod environment;
 pub mod evaluator;
+pub mod ir;
 pub mod macro_expander;
 pub mod parser;
 pub mod tokenizer;
 pub mod typer;
 
+pub mod unique_generator;
+
 use anyhow::Result;
 
 use crate::lispi::{
-    environment as env, evaluator as e, macro_expander as m,
-    parser as p, tokenizer as t, typer as ty,
+    environment as env, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
+    typer as ty,
 };
 
-use self::parser::SymbolTable;
+use self::{
+    environment::Environment,
+    evaluator::Value,
+    parser::{Program, SymbolTable},
+};
 
 #[derive(Clone, Debug)]
 pub struct SymbolValue {
@@ -125,16 +132,7 @@ impl std::fmt::Display for LocationRange {
     }
 }
 
-/// Run the program as following steps.
-/// ```text
-/// Program as text --(tokenize)-->
-///   Tokens --(parse)-->
-///   Abstract Syntax Tree (AST) --(eval_program)-->
-///   Evaluated result value
-/// ```
-///
-/// Functions of each steps return Result to express errors.
-pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
+pub fn frontend(program: Vec<String>) -> Result<(Program, Environment<Value>)> {
     // println!("{:#?}", program);
     let tokens = t::tokenize(program)?;
     // println!("{:#?}", tokens);
@@ -156,7 +154,30 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
     // for ast in &program {
     //     println!("{}", ast);
     // }
+    Ok((program, env))
+}
+
+/// Run the program as following steps.
+/// ```text
+/// Program as text --(tokenize)-->
+///   Tokens --(parse)-->
+///   Abstract Syntax Tree (AST) --(eval_program)-->
+///   Evaluated result value
+/// ```
+///
+/// Functions of each steps return Result to express errors.
+pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
+    let (program, mut env) = frontend(program)?;
     e::eval_program(&program, &mut env)
+}
+
+pub fn compile(program: Vec<String>) -> Result<()> {
+    let (program, mut _env) = frontend(program)?;
+    let insts = ir::compile(program)?;
+    for inst in insts {
+        println!("{}", inst);
+    }
+    Ok(())
 }
 
 pub fn interpret_with_env(
