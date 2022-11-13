@@ -788,11 +788,9 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 }
             }
 
-            Err(
-                Error::Eval(format!("A variable `{}` is not defined!", value.value))
-                    .with_location(ast.location)
-                    .into(),
-            )
+            Err(Error::UndefinedVariable(value.value.clone())
+                .with_location(ast.location)
+                .into())
         }
         _ => Ok(Value::from(&ast.ast)),
     }

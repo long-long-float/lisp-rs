@@ -2,12 +2,12 @@ use std::fmt::Display;
 
 use anyhow::Result;
 
-use super::{ast::*, parser::*, unique_generator::UniqueGenerator};
+use super::{ast::*, environment::Environment, parser::*, unique_generator::UniqueGenerator};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Instruction {
     Add(Operand, Operand),
-    Immediate(Immediate),
+    Operand(Operand),
 }
 
 impl Display for Instruction {
@@ -18,8 +18,8 @@ impl Display for Instruction {
             Add(left, right) => {
                 write!(f, "add {}, {}", left, right)
             }
-            Immediate(imm) => {
-                write!(f, "{:?}", imm)
+            Operand(op) => {
+                write!(f, "{}", op)
             }
         }
     }
@@ -73,6 +73,7 @@ pub enum Immediate {
 }
 
 struct Context {
+    env: Environment<Variable>,
     var_gen: UniqueGenerator,
 }
 
@@ -105,7 +106,7 @@ fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                     .map(|arg| compile_ast(arg, ctx))
                     .collect::<Result<Vec<_>>>()?;
 
-                result = args.clone().into_iter().flatten().collect::<Vec<_>>();
+                result.append(&mut args.clone().into_iter().flatten().collect::<Vec<_>>());
 
                 if let AnnotatedAst {
                     ast: Ast::Symbol(fun),
@@ -135,17 +136,28 @@ fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::Quoted(_) => todo!(),
         Ast::Integer(v) => result.push(AnnotatedInstr {
             result: ctx.gen_var(),
-            inst: Instruction::Immediate(Immediate::Integer(*v)),
+            inst: Instruction::Operand(Operand::Immediate(Immediate::Integer(*v))),
         }),
         Ast::Float(_) => todo!(),
-        Ast::Symbol(_) => todo!(),
+        Ast::Symbol(sym) => {
+            let var = ctx.env.find_var(sym).unwrap();
+            result.push(AnnotatedInstr {
+                result: ctx.gen_var(),
+                inst: Instruction::Operand(Operand::Variable(var)),
+            })
+        }
         Ast::SymbolWithType(_, _) => todo!(),
         Ast::Boolean(_) => todo!(),
         Ast::Char(_) => todo!(),
         Ast::String(_) => todo!(),
         Ast::Nil => todo!(),
         Ast::DefineMacro(_) => todo!(),
-        Ast::Define(_) => todo!(),
+        Ast::Define(Define { id, init }) => {
+            let mut init = compile_ast(init, ctx)?;
+            let var = get_last_var(&init);
+            result.append(&mut init);
+            ctx.env.insert_var(id.clone(), var)
+        }
         Ast::Lambda(_) => todo!(),
         Ast::Assign(_) => todo!(),
         Ast::IfExpr(_) => todo!(),
@@ -164,6 +176,7 @@ pub fn compile(asts: Program) -> Result<Instructions> {
     let mut result = Vec::new();
 
     let mut ctx = Context {
+        env: Environment::new(),
         var_gen: UniqueGenerator::new(),
     };
 
