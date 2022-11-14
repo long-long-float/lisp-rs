@@ -296,7 +296,7 @@ struct Context {
 impl Context {
     fn gen_tv(&mut self) -> Type {
         Type::Variable(TypeVariable {
-            name: self.tv_gen.gen_string(),
+            name: format!("T{}", self.tv_gen.gen()),
         })
     }
 }

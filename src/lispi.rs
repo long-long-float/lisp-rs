@@ -132,7 +132,7 @@ impl std::fmt::Display for LocationRange {
     }
 }
 
-pub fn frontend(program: Vec<String>) -> Result<(Program, Environment<Value>)> {
+pub fn frontend(program: Vec<String>) -> Result<(Program, Environment<Value>, SymbolTable)> {
     // println!("{:#?}", program);
     let tokens = t::tokenize(program)?;
     // println!("{:#?}", tokens);
@@ -154,7 +154,7 @@ pub fn frontend(program: Vec<String>) -> Result<(Program, Environment<Value>)> {
     // for ast in &program {
     //     println!("{}", ast);
     // }
-    Ok((program, env))
+    Ok((program, env, sym_table))
 }
 
 /// Run the program as following steps.
@@ -167,13 +167,13 @@ pub fn frontend(program: Vec<String>) -> Result<(Program, Environment<Value>)> {
 ///
 /// Functions of each steps return Result to express errors.
 pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
-    let (program, mut env) = frontend(program)?;
+    let (program, mut env, _) = frontend(program)?;
     e::eval_program(&program, &mut env)
 }
 
 pub fn compile(program: Vec<String>) -> Result<()> {
-    let (program, mut _env) = frontend(program)?;
-    let insts = ir::compile(program)?;
+    let (program, mut _env, sym_table) = frontend(program)?;
+    let insts = ir::compile(program, sym_table)?;
     for inst in insts {
         println!("{}", inst);
     }

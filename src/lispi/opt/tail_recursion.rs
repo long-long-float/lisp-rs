@@ -267,7 +267,7 @@ fn optimize_tail_recursion(
     }
 }
 
-fn opt_tail_recursion_ast(ast: AnnotatedAst, _: &()) -> Result<AnnotatedAst> {
+fn opt_tail_recursion_ast(ast: AnnotatedAst, ctx: &mut ()) -> Result<AnnotatedAst> {
     let AnnotatedAst { ast, location, ty } = ast;
 
     match ast {
@@ -279,12 +279,12 @@ fn opt_tail_recursion_ast(ast: AnnotatedAst, _: &()) -> Result<AnnotatedAst> {
         }) => {
             let inits = inits
                 .into_iter()
-                .map(|(id, expr)| Ok((id, opt_tail_recursion_ast(expr, &())?)))
+                .map(|(id, expr)| Ok((id, opt_tail_recursion_ast(expr, ctx)?)))
                 .collect::<Result<Vec<_>>>()?;
 
             let body = body
                 .into_iter()
-                .map(|ast| opt_tail_recursion_ast(ast, &()))
+                .map(|ast| opt_tail_recursion_ast(ast, ctx))
                 .collect::<Result<Vec<_>>>()?;
 
             if let Some(proc_id) = &proc_id {
@@ -317,13 +317,13 @@ fn opt_tail_recursion_ast(ast: AnnotatedAst, _: &()) -> Result<AnnotatedAst> {
         }
         _ => {
             let annot = AnnotatedAst { ast, location, ty };
-            annot.traverse(&(), opt_tail_recursion_ast)
+            annot.traverse(&mut (), opt_tail_recursion_ast)
         }
     }
 }
 
 pub fn optimize(asts: Program) -> Result<Program> {
     asts.into_iter()
-        .map(|ast| opt_tail_recursion_ast(ast, &()))
+        .map(|ast| opt_tail_recursion_ast(ast, &mut ()))
         .collect::<Result<Vec<_>>>()
 }

@@ -13,6 +13,6 @@ impl UniqueGenerator {
     }
 
     pub fn gen_string(&mut self) -> String {
-        format!("T{}", self.gen())
+        format!("{}", self.gen())
     }
 }

@@ -28,6 +28,11 @@ impl SymbolTable {
         }
     }
 
+    pub fn create_symbol_value(&mut self, value: String) -> SymbolValue {
+        let id = self.find_id_or_insert(&value);
+        SymbolValue { value, id }
+    }
+
     pub fn dump(&self) {
         let mut kvs = self.table.iter().collect::<Vec<_>>();
         kvs.sort_by_key(|(_, v)| **v);
