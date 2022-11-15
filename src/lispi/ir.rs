@@ -1,10 +1,12 @@
-use std::fmt::Display;
+use std::{fmt::Display, vec};
 
 use anyhow::Result;
 
 use super::{
-    ast::*, environment::Environment, parser::*, typer::Type, unique_generator::UniqueGenerator,
+    ast::*, environment::Environment, error::Error, parser::*, typer::Type,
+    unique_generator::UniqueGenerator,
 };
+use crate::bug;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Instruction {
@@ -17,6 +19,8 @@ pub enum Instruction {
     Ret(Operand),
 
     Add(Operand, Operand),
+    Sub(Operand, Operand),
+    Cmp(CmpOperator, Operand, Operand),
     Call {
         fun: Operand,
         args: Vec<Operand>,
@@ -47,6 +51,12 @@ impl Display for Instruction {
             }
             Add(left, right) => {
                 write!(f, "add {}, {}", left, right)
+            }
+            Sub(left, right) => {
+                write!(f, "sub {}, {}", left, right)
+            }
+            Cmp(op, left, right) => {
+                write!(f, "cmp {}, {}, {}", op, left, right)
             }
             Call { fun, args } => {
                 write!(f, "call {}", fun)?;
@@ -87,7 +97,7 @@ impl Display for AnnotatedInstr {
                 write!(f, "  {}", self.inst)
             }
 
-            Add(_, _) | Call { .. } | Operand(_) | Phi(_) => {
+            Add(_, _) | Sub(_, _) | Cmp(_, _, _) | Call { .. } | Operand(_) | Phi(_) => {
                 write!(f, "  {}:{} = {}", self.result, self.ty, self.inst)
             }
 
@@ -115,6 +125,21 @@ impl Display for Operand {
             Variable(v) => write!(f, "{}", v),
             Immediate(v) => write!(f, "{:?}", v),
             Label(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum CmpOperator {
+    SGE,
+}
+
+impl Display for CmpOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use CmpOperator::*;
+
+        match self {
+            SGE => write!(f, "<="),
         }
     }
 }
@@ -174,7 +199,7 @@ fn get_last_instr(insts: &Instructions) -> AnnotatedInstr {
 
 fn compile_and_add(
     result: &mut Vec<AnnotatedInstr>,
-    ast: &AnnotatedAst,
+    ast: AnnotatedAst,
     ctx: &mut Context,
 ) -> Result<AnnotatedInstr> {
     let mut insts = compile_ast(ast, ctx)?;
@@ -191,7 +216,7 @@ fn add_instr(result: &mut Vec<AnnotatedInstr>, ctx: &mut Context, inst: Instruct
     });
 }
 
-fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
+fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
     use Instruction as I;
 
     let AnnotatedAst {
@@ -207,7 +232,7 @@ fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             if let Some((fun_ast, args)) = vs.split_first() {
                 let args = args
                     .iter()
-                    .map(|arg| compile_and_add(&mut result, arg, ctx))
+                    .map(|arg| compile_and_add(&mut result, arg.clone(), ctx))
                     .collect::<Result<Vec<_>>>()?;
 
                 // result.append(&mut args.clone().into_iter().flatten().collect::<Vec<_>>());
@@ -219,23 +244,28 @@ fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 {
                     let name = fun.value.as_str();
                     match name {
-                        "+" => {
+                        "+" | "-" | "<=" => {
                             let AnnotatedInstr {
                                 result: left,
-                                inst,
+                                inst: _inst,
                                 ty,
                             } = args[0].clone();
                             let right = args[1].result.clone();
 
-                            add_instr(
-                                &mut result,
-                                ctx,
-                                I::Add(Operand::Variable(left), Operand::Variable(right)),
-                                ty,
-                            );
+                            let inst = match name {
+                                "+" => I::Add(Operand::Variable(left), Operand::Variable(right)),
+                                "-" => I::Sub(Operand::Variable(left), Operand::Variable(right)),
+                                "<=" => I::Cmp(
+                                    CmpOperator::SGE,
+                                    Operand::Variable(left),
+                                    Operand::Variable(right),
+                                ),
+                                _ => return Err(bug!()),
+                            };
+                            add_instr(&mut result, ctx, inst, ast_ty);
                         }
                         _ => {
-                            let fun = compile_and_add(&mut result, fun_ast, ctx)?;
+                            let fun = compile_and_add(&mut result, fun_ast.clone(), ctx)?;
                             // let fun_label = ctx.func_env.find_var(fun).unwrap();
                             let args = args
                                 .into_iter()
@@ -248,7 +278,7 @@ fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                                     fun: Operand::Variable(fun.result),
                                     args,
                                 },
-                                ast_ty.clone(),
+                                ast_ty,
                             );
                         }
                     }
@@ -260,51 +290,50 @@ fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::Integer(v) => add_instr(
             &mut result,
             ctx,
-            I::Operand(Operand::Immediate(Immediate::Integer(*v))),
-            ast_ty.clone(),
+            I::Operand(Operand::Immediate(Immediate::Integer(v))),
+            ast_ty,
         ),
         Ast::Float(_) => todo!(),
         Ast::Symbol(sym) => {
-            if let Some((label, _)) = ctx.func_env.find_var(sym) {
-                add_instr(
-                    &mut result,
-                    ctx,
-                    I::Operand(Operand::Label(label)),
-                    ast_ty.clone(),
-                );
+            if let Some((label, _)) = ctx.func_env.find_var(&sym) {
+                add_instr(&mut result, ctx, I::Operand(Operand::Label(label)), ast_ty);
+            } else if let Some(var) = ctx.env.find_var(&sym) {
+                add_instr(&mut result, ctx, I::Operand(Operand::Variable(var)), ast_ty);
             } else {
-                let var = ctx.env.find_var(sym).unwrap();
-                add_instr(
-                    &mut result,
-                    ctx,
-                    I::Operand(Operand::Variable(var)),
-                    ast_ty.clone(),
-                );
+                return Err(Error::UndefinedVariable(sym.value)
+                    .with_null_location()
+                    .into());
             }
         }
         Ast::SymbolWithType(_, _) => todo!(),
         Ast::Boolean(v) => add_instr(
             &mut result,
             ctx,
-            I::Operand(Operand::Immediate(Immediate::Boolean(*v))),
-            ast_ty.clone(),
+            I::Operand(Operand::Immediate(Immediate::Boolean(v))),
+            ast_ty,
         ),
         Ast::Char(_) => todo!(),
         Ast::String(_) => todo!(),
         Ast::Nil => todo!(),
         Ast::DefineMacro(_) => todo!(),
         Ast::Define(Define { id, init }) => {
-            let inst = compile_and_add(&mut result, init, ctx)?;
+            let inst = compile_and_add(&mut result, *init, ctx)?;
             ctx.env.insert_var(id.clone(), inst.result);
         }
-        Ast::Lambda(Lambda { args, body }) => todo!(),
-        Ast::Assign(_) => todo!(),
+        Ast::Assign(Assign {
+            var,
+            var_loc: _,
+            value,
+        }) => {
+            let value = compile_and_add(&mut result, *value, ctx)?;
+            ctx.env.update_var(var, &value.result)?;
+        }
         Ast::IfExpr(IfExpr {
             cond,
             then_ast,
             else_ast,
         }) => {
-            let cond = compile_and_add(&mut result, cond, ctx)?;
+            let cond = compile_and_add(&mut result, *cond, ctx)?;
             let then_label = ctx.gen_label();
             let else_label = ctx.gen_label();
             let end_label = ctx.gen_label();
@@ -321,12 +350,12 @@ fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             );
 
             add_instr(&mut result, ctx, I::Label(then_label.clone()), Type::None);
-            let then_res = compile_and_add(&mut result, then_ast, ctx)?;
+            let then_res = compile_and_add(&mut result, *then_ast, ctx)?;
             add_instr(&mut result, ctx, I::Jump(end_label.clone()), Type::None);
 
             add_instr(&mut result, ctx, I::Label(else_label.clone()), Type::None);
             let else_res = if let Some(else_ast) = else_ast {
-                Some(compile_and_add(&mut result, else_ast, ctx)?)
+                Some(compile_and_add(&mut result, *else_ast, ctx)?)
             } else {
                 None
             };
@@ -341,16 +370,31 @@ fn compile_ast(ast: &AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                         (Operand::Variable(then_res.result), then_label),
                         (Operand::Variable(else_res.result), else_label),
                     ]),
-                    ast_ty.clone(),
+                    ast_ty,
                 );
             }
         }
         Ast::Cond(_) => todo!(),
-        Ast::Let(_) => todo!(),
+        Ast::Let(Let {
+            sequential,
+            proc_id,
+            inits,
+            body,
+        }) => {
+            for (id, init) in inits {
+                // sequential
+                let inst = compile_and_add(&mut result, init, ctx)?;
+                ctx.env.insert_var(id, inst.result);
+            }
+
+            result.append(&mut compile_asts(body, ctx)?);
+        }
         Ast::Begin(_) => todo!(),
         Ast::BuildList(_) => todo!(),
         Ast::Loop(_) => todo!(),
         Ast::Continue(_) => todo!(),
+
+        Ast::Lambda(_) => {}
     }
 
     Ok(result)
@@ -373,7 +417,11 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
                 name: name.value.clone(),
             };
 
+            ctx.env.push_local();
+
             let insts = compile_asts(body, ctx)?;
+
+            ctx.env.pop_local();
 
             ctx.func_env.insert_var(name.clone(), (label, insts));
 
@@ -383,6 +431,56 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
                 ty,
             })
         }
+        Ast::Let(Let {
+            sequential,
+            proc_id,
+            inits,
+            body,
+        }) => {
+            if let Some(proc_id) = proc_id {
+                let mut args = Vec::new();
+                for (id, init) in inits {
+                    ctx.env.insert_var(id.clone(), Variable { name: id.value });
+                    args.push(init);
+                }
+
+                let label = Label {
+                    name: proc_id.value.clone(),
+                };
+
+                ctx.env.push_local();
+
+                ctx.func_env
+                    .insert_var(proc_id.clone(), (label.clone(), Vec::new()));
+
+                let insts = compile_asts(body, ctx)?;
+
+                ctx.env.pop_local();
+
+                ctx.func_env.update_var(proc_id.clone(), &(label, insts))?;
+
+                let mut apply = vec![Ast::Symbol(proc_id).with_null_location()];
+                apply.append(&mut args);
+
+                Ok(AnnotatedAst {
+                    ast: Ast::List(apply),
+                    location,
+                    ty,
+                })
+            } else {
+                AnnotatedAst {
+                    ast: Ast::Let(Let {
+                        sequential,
+                        proc_id,
+                        inits,
+                        body,
+                    }),
+                    location,
+                    ty,
+                }
+                .traverse(ctx, compile_lambdas_ast)
+            }
+        }
         _ => AnnotatedAst { ast, location, ty }.traverse(ctx, compile_lambdas_ast),
     }
 }
@@ -390,7 +488,7 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
 fn compile_asts(asts: Vec<AnnotatedAst>, ctx: &mut Context) -> Result<Instructions> {
     let mut result = Vec::new();
     for ast in asts {
-        let mut insts = compile_ast(&ast, ctx)?;
+        let mut insts = compile_ast(ast, ctx)?;
         result.append(&mut insts);
     }
     Ok(result)
@@ -413,12 +511,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Instructions> {
 
     let fun_vars = ctx.func_env.current_local().variables.clone();
     for (_, (label, insts)) in fun_vars {
-        add_instr(
-            &mut result,
-            &mut ctx,
-            Instruction::Label(label.clone()),
-            Type::None,
-        );
+        add_instr(&mut result, &mut ctx, Instruction::Label(label), Type::None);
 
         let res = get_last_instr(&insts);
         for inst in insts {
@@ -443,7 +536,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Instructions> {
     );
 
     for ast in asts {
-        let mut insts = compile_ast(&ast, &mut ctx)?;
+        let mut insts = compile_ast(ast, &mut ctx)?;
         result.append(&mut insts);
     }
 

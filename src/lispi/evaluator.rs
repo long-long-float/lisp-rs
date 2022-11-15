@@ -4,6 +4,7 @@ use super::{
     ast::*, console::*, environment::*, error::*, parser::*, typer::*, SymbolValue, TokenLocation,
 };
 
+#[macro_export]
 macro_rules! bug {
     () => {
         bug!("".to_string())
