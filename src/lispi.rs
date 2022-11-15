@@ -173,9 +173,9 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
 
 pub fn compile(program: Vec<String>) -> Result<()> {
     let (program, mut _env, sym_table) = frontend(program)?;
-    let insts = ir::compile(program, sym_table)?;
-    for inst in insts {
-        println!("{}", inst);
+    let funcs = ir::compile(program, sym_table)?;
+    for fun in funcs {
+        println!("{}", fun);
     }
     Ok(())
 }

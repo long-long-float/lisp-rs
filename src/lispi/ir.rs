@@ -108,7 +108,31 @@ impl Display for AnnotatedInstr {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct Function {
+    name: String,
+    args: Vec<(String, Type)>,
+    body: Instructions,
+    ty: Type,
+}
+
+impl Display for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} (", self.name)?;
+        for (id, ty) in &self.args {
+            write!(f, "%{}: {}, ", id, ty)?;
+        }
+        writeln!(f, "): {} {{", self.ty)?;
+        for inst in &self.body {
+            writeln!(f, "{}", inst)?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
 type Instructions = Vec<AnnotatedInstr>;
+type Functions = Vec<Function>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Operand {
@@ -175,7 +199,7 @@ pub enum Immediate {
 struct Context {
     env: Environment<Variable>,
     sym_table: SymbolTable,
-    func_env: Environment<(Label, Instructions)>,
+    func_env: Environment<(Label, Function)>,
     var_gen: UniqueGenerator,
 }
 
@@ -405,10 +429,15 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
 
     match ast {
         Ast::Lambda(Lambda { args, body }) => {
-            for arg in args {
-                let name = arg.value.clone();
-                ctx.env.insert_var(arg, Variable { name });
-            }
+            let args = args
+                .into_iter()
+                .map(|arg| {
+                    let name = arg.value.clone();
+                    ctx.env.insert_var(arg, Variable { name: name.clone() });
+
+                    (name, Type::None)
+                })
+                .collect::<Vec<_>>();
 
             let name = ctx
                 .sym_table
@@ -423,7 +452,14 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
 
             ctx.env.pop_local();
 
-            ctx.func_env.insert_var(name.clone(), (label, insts));
+            let fun = Function {
+                name: name.value.clone(),
+                args,
+                body: insts,
+                ty: ty.clone(),
+            };
+
+            ctx.func_env.insert_var(name.clone(), (label, fun));
 
             Ok(AnnotatedAst {
                 ast: Ast::Symbol(name),
@@ -438,10 +474,17 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
             body,
         }) => {
             if let Some(proc_id) = proc_id {
-                let mut args = Vec::new();
+                let mut aargs = Vec::new();
+                let mut fargs = Vec::new();
                 for (id, init) in inits {
-                    ctx.env.insert_var(id.clone(), Variable { name: id.value });
-                    args.push(init);
+                    ctx.env.insert_var(
+                        id.clone(),
+                        Variable {
+                            name: id.value.clone(),
+                        },
+                    );
+                    fargs.push((id.value, init.ty.clone()));
+                    aargs.push(init);
                 }
 
                 let label = Label {
@@ -450,17 +493,25 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
 
                 ctx.env.push_local();
 
+                let mut fun = Function {
+                    name: proc_id.value.clone(),
+                    args: fargs,
+                    body: Vec::new(),
+                    ty: Type::None,
+                };
+
                 ctx.func_env
-                    .insert_var(proc_id.clone(), (label.clone(), Vec::new()));
+                    .insert_var(proc_id.clone(), (label.clone(), fun.clone()));
 
                 let insts = compile_asts(body, ctx)?;
 
                 ctx.env.pop_local();
 
-                ctx.func_env.update_var(proc_id.clone(), &(label, insts))?;
+                fun.body = insts;
+                ctx.func_env.update_var(proc_id.clone(), &(label, fun))?;
 
                 let mut apply = vec![Ast::Symbol(proc_id).with_null_location()];
-                apply.append(&mut args);
+                apply.append(&mut aargs);
 
                 Ok(AnnotatedAst {
                     ast: Ast::List(apply),
@@ -494,7 +545,7 @@ fn compile_asts(asts: Vec<AnnotatedAst>, ctx: &mut Context) -> Result<Instructio
     Ok(result)
 }
 
-pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Instructions> {
+pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Functions> {
     let mut result = Vec::new();
 
     let mut ctx = Context {
@@ -510,34 +561,32 @@ pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Instructions> {
         .collect::<Result<Vec<_>>>()?;
 
     let fun_vars = ctx.func_env.current_local().variables.clone();
-    for (_, (label, insts)) in fun_vars {
-        add_instr(&mut result, &mut ctx, Instruction::Label(label), Type::None);
-
-        let res = get_last_instr(&insts);
-        for inst in insts {
-            result.push(inst);
-        }
-
+    for (_, (_, mut fun)) in fun_vars {
+        let res = get_last_instr(&fun.body);
         add_instr(
-            &mut result,
+            &mut fun.body,
             &mut ctx,
             Instruction::Ret(Operand::Variable(res.result)),
             Type::None,
         );
+
+        result.push(fun);
     }
 
-    add_instr(
-        &mut result,
-        &mut ctx,
-        Instruction::Label(Label {
-            name: "main".to_string(),
-        }),
-        Type::None,
-    );
+    {
+        let mut body = Vec::new();
 
-    for ast in asts {
-        let mut insts = compile_ast(ast, &mut ctx)?;
-        result.append(&mut insts);
+        for ast in asts {
+            let mut insts = compile_ast(ast, &mut ctx)?;
+            body.append(&mut insts);
+        }
+
+        result.push(Function {
+            name: "main".to_string(),
+            args: Vec::new(),
+            body,
+            ty: Type::None,
+        });
     }
 
     Ok(result)
