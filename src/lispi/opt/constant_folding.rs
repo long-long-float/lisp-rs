@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
@@ -10,7 +12,67 @@ struct Context {
 }
 
 fn remove_deadcode(insts: Instructions) -> Result<Instructions> {
-    Ok(insts)
+    let mut result = Vec::new();
+
+    let mut used_vars = HashSet::new();
+
+    fn register_as_used(used_vars: &mut HashSet<Variable>, op: &Operand) {
+        if let Operand::Variable(var) = op {
+            used_vars.insert(var.clone());
+        }
+    }
+
+    for AnnotatedInstr {
+        result: var,
+        inst,
+        ty,
+    } in insts.into_iter().rev()
+    {
+        match &inst {
+            Instruction::Branch {
+                cond,
+                then_label: _,
+                else_label: _,
+            } => {
+                register_as_used(&mut used_vars, cond);
+            }
+            Instruction::Ret(op) => register_as_used(&mut used_vars, op),
+
+            Instruction::Add(l, r)
+            | Instruction::Sub(l, r)
+            | Instruction::Mul(l, r)
+            | Instruction::Cmp(_, l, r) => {
+                register_as_used(&mut used_vars, l);
+                register_as_used(&mut used_vars, r);
+            }
+
+            Instruction::Call { fun, args } => {
+                register_as_used(&mut used_vars, fun);
+                args.iter()
+                    .for_each(|arg| register_as_used(&mut used_vars, arg));
+            }
+
+            Instruction::Phi(nodes) => {
+                nodes
+                    .iter()
+                    .for_each(|(op, _)| register_as_used(&mut used_vars, op));
+            }
+
+            Instruction::Operand(op) => register_as_used(&mut used_vars, op),
+
+            Instruction::Jump(_) | Instruction::Label(_) => {}
+        }
+
+        if inst.is_label() || inst.is_terminal() || used_vars.contains(&var) {
+            result.push(AnnotatedInstr {
+                result: var,
+                inst,
+                ty,
+            });
+        }
+    }
+
+    Ok(result.into_iter().rev().collect())
 }
 
 fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
@@ -130,7 +192,21 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
                 let left = fold_imm(&mut ctx, left);
                 let right = fold_imm(&mut ctx, right);
 
-                Some(I::Cmp(op, left, right))
+                if let (
+                    Operand::Immediate(Immediate::Integer(left)),
+                    Operand::Immediate(Immediate::Integer(right)),
+                ) = (&left, &right)
+                {
+                    let val = match op {
+                        CmpOperator::SGE => left <= right,
+                    };
+
+                    let op = Operand::Immediate(Immediate::Boolean(val));
+                    insert_imm(&mut ctx, &op, &var);
+                    Some(I::Operand(op))
+                } else {
+                    Some(I::Cmp(op, left, right))
+                }
             }
             I::Call { fun, args } => {
                 let fun = fold_imm(&mut ctx, fun);

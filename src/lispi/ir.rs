@@ -32,6 +32,23 @@ pub enum Instruction {
     Label(Label),
 }
 
+impl Instruction {
+    pub fn is_terminal(&self) -> bool {
+        match self {
+            Instruction::Branch { .. } | Instruction::Jump(_) | Instruction::Ret(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_label(&self) -> bool {
+        if let Instruction::Label(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Instruction::*;
@@ -165,6 +182,7 @@ impl Display for Operand {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum CmpOperator {
+    /// <=
     SGE,
 }
 
@@ -189,7 +207,7 @@ impl Display for Label {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Variable {
     pub name: String,
 }
@@ -591,6 +609,14 @@ pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Functions> {
             let mut insts = compile_ast(ast, &mut ctx)?;
             body.append(&mut insts);
         }
+
+        let res = get_last_instr(&body);
+        add_instr(
+            &mut body,
+            &mut ctx,
+            Instruction::Ret(Operand::Variable(res.result)),
+            Type::None,
+        );
 
         result.push(Function {
             name: "main".to_string(),
