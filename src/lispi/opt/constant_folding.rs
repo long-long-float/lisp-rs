@@ -3,18 +3,26 @@ use rustc_hash::FxHashMap;
 
 use super::super::ir::*;
 
+use Instruction as I;
+
+struct Context {
+    env: FxHashMap<String, Immediate>,
+}
+
 fn remove_deadcode(insts: Instructions) -> Result<Instructions> {
     Ok(insts)
 }
 
 fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
     let mut result = Vec::new();
-    let mut env = FxHashMap::default();
+    let mut ctx = Context {
+        env: FxHashMap::default(),
+    };
 
-    fn fold_imm(env: &mut FxHashMap<String, Immediate>, op: Operand) -> Operand {
+    fn fold_imm(ctx: &mut Context, op: Operand) -> Operand {
         match op {
             Operand::Variable(var) => {
-                if let Some(imm) = env.get(&var.name) {
+                if let Some(imm) = ctx.env.get(&var.name) {
                     Operand::Immediate(imm.clone())
                 } else {
                     Operand::Variable(var)
@@ -24,12 +32,42 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
         }
     }
 
-    fn insert_imm(env: &mut FxHashMap<String, Immediate>, op: &Operand, var: &Variable) {
+    fn insert_imm(ctx: &mut Context, op: &Operand, var: &Variable) {
         match op {
             Operand::Immediate(imm) => {
-                env.insert(var.name.clone(), imm.clone());
+                ctx.env.insert(var.name.clone(), imm.clone());
             }
             Operand::Variable(_) | Operand::Label(_) => {}
+        }
+    }
+
+    fn fold_constants_arith<F1, F2>(
+        ctx: &mut Context,
+        var: &Variable,
+        left: Operand,
+        right: Operand,
+        if_int: F1,
+        if_else: F2,
+    ) -> Instruction
+    where
+        F1: Fn(i32, i32) -> i32,
+        F2: Fn(Operand, Operand) -> Instruction,
+    {
+        let left = fold_imm(ctx, left);
+        let right = fold_imm(ctx, right);
+
+        if let (
+            Operand::Immediate(Immediate::Integer(left)),
+            Operand::Immediate(Immediate::Integer(right)),
+        ) = (&left, &right)
+        {
+            let val = if_int(*left, *right);
+
+            let op = Operand::Immediate(Immediate::Integer(val));
+            insert_imm(ctx, &op, &var);
+            I::Operand(op)
+        } else {
+            if_else(left, right)
         }
     }
 
@@ -39,90 +77,80 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
         ty,
     } in insts
     {
-        match inst {
-            Instruction::Operand(Operand::Immediate(imm)) => {
-                env.insert(var.name, imm);
+        let inst = match inst {
+            I::Operand(Operand::Immediate(imm)) => {
+                ctx.env.insert(var.name.clone(), imm);
+                None
             }
-            Instruction::Operand(op @ Operand::Variable(_)) => {
-                let op = fold_imm(&mut env, op);
-                insert_imm(&mut env, &op, &var);
-                result.push(AnnotatedInstr {
-                    result: var,
-                    inst: Instruction::Operand(op),
-                    ty,
-                });
+            I::Operand(op @ Operand::Variable(_)) => {
+                let op = fold_imm(&mut ctx, op);
+                insert_imm(&mut ctx, &op, &var);
+                Some(I::Operand(op))
             }
 
-            Instruction::Branch {
+            I::Branch {
                 cond,
                 then_label,
                 else_label,
             } => {
-                let cond = fold_imm(&mut env, cond);
-                result.push(AnnotatedInstr {
-                    result: var,
-                    inst: Instruction::Branch {
-                        cond,
-                        then_label,
-                        else_label,
-                    },
-                    ty,
-                });
+                let cond = fold_imm(&mut ctx, cond);
+                Some(I::Branch {
+                    cond,
+                    then_label,
+                    else_label,
+                })
             }
 
-            Instruction::Add(left, right) => {
-                let left = fold_imm(&mut env, left);
-                let right = fold_imm(&mut env, right);
+            I::Add(left, right) => Some(fold_constants_arith(
+                &mut ctx,
+                &var,
+                left,
+                right,
+                |l, r| l + r,
+                |l, r| I::Add(l, r),
+            )),
+            I::Sub(left, right) => Some(fold_constants_arith(
+                &mut ctx,
+                &var,
+                left,
+                right,
+                |l, r| l - r,
+                |l, r| I::Sub(l, r),
+            )),
+            I::Mul(left, right) => Some(fold_constants_arith(
+                &mut ctx,
+                &var,
+                left,
+                right,
+                |l, r| l * r,
+                |l, r| I::Mul(l, r),
+            )),
 
-                if let (
-                    Operand::Immediate(Immediate::Integer(left)),
-                    Operand::Immediate(Immediate::Integer(right)),
-                ) = (&left, &right)
-                {
-                    let val = left + right;
+            I::Cmp(op, left, right) => {
+                let left = fold_imm(&mut ctx, left);
+                let right = fold_imm(&mut ctx, right);
 
-                    let op = Operand::Immediate(Immediate::Integer(val));
-                    insert_imm(&mut env, &op, &var);
-                    result.push(AnnotatedInstr {
-                        result: var,
-                        inst: Instruction::Operand(op),
-                        ty,
-                    })
-                } else {
-                    result.push(AnnotatedInstr {
-                        result: var,
-                        inst: Instruction::Add(left, right),
-                        ty,
-                    });
-                }
+                Some(I::Cmp(op, left, right))
             }
-
-            Instruction::Sub(_, _) => todo!(),
-            Instruction::Mul(_, _) => todo!(),
-            Instruction::Cmp(_, _, _) => todo!(),
-            Instruction::Call { fun, args } => {
-                let fun = fold_imm(&mut env, fun);
+            I::Call { fun, args } => {
+                let fun = fold_imm(&mut ctx, fun);
                 let args = args
                     .into_iter()
-                    .map(|arg| fold_imm(&mut env, arg))
+                    .map(|arg| fold_imm(&mut ctx, arg))
                     .collect();
 
-                result.push(AnnotatedInstr {
-                    result: var,
-                    inst: Instruction::Call { fun, args },
-                    ty,
-                });
+                Some(I::Call { fun, args })
             }
 
-            Instruction::Operand(_)
-            | Instruction::Jump(_)
-            | Instruction::Ret(_)
-            | Instruction::Phi(_)
-            | Instruction::Label(_) => result.push(AnnotatedInstr {
+            I::Operand(_) | I::Jump(_) | I::Ret(_) | I::Phi(_) | I::Label(_) => Some(inst),
+        };
+
+        if let Some(inst) = inst {
+            result.push(AnnotatedInstr {
                 result: var,
                 inst,
                 ty,
-            }),
+            });
         }
     }
 
