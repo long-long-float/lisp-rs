@@ -20,6 +20,7 @@ pub enum Instruction {
 
     Add(Operand, Operand),
     Sub(Operand, Operand),
+    Mul(Operand, Operand),
     Cmp(CmpOperator, Operand, Operand),
     Call {
         fun: Operand,
@@ -54,6 +55,9 @@ impl Display for Instruction {
             }
             Sub(left, right) => {
                 write!(f, "sub {}, {}", left, right)
+            }
+            Mul(left, right) => {
+                write!(f, "mul {}, {}", left, right)
             }
             Cmp(op, left, right) => {
                 write!(f, "cmp {}, {}, {}", op, left, right)
@@ -97,7 +101,13 @@ impl Display for AnnotatedInstr {
                 write!(f, "  {}", self.inst)
             }
 
-            Add(_, _) | Sub(_, _) | Cmp(_, _, _) | Call { .. } | Operand(_) | Phi(_) => {
+            Add(_, _)
+            | Sub(_, _)
+            | Mul(_, _)
+            | Cmp(_, _, _)
+            | Call { .. }
+            | Operand(_)
+            | Phi(_) => {
                 write!(f, "  {}:{} = {}", self.result, self.ty, self.inst)
             }
 
@@ -110,10 +120,10 @@ impl Display for AnnotatedInstr {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Function {
-    name: String,
-    args: Vec<(String, Type)>,
-    body: Instructions,
-    ty: Type,
+    pub name: String,
+    pub args: Vec<(String, Type)>,
+    pub body: Instructions,
+    pub ty: Type,
 }
 
 impl Display for Function {
@@ -131,8 +141,8 @@ impl Display for Function {
     }
 }
 
-type Instructions = Vec<AnnotatedInstr>;
-type Functions = Vec<Function>;
+pub type Instructions = Vec<AnnotatedInstr>;
+pub type Functions = Vec<Function>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Operand {
@@ -170,7 +180,7 @@ impl Display for CmpOperator {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Label {
-    name: String,
+    pub name: String,
 }
 
 impl Display for Label {
@@ -181,7 +191,7 @@ impl Display for Label {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Variable {
-    name: String,
+    pub name: String,
 }
 
 impl Display for Variable {
@@ -268,7 +278,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 {
                     let name = fun.value.as_str();
                     match name {
-                        "+" | "-" | "<=" => {
+                        "+" | "-" | "*" | "<=" => {
                             let AnnotatedInstr {
                                 result: left,
                                 inst: _inst,
@@ -279,6 +289,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                             let inst = match name {
                                 "+" => I::Add(Operand::Variable(left), Operand::Variable(right)),
                                 "-" => I::Sub(Operand::Variable(left), Operand::Variable(right)),
+                                "*" => I::Mul(Operand::Variable(left), Operand::Variable(right)),
                                 "<=" => I::Cmp(
                                     CmpOperator::SGE,
                                     Operand::Variable(left),

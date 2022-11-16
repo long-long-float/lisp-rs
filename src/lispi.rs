@@ -174,7 +174,11 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
 pub fn compile(program: Vec<String>) -> Result<()> {
     let (program, mut _env, sym_table) = frontend(program)?;
     let funcs = ir::compile(program, sym_table)?;
-    for fun in funcs {
+    for fun in &funcs {
+        println!("{}", fun);
+    }
+    let funcs = opt::constant_folding::optimize(funcs)?;
+    for fun in &funcs {
         println!("{}", fun);
     }
     Ok(())
