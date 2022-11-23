@@ -34,9 +34,34 @@ pub enum Instruction {
 
 impl Instruction {
     pub fn is_terminal(&self) -> bool {
+        use Instruction::*;
+
         match self {
-            Instruction::Branch { .. } | Instruction::Jump(_) | Instruction::Ret(_) => true,
+            Branch { .. } | Jump(_) | Ret(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn has_result(&self) -> bool {
+        use Instruction::*;
+
+        match self {
+            Add(_, _)
+            | Sub(_, _)
+            | Mul(_, _)
+            | Cmp(_, _, _)
+            | Call { .. }
+            | Operand(_)
+            | Phi(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_operand(&self) -> bool {
+        if let Instruction::Operand(_) = self {
+            true
+        } else {
+            false
         }
     }
 
@@ -165,7 +190,7 @@ pub type Functions = Vec<Function>;
 pub enum Operand {
     Variable(Variable),
     Immediate(Immediate),
-    Label(Label),
+    // Label(Label),
 }
 
 impl Display for Operand {
@@ -175,7 +200,7 @@ impl Display for Operand {
         match self {
             Variable(v) => write!(f, "{}", v),
             Immediate(v) => write!(f, "{:?}", v),
-            Label(v) => write!(f, "{}", v),
+            // Label(v) => write!(f, "{}", v),
         }
     }
 }
@@ -222,6 +247,7 @@ impl Display for Variable {
 pub enum Immediate {
     Integer(i32),
     Boolean(bool),
+    Label(Label),
 }
 
 struct Context {
@@ -300,7 +326,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                             let AnnotatedInstr {
                                 result: left,
                                 inst: _inst,
-                                ty,
+                                ty: _ty,
                             } = args[0].clone();
                             let right = args[1].result.clone();
 
@@ -349,7 +375,12 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::Float(_) => todo!(),
         Ast::Symbol(sym) => {
             if let Some((label, _)) = ctx.func_env.find_var(&sym) {
-                add_instr(&mut result, ctx, I::Operand(Operand::Label(label)), ast_ty);
+                add_instr(
+                    &mut result,
+                    ctx,
+                    I::Operand(Operand::Immediate(Immediate::Label(label))),
+                    ast_ty,
+                );
             } else if let Some(var) = ctx.env.find_var(&sym) {
                 add_instr(&mut result, ctx, I::Operand(Operand::Variable(var)), ast_ty);
             } else {

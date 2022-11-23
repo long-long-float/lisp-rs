@@ -9,6 +9,7 @@ pub mod evaluator;
 pub mod ir;
 pub mod macro_expander;
 pub mod parser;
+pub mod riscv;
 pub mod tokenizer;
 pub mod typer;
 
@@ -181,6 +182,7 @@ pub fn compile(program: Vec<String>) -> Result<()> {
     for fun in &funcs {
         println!("{}", fun);
     }
+    let codes = riscv::generate_code(funcs)?;
     Ok(())
 }
 

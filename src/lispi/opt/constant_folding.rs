@@ -90,7 +90,7 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
                     Operand::Variable(var)
                 }
             }
-            Operand::Immediate(_) | Operand::Label(_) => op,
+            Operand::Immediate(_) => op,
         }
     }
 
@@ -99,7 +99,7 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
             Operand::Immediate(imm) => {
                 ctx.env.insert(var.name.clone(), imm.clone());
             }
-            Operand::Variable(_) | Operand::Label(_) => {}
+            Operand::Variable(_) => {}
         }
     }
 
@@ -218,7 +218,7 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
                 Some(I::Call { fun, args })
             }
 
-            I::Operand(_) | I::Jump(_) | I::Ret(_) | I::Phi(_) | I::Label(_) => Some(inst),
+            I::Jump(_) | I::Ret(_) | I::Phi(_) | I::Label(_) => Some(inst),
         };
 
         if let Some(inst) = inst {
