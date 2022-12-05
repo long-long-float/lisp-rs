@@ -15,6 +15,14 @@ pub mod typer;
 
 pub mod unique_generator;
 
+use object::elf::*;
+use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Writer};
+use object::write::{Object, StreamingBuffer};
+use object::{Architecture, BinaryFormat, Endianness, SectionKind};
+use std::{fs::File, io::BufWriter, io::Write};
+
+use object::write::elf::*;
+
 use anyhow::Result;
 
 use crate::lispi::{
@@ -22,6 +30,7 @@ use crate::lispi::{
     typer as ty,
 };
 
+use self::console::println;
 use self::{
     environment::Environment,
     evaluator::Value,
@@ -183,6 +192,52 @@ pub fn compile(program: Vec<String>) -> Result<()> {
         println!("{}", fun);
     }
     let codes = riscv::generate_code(funcs)?;
+
+    let big_endian = true;
+
+    let mut codes = codes
+        .into_iter()
+        .map(|code| {
+            let mut codes = code.to_be_bytes();
+            if big_endian {
+                codes.reverse();
+            }
+            codes
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+
+    let mut output = StreamingBuffer::new(BufWriter::new(File::create("out.elf")?));
+    let mut writer = Writer::new(Endianness::Little, false, &mut output);
+    // References: https://keens.github.io/blog/2020/04/12/saishougennoelf/
+    writer.reserve_file_header();
+    writer.reserve_program_headers(1);
+
+    let p_offset = writer.reserve(codes.len(), 4) as u64;
+
+    writer.write_file_header(&FileHeader {
+        os_abi: 0x00,
+        abi_version: 0x00,
+        e_type: ET_EXEC,
+        e_machine: EM_RISCV,
+        e_entry: 0x000000,
+        e_flags: 0x00,
+    })?;
+    writer.write_program_header(&ProgramHeader {
+        p_type: PT_LOAD,
+        p_flags: 0x05,
+        p_offset,
+        p_vaddr: 0x000000,
+        p_paddr: 0x000000,
+        p_filesz: codes.len() as u64,
+        p_memsz: codes.len() as u64,
+        p_align: 0x200000,
+    });
+    writer.write(&codes);
+
+    let mut output = File::create("out.bin")?;
+    output.write_all(&mut codes)?;
+
     Ok(())
 }
 

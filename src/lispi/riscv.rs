@@ -5,6 +5,9 @@ use rustc_hash::FxHashMap;
 
 use super::ir;
 
+type RegisterType = u32;
+const XLEN: u8 = 32;
+
 #[derive(Clone, PartialEq, Debug)]
 enum Instruction {
     R(RInstruction),
@@ -35,8 +38,17 @@ impl Instruction {
     fn ret() -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Jalr,
-            imm: Immediate::new(0, 32),
+            imm: Immediate::new(0, XLEN),
             rs1: Register::ra(),
+            rd: Register::zero(),
+        })
+    }
+
+    fn nop() -> Instruction {
+        Instruction::I(IInstruction {
+            op: IInstructionOp::Addi,
+            imm: Immediate::new(0, XLEN),
+            rs1: Register::zero(),
             rd: Register::zero(),
         })
     }
@@ -79,6 +91,7 @@ enum IInstructionOp {
     Ori,
     Addi,
     Jalr,
+    Ecall,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -86,6 +99,56 @@ struct JInstruction {
     op: JInstructionOp,
     imm: RelAddress,
     rd: Register,
+}
+
+trait GenerateCode {
+    fn generate_code(&self) -> RegisterType;
+}
+
+impl GenerateCode for RInstruction {
+    fn generate_code(&self) -> RegisterType {
+        use RInstructionOp::*;
+
+        let rs2 = self.rs2.as_int();
+        let rs1 = self.rs1.as_int();
+        let rd = self.rd.as_int();
+
+        let (funct7, funct3, opcode) = match self.op {
+            Add => (0b0000000, 0b000, 0b0110011),
+        };
+
+        (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
+    }
+}
+
+impl GenerateCode for IInstruction {
+    fn generate_code(&self) -> RegisterType {
+        use IInstructionOp::*;
+
+        let imm = (self.imm.value as u32) & 0xfff;
+        let rs1 = self.rs1.as_int();
+
+        let (funct3, opcode) = match self.op {
+            Ori => todo!(),
+            Addi => (0b000, 0b0010011),
+            Jalr => (0b000, 0b1100111),
+            Ecall => (0b000, 0b1110011),
+        };
+
+        let rd = self.rd.as_int();
+
+        (imm << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
+    }
+}
+
+impl GenerateCode for JInstruction {
+    fn generate_code(&self) -> RegisterType {
+        use JInstructionOp::*;
+
+        match self.op {
+            Jal => todo!(),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -125,6 +188,14 @@ impl Register {
 
     fn a(i: u32) -> Register {
         Register::Integer(10 + i)
+    }
+
+    fn as_int(&self) -> u32 {
+        if let Register::Integer(i) = self {
+            *i
+        } else {
+            0
+        }
     }
 }
 
@@ -175,7 +246,7 @@ impl From<ir::Immediate> for Immediate {
     fn from(imm: ir::Immediate) -> Self {
         use ir::Immediate::*;
         match imm {
-            Integer(v) => Immediate::new(v as i32, 32),
+            Integer(v) => Immediate::new(v as i32, XLEN),
             Boolean(v) => Immediate::new(v as i32, 1),
             Label(_) => todo!(),
         }
@@ -242,11 +313,6 @@ fn dump_instructions(ctx: &mut Context, insts: &Vec<Instruction>) {
 }
 
 pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
-    let result = Vec::new();
-
-    let mut ctx = Context::new();
-    let mut insts = Vec::new();
-
     fn load_operand(ctx: &mut Context, insts: &mut Vec<Instruction>, op: ir::Operand) -> Register {
         match op {
             ir::Operand::Variable(var) => ctx.reg_map.get(&var.name).unwrap().clone(),
@@ -284,6 +350,13 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
         ctx.label_addrs.insert(label, insts.len() as i32);
     }
 
+    use Instruction::*;
+
+    let mut ctx = Context::new();
+    let mut insts = Vec::new();
+
+    insts.push(Instruction::nop());
+
     for fun in funcs {
         add_label(&mut ctx, &mut insts, fun.name);
 
@@ -314,7 +387,7 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
                     let rs1 = load_operand(&mut ctx, &mut insts, left);
                     let rs2 = load_operand(&mut ctx, &mut insts, right);
 
-                    insts.push(Instruction::R(RInstruction {
+                    insts.push(R(RInstruction {
                         op: RInstructionOp::Add,
                         rs1,
                         rs2,
@@ -329,7 +402,7 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
                         load_argument(&mut ctx, &mut insts, arg);
                     }
                     if let ir::Operand::Immediate(ir::Immediate::Label(label)) = fun {
-                        insts.push(Instruction::J(JInstruction {
+                        insts.push(J(JInstruction {
                             op: JInstructionOp::Jal,
                             imm: RelAddress::Label(label),
                             rd: Register::ra(),
@@ -349,6 +422,20 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
         }
     }
 
+    insts[0] = Instruction::li(Register::ra(), Immediate::new(insts.len() as i32 * 4, XLEN));
+
+    insts.push(Instruction::nop());
+
+    // syscall EXIT on rv32emu
+    insts.push(Instruction::li(Register::a(0), Immediate::new(0, XLEN)));
+    insts.push(Instruction::li(Register::a(7), Immediate::new(93, XLEN)));
+    insts.push(I(IInstruction {
+        op: IInstructionOp::Ecall,
+        imm: Immediate::new(0, XLEN),
+        rs1: Register::zero(),
+        rd: Register::zero(),
+    }));
+
     dump_instructions(&mut ctx, &insts);
 
     // Resolving label addresses
@@ -357,7 +444,7 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
         .into_iter()
         .enumerate()
         .map(|(addr, inst)| match inst {
-            Instruction::J(JInstruction {
+            J(JInstruction {
                 op: JInstructionOp::Jal,
                 imm: RelAddress::Label(label),
                 rd,
@@ -367,7 +454,7 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
                 let addr = addr as i32;
                 let laddr = *laddr;
 
-                Instruction::J(JInstruction {
+                J(JInstruction {
                     op: JInstructionOp::Jal,
                     imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4, 20)),
                     rd,
@@ -378,6 +465,15 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
         .collect();
 
     dump_instructions(&mut ctx, &insts);
+
+    let result = insts
+        .into_iter()
+        .map(|inst| match inst {
+            R(ri) => ri.generate_code(),
+            I(ii) => ii.generate_code(),
+            J(ji) => ji.generate_code(),
+        })
+        .collect();
 
     Ok(result)
 }

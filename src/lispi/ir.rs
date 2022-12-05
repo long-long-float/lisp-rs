@@ -634,6 +634,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Functions> {
     }
 
     {
+        // 'main' function
         let mut body = Vec::new();
 
         for ast in asts {
