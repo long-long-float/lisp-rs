@@ -6,7 +6,7 @@ use super::{
     ast::*, environment::Environment, error::Error, parser::*, typer::Type,
     unique_generator::UniqueGenerator,
 };
-use crate::bug;
+use crate::{bug, unimplemented};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Instruction {
@@ -21,6 +21,8 @@ pub enum Instruction {
     Add(Operand, Operand),
     Sub(Operand, Operand),
     Mul(Operand, Operand),
+    Or(Operand, Operand),
+    Store(Operand, Operand),
     Cmp(CmpOperator, Operand, Operand),
     Call {
         fun: Operand,
@@ -101,6 +103,12 @@ impl Display for Instruction {
             Mul(left, right) => {
                 write!(f, "mul {}, {}", left, right)
             }
+            Or(left, right) => {
+                write!(f, "or {}, {}", left, right)
+            }
+            Store(addr, value) => {
+                write!(f, "store {}, {}", addr, value)
+            }
             Cmp(op, left, right) => {
                 write!(f, "cmp {}, {}, {}", op, left, right)
             }
@@ -146,6 +154,8 @@ impl Display for AnnotatedInstr {
             Add(_, _)
             | Sub(_, _)
             | Mul(_, _)
+            | Or(_, _)
+            | Store(_, _)
             | Cmp(_, _, _)
             | Call { .. }
             | Operand(_)
@@ -322,7 +332,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 {
                     let name = fun.value.as_str();
                     match name {
-                        "+" | "-" | "*" | "<=" => {
+                        "+" | "-" | "*" | "<=" | "or" => {
                             let AnnotatedInstr {
                                 result: left,
                                 inst: _inst,
@@ -330,18 +340,29 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                             } = args[0].clone();
                             let right = args[1].result.clone();
 
+                            let left = Operand::Variable(left);
+                            let right = Operand::Variable(right);
+
                             let inst = match name {
-                                "+" => I::Add(Operand::Variable(left), Operand::Variable(right)),
-                                "-" => I::Sub(Operand::Variable(left), Operand::Variable(right)),
-                                "*" => I::Mul(Operand::Variable(left), Operand::Variable(right)),
-                                "<=" => I::Cmp(
-                                    CmpOperator::SGE,
-                                    Operand::Variable(left),
-                                    Operand::Variable(right),
-                                ),
+                                "+" => I::Add(left, right),
+                                "-" => I::Sub(left, right),
+                                "*" => I::Mul(left, right),
+                                "<=" => I::Cmp(CmpOperator::SGE, left, right),
+                                "or" => I::Or(left, right),
                                 _ => return Err(bug!()),
                             };
                             add_instr(&mut result, ctx, inst, ast_ty);
+                        }
+                        "io-write" => {
+                            add_instr(
+                                &mut result,
+                                ctx,
+                                I::Store(
+                                    Operand::Variable(args[0].result.clone()),
+                                    Operand::Variable(args[1].result.clone()),
+                                ),
+                                ast_ty,
+                            );
                         }
                         _ => {
                             let fun = compile_and_add(&mut result, fun_ast.clone(), ctx)?;
@@ -363,6 +384,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                     }
                 }
             } else {
+                return Err(unimplemented!());
             }
         }
         Ast::Quoted(_) => todo!(),
@@ -460,8 +482,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         }
         Ast::Cond(_) => todo!(),
         Ast::Let(Let {
-            sequential,
-            proc_id,
+            sequential: _,
+            proc_id: _,
             inits,
             body,
         }) => {

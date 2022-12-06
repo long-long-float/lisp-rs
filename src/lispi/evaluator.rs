@@ -20,6 +20,19 @@ macro_rules! bug {
     };
 }
 
+#[macro_export]
+macro_rules! unimplemented {
+    () => {
+        Error::Bug {
+            message: "Unimplemented".to_string(),
+            file: file!(),
+            line: line!(),
+        }
+        .with_null_location()
+        .into()
+    };
+}
+
 /// This macro is for ease to get arguments with patterns.
 macro_rules! match_call_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
@@ -501,7 +514,7 @@ fn apply_function(
                 }
                 "display" => {
                     for arg in args {
-                        print!("{}", arg);
+                        printuw(arg);
                     }
                     Ok(Value::nil())
                 }
@@ -986,6 +999,16 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
         |_| {
             newlineuw();
             Ok(Value::List(vec![]))
+        },
+    );
+    insert_function(
+        env,
+        ty_env,
+        s("io-write"),
+        Type::function(vec![Type::Int, Type::Int], Type::Nil),
+        |_| {
+            printlnuw("Cannot call io-write in interpreter mode.");
+            Ok(Value::nil())
         },
     );
 

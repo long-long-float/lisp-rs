@@ -16,12 +16,10 @@ pub mod typer;
 pub mod unique_generator;
 
 use object::elf::*;
-use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Writer};
-use object::write::{Object, StreamingBuffer};
-use object::{Architecture, BinaryFormat, Endianness, SectionKind};
+use object::write::elf::{FileHeader, ProgramHeader, Writer};
+use object::write::StreamingBuffer;
+use object::Endianness;
 use std::{fs::File, io::BufWriter, io::Write};
-
-use object::write::elf::*;
 
 use anyhow::Result;
 
@@ -30,7 +28,6 @@ use crate::lispi::{
     typer as ty,
 };
 
-use self::console::println;
 use self::{
     environment::Environment,
     evaluator::Value,

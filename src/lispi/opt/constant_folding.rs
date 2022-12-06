@@ -41,6 +41,8 @@ fn remove_deadcode(insts: Instructions) -> Result<Instructions> {
             Instruction::Add(l, r)
             | Instruction::Sub(l, r)
             | Instruction::Mul(l, r)
+            | Instruction::Or(l, r)
+            | Instruction::Store(l, r)
             | Instruction::Cmp(_, l, r) => {
                 register_as_used(&mut used_vars, l);
                 register_as_used(&mut used_vars, r);
@@ -133,6 +135,36 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
         }
     }
 
+    fn fold_constants_logical<F1, F2>(
+        ctx: &mut Context,
+        var: &Variable,
+        left: Operand,
+        right: Operand,
+        if_int: F1,
+        if_else: F2,
+    ) -> Instruction
+    where
+        F1: Fn(bool, bool) -> bool,
+        F2: Fn(Operand, Operand) -> Instruction,
+    {
+        let left = fold_imm(ctx, left);
+        let right = fold_imm(ctx, right);
+
+        if let (
+            Operand::Immediate(Immediate::Boolean(left)),
+            Operand::Immediate(Immediate::Boolean(right)),
+        ) = (&left, &right)
+        {
+            let val = if_int(*left, *right);
+
+            let op = Operand::Immediate(Immediate::Boolean(val));
+            insert_imm(ctx, &op, &var);
+            I::Operand(op)
+        } else {
+            if_else(left, right)
+        }
+    }
+
     for AnnotatedInstr {
         result: var,
         inst,
@@ -187,6 +219,20 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
                 |l, r| l * r,
                 |l, r| I::Mul(l, r),
             )),
+            I::Or(left, right) => Some(fold_constants_logical(
+                &mut ctx,
+                &var,
+                left,
+                right,
+                |l, r| l | r,
+                |l, r| I::Or(l, r),
+            )),
+            I::Store(addr, value) => {
+                let addr = fold_imm(&mut ctx, addr);
+                let value = fold_imm(&mut ctx, value);
+
+                Some(I::Store(addr, value))
+            }
 
             I::Cmp(op, left, right) => {
                 let left = fold_imm(&mut ctx, left);
