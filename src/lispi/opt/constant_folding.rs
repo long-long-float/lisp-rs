@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use super::super::ir::*;
+use super::super::ir::instruction::*;
 
 use Instruction as I;
 
