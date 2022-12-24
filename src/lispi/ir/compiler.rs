@@ -1,23 +1,31 @@
-use std::{fmt::Display, vec};
+use std::{cell::RefCell, fmt::Display, vec};
 
 use anyhow::Result;
+use typed_arena::Arena;
 
-use super::super::{
-    ast::*, environment::Environment, error::Error, parser::*, typer::Type,
-    unique_generator::UniqueGenerator,
+use super::{
+    super::{
+        ast::*, environment::Environment, error::Error, parser::*, typer::Type,
+        unique_generator::UniqueGenerator,
+    },
+    basic_block::BasicBlock,
+    IrContext,
 };
 use crate::{bug, unimplemented};
 
 use super::instruction::*;
 
-struct Context {
+struct Context<'a> {
     env: Environment<Variable>,
     sym_table: SymbolTable,
-    func_env: Environment<(Label, Function)>,
+    func_env: Environment<(Label, Function<'a>)>,
     var_gen: UniqueGenerator,
+
+    /// Arena for Function
+    arena: &'a Arena<BasicBlock>,
 }
 
-impl Context {
+impl<'a> Context<'a> {
     fn gen_var(&mut self) -> Variable {
         Variable {
             name: format!("var{}", self.var_gen.gen()),
@@ -284,12 +292,7 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
 
             ctx.env.pop_local();
 
-            let fun = Function {
-                name: name.value.clone(),
-                args,
-                body: insts,
-                ty: ty.clone(),
-            };
+            let fun = Function::new(name.value.clone(), args, insts, ty.clone(), &ctx.arena);
 
             ctx.func_env.insert_var(name.clone(), (label, fun));
 
@@ -325,12 +328,13 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
 
                 ctx.env.push_local();
 
-                let mut fun = Function {
-                    name: proc_id.value.clone(),
-                    args: fargs,
-                    body: Vec::new(),
-                    ty: Type::None,
-                };
+                let mut fun = Function::new(
+                    proc_id.value.clone(),
+                    fargs,
+                    Vec::new(),
+                    Type::None,
+                    &ctx.arena,
+                );
 
                 ctx.func_env
                     .insert_var(proc_id.clone(), (label.clone(), fun.clone()));
@@ -377,7 +381,11 @@ fn compile_asts(asts: Vec<AnnotatedAst>, ctx: &mut Context) -> Result<Instructio
     Ok(result)
 }
 
-pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Functions> {
+pub fn compile<'a>(
+    asts: Program,
+    sym_table: SymbolTable,
+    ir_ctx: &'a mut IrContext,
+) -> Result<Functions<'a>> {
     let mut result = Vec::new();
 
     let mut ctx = Context {
@@ -385,6 +393,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Functions> {
         sym_table,
         func_env: Environment::new(),
         var_gen: UniqueGenerator::new(),
+        arena: &ir_ctx.bb_arena,
     };
 
     let asts = asts
@@ -422,12 +431,13 @@ pub fn compile(asts: Program, sym_table: SymbolTable) -> Result<Functions> {
             Type::None,
         );
 
-        result.push(Function {
-            name: "main".to_string(),
-            args: Vec::new(),
+        result.push(Function::new(
+            "main".to_string(),
+            Vec::new(),
             body,
-            ty: Type::None,
-        });
+            Type::None,
+            &ctx.arena,
+        ));
     }
 
     Ok(result)

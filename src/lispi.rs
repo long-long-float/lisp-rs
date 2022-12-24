@@ -180,7 +180,10 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
 
 pub fn compile(program: Vec<String>) -> Result<()> {
     let (program, mut _env, sym_table) = frontend(program)?;
-    let funcs = ir::compiler::compile(program, sym_table)?;
+
+    let mut ir_ctx = ir::IrContext::new();
+
+    let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
     for fun in &funcs {
         println!("{}", fun);
     }

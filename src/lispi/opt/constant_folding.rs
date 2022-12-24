@@ -284,18 +284,20 @@ pub fn optimize(funcs: Functions) -> Result<Functions> {
         .into_iter()
         .map(
             |Function {
-                 name,
                  args,
                  body,
                  ty,
+                 head_bb,
+                 arena,
              }| {
                 let body = fold_constants_insts(body)?;
                 let body = remove_deadcode(body)?;
                 Ok(Function {
-                    name,
                     args,
                     body,
                     ty,
+                    head_bb,
+                    arena,
                 })
             },
         )

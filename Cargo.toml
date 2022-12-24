@@ -12,3 +12,4 @@ thiserror = "1.0"
 clap = { version = "3.2", features = ["derive"] }
 crossterm = "0.23"
 object = { version = "0.30", features = ["write"] }
+typed-arena = "2.0"

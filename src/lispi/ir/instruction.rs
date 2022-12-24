@@ -1,6 +1,9 @@
-use std::fmt::Display;
+use std::{cell::RefCell, fmt::Display};
+use typed_arena::Arena;
 
 use crate::lispi::ty::Type;
+
+use super::basic_block::BasicBlock;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Instruction {
@@ -164,17 +167,46 @@ impl Display for AnnotatedInstr {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub struct Function {
-    pub name: String,
+#[derive(Clone)]
+pub struct Function<'a> {
+    // pub name: String,
     pub args: Vec<(String, Type)>,
     pub body: Instructions,
     pub ty: Type,
+
+    pub head_bb: RefCell<&'a BasicBlock>,
+
+    pub arena: &'a Arena<BasicBlock>,
 }
 
-impl Display for Function {
+impl<'a> Function<'a> {
+    pub fn new(
+        name: String,
+        args: Vec<(String, Type)>,
+        body: Instructions,
+        ty: Type,
+        arena: &'a Arena<BasicBlock>,
+    ) -> Self {
+        let bb = arena.alloc(BasicBlock::new(name));
+        let head_bb = RefCell::new(&*bb);
+
+        Self {
+            args,
+            body,
+            ty,
+            head_bb,
+            arena,
+        }
+    }
+
+    pub fn name(&self) -> String {
+        self.head_bb.borrow().label.clone()
+    }
+}
+
+impl<'a> Display for Function<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} (", self.name)?;
+        write!(f, "{} (", self.name())?;
         for (id, ty) in &self.args {
             write!(f, "%{}: {}, ", id, ty)?;
         }
@@ -188,7 +220,7 @@ impl Display for Function {
 }
 
 pub type Instructions = Vec<AnnotatedInstr>;
-pub type Functions = Vec<Function>;
+pub type Functions<'a> = Vec<Function<'a>>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Operand {

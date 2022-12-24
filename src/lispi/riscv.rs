@@ -432,49 +432,49 @@ pub fn generate_code(funcs: i::Functions) -> Result<Codes> {
     use Instruction::*;
 
     // Remove phi nodes
-    let funcs = funcs.into_iter().map(|fun| {
-        let i::Function {
-            name,
-            args,
-            body,
-            ty,
-        } = fun;
+    // let funcs = funcs.into_iter().map(|fun| {
+    //     let i::Function {
+    //         args,
+    //         body,
+    //         head_bb,
+    //         ty,
+    //     } = fun;
 
-        let mut assign_map = FxHashMap::default();
+    //     let mut assign_map = FxHashMap::default();
 
-        let mut is_terminal = false;
-        let mut current_label = "".to_string();
+    //     let mut is_terminal = false;
+    //     let mut current_label = "".to_string();
 
-        let mut new_body = Vec::new();
+    //     let mut new_body = Vec::new();
 
-        for i::AnnotatedInstr { result, inst, ty } in body.into_iter().rev() {
-            if is_terminal {
-                let (result, op) = &assign_map[&current_label];
-                // new_body.push(ir::AnnotatedInstr {});
-            }
+    //     for i::AnnotatedInstr { result, inst, ty } in body.into_iter().rev() {
+    //         if is_terminal {
+    //             let (result, op) = &assign_map[&current_label];
+    //             new_body.push(ir::AnnotatedInstr {});
+    //         }
 
-            match &inst {
-                i::Instruction::Phi(nodes) => {
-                    for (node, label) in nodes {
-                        assign_map.insert(label.name.clone(), (result.clone(), node.clone()));
-                    }
-                }
-                _ => {}
-            }
+    //         match &inst {
+    //             i::Instruction::Phi(nodes) => {
+    //                 for (node, label) in nodes {
+    //                     assign_map.insert(label.name.clone(), (result.clone(), node.clone()));
+    //                 }
+    //             }
+    //             _ => {}
+    //         }
 
-            is_terminal = inst.is_terminal();
-            if is_terminal {}
+    //         is_terminal = inst.is_terminal();
+    //         if is_terminal {}
 
-            new_body.push(i::AnnotatedInstr { result, inst, ty });
-        }
+    //         new_body.push(i::AnnotatedInstr { result, inst, ty });
+    //     }
 
-        i::Function {
-            name,
-            args,
-            body: new_body,
-            ty,
-        }
-    });
+    //     i::Function {
+    //         args,
+    //         body: new_body,
+    //         head_bb,
+    //         ty,
+    //     }
+    // });
 
     let mut ctx = Context::new();
     let mut insts = Vec::new();
@@ -482,7 +482,7 @@ pub fn generate_code(funcs: i::Functions) -> Result<Codes> {
     insts.push(Instruction::nop());
 
     for fun in funcs {
-        add_label(&mut ctx, &mut insts, fun.name);
+        add_label(&mut ctx, &mut insts, fun.name());
 
         ctx.reset_on_fun();
 
