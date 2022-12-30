@@ -15,7 +15,7 @@ pub struct Environment<T> {
 
 impl<T> Environment<T>
 where
-    T: Clone + std::fmt::Debug,
+    T: Clone,
 {
     pub fn new() -> Environment<T> {
         let mut env = Environment {
@@ -56,13 +56,6 @@ where
             .find_var(name.id)
     }
 
-    #[allow(dead_code)]
-    pub fn dump_local(&self) {
-        let local = self.head_local.as_ref().unwrap().borrow();
-        printlnuw("--- Locals ---");
-        local.dump();
-    }
-
     pub fn push_local(&mut self) {
         let local = self.head_local.clone();
         let local = Some(Rc::new(RefCell::new(Local::new(local))));
@@ -74,6 +67,18 @@ where
             let parent = local.borrow().parent.clone();
             self.head_local = parent;
         }
+    }
+}
+
+impl<T> Environment<T>
+where
+    T: Clone + std::fmt::Debug,
+{
+    #[allow(dead_code)]
+    pub fn dump_local(&self) {
+        let local = self.head_local.as_ref().unwrap().borrow();
+        printlnuw("--- Locals ---");
+        local.dump();
     }
 }
 
@@ -98,7 +103,7 @@ pub struct Local<T> {
 
 impl<T> Local<T>
 where
-    T: Clone + std::fmt::Debug,
+    T: Clone,
 {
     fn new(parent: LocalRef<T>) -> Local<T> {
         Local {
@@ -127,7 +132,12 @@ where
             false
         }
     }
+}
 
+impl<T> Local<T>
+where
+    T: Clone + std::fmt::Debug,
+{
     fn dump(&self) {
         if let Some(parent) = &self.parent {
             // Don't print root local.

@@ -3,7 +3,7 @@ use std::fmt::Display;
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use super::ir;
+use super::ir::instruction as i;
 
 type RegisterType = u32;
 const XLEN: u8 = 32;
@@ -190,7 +190,7 @@ impl GenerateCode for JInstruction {
 
 #[derive(Clone, PartialEq, Debug)]
 enum RelAddress {
-    Label(ir::Label),
+    Label(i::Label),
     Immediate(Immediate),
 }
 
@@ -279,9 +279,9 @@ impl Display for Immediate {
     }
 }
 
-impl From<ir::Immediate> for Immediate {
-    fn from(imm: ir::Immediate) -> Self {
-        use ir::Immediate::*;
+impl From<i::Immediate> for Immediate {
+    fn from(imm: i::Immediate) -> Self {
+        use i::Immediate::*;
         match imm {
             Integer(v) => Immediate::new(v as i32, XLEN),
             Boolean(v) => Immediate::new(v as i32, 1),
@@ -334,6 +334,7 @@ type Code = u32;
 type Codes = Vec<Code>;
 
 fn dump_instructions(ctx: &mut Context, insts: &Vec<Instruction>) {
+    println!("RISC-V Instructions:");
     for (addr, inst) in insts.iter().enumerate() {
         let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
             if *laddr == addr as i32 {
@@ -350,10 +351,10 @@ fn dump_instructions(ctx: &mut Context, insts: &Vec<Instruction>) {
     println!();
 }
 
-fn load_operand(ctx: &mut Context, insts: &mut Vec<Instruction>, op: ir::Operand) -> Register {
+fn load_operand(ctx: &mut Context, insts: &mut Vec<Instruction>, op: i::Operand) -> Register {
     match op {
-        ir::Operand::Variable(var) => ctx.reg_map.get(&var.name).unwrap().clone(),
-        ir::Operand::Immediate(imm) => {
+        i::Operand::Variable(var) => ctx.reg_map.get(&var.name).unwrap().clone(),
+        i::Operand::Immediate(imm) => {
             let rd = ctx.allocate_reg();
             insts.push(Instruction::li(rd.clone(), imm.into()));
             rd
@@ -364,13 +365,13 @@ fn load_operand(ctx: &mut Context, insts: &mut Vec<Instruction>, op: ir::Operand
 fn generate_code_bin_op(
     ctx: &mut Context,
     insts: &mut Vec<Instruction>,
-    left: ir::Operand,
-    right: ir::Operand,
+    left: i::Operand,
+    right: i::Operand,
     op: RInstructionOp,
     opi: IInstructionOp,
     result_reg: Register,
 ) -> Result<()> {
-    use ir::Operand::*;
+    use i::Operand::*;
     use Instruction::*;
 
     let inst = match (left, right) {
@@ -401,25 +402,25 @@ fn generate_code_bin_op(
     Ok(())
 }
 
-pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
+pub fn generate_code(funcs: i::Functions) -> Result<Codes> {
     fn load_operand_to(
         ctx: &mut Context,
         insts: &mut Vec<Instruction>,
-        op: ir::Operand,
+        op: i::Operand,
         rd: Register,
     ) {
         match op {
-            ir::Operand::Variable(var) => {
+            i::Operand::Variable(var) => {
                 let reg = ctx.reg_map.get(&var.name).unwrap().clone();
                 insts.push(Instruction::mv(rd, reg));
             }
-            ir::Operand::Immediate(imm) => {
+            i::Operand::Immediate(imm) => {
                 insts.push(Instruction::li(rd, imm.into()));
             }
         }
     }
 
-    fn load_argument(ctx: &mut Context, insts: &mut Vec<Instruction>, op: ir::Operand) {
+    fn load_argument(ctx: &mut Context, insts: &mut Vec<Instruction>, op: i::Operand) {
         let rd = ctx.allocate_arg_reg();
         load_operand_to(ctx, insts, op, rd);
     }
@@ -430,13 +431,58 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
 
     use Instruction::*;
 
+    // Remove phi nodes
+    // let funcs = funcs.into_iter().map(|fun| {
+    //     let i::Function {
+    //         args,
+    //         body,
+    //         head_bb,
+    //         ty,
+    //     } = fun;
+
+    //     let mut assign_map = FxHashMap::default();
+
+    //     let mut is_terminal = false;
+    //     let mut current_label = "".to_string();
+
+    //     let mut new_body = Vec::new();
+
+    //     for i::AnnotatedInstr { result, inst, ty } in body.into_iter().rev() {
+    //         if is_terminal {
+    //             let (result, op) = &assign_map[&current_label];
+    //             new_body.push(ir::AnnotatedInstr {});
+    //         }
+
+    //         match &inst {
+    //             i::Instruction::Phi(nodes) => {
+    //                 for (node, label) in nodes {
+    //                     assign_map.insert(label.name.clone(), (result.clone(), node.clone()));
+    //                 }
+    //             }
+    //             _ => {}
+    //         }
+
+    //         is_terminal = inst.is_terminal();
+    //         if is_terminal {}
+
+    //         new_body.push(i::AnnotatedInstr { result, inst, ty });
+    //     }
+
+    //     i::Function {
+    //         args,
+    //         body: new_body,
+    //         head_bb,
+    //         ty,
+    //     }
+    // });
+
     let mut ctx = Context::new();
     let mut insts = Vec::new();
 
     insts.push(Instruction::nop());
 
     for fun in funcs {
-        add_label(&mut ctx, &mut insts, fun.name);
+        add_label(&mut ctx, &mut insts, fun.name());
 
         ctx.reset_on_fun();
 
@@ -444,13 +490,13 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
             ctx.reg_map.insert(arg.clone(), Register::a(i as u32));
         }
 
-        for ir::AnnotatedInstr {
+        for i::AnnotatedInstr {
             result,
             inst,
             ty: _,
         } in fun.body
         {
-            use ir::Instruction::*;
+            use i::Instruction::*;
 
             let result_reg = ctx.allocate_reg();
             ctx.reg_map.insert(result.name, result_reg.clone());
@@ -461,7 +507,13 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
                     then_label: _,
                     else_label: _,
                 } => {}
-                Jump(_) => todo!(),
+                Jump(label) => {
+                    insts.push(J(JInstruction {
+                        op: JInstructionOp::Jal,
+                        imm: RelAddress::Label(label),
+                        rd: Register::zero(),
+                    }));
+                }
                 Ret(op) => {
                     load_operand_to(&mut ctx, &mut insts, op, Register::a(0));
                     insts.push(Instruction::ret());
@@ -506,7 +558,7 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
                     for arg in args {
                         load_argument(&mut ctx, &mut insts, arg);
                     }
-                    if let ir::Operand::Immediate(ir::Immediate::Label(label)) = fun {
+                    if let i::Operand::Immediate(i::Immediate::Label(label)) = fun {
                         insts.push(J(JInstruction {
                             op: JInstructionOp::Jal,
                             imm: RelAddress::Label(label),
@@ -516,7 +568,7 @@ pub fn generate_code(funcs: ir::Functions) -> Result<Codes> {
                         todo!()
                     }
                 }
-                Phi(_) => todo!(),
+                Phi(nodes) => {}
                 Operand(op) => {
                     load_operand_to(&mut ctx, &mut insts, op, result_reg);
                 }

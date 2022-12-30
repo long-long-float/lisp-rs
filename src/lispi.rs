@@ -1,12 +1,12 @@
 pub mod console;
 pub mod error;
 
+pub mod ir;
 pub mod opt;
 
 pub mod ast;
 pub mod environment;
 pub mod evaluator;
-pub mod ir;
 pub mod macro_expander;
 pub mod parser;
 pub mod riscv;
@@ -180,7 +180,10 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
 
 pub fn compile(program: Vec<String>) -> Result<()> {
     let (program, mut _env, sym_table) = frontend(program)?;
-    let funcs = ir::compile(program, sym_table)?;
+
+    let mut ir_ctx = ir::IrContext::new();
+
+    let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
     for fun in &funcs {
         println!("{}", fun);
     }
