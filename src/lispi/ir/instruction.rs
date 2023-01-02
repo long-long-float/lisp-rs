@@ -1,7 +1,11 @@
-use std::{cell::RefCell, fmt::Display};
-use typed_arena::Arena;
+use anyhow::Result;
+use id_arena::{Arena, Id};
+use std::{cell::RefCell, default, fmt::Display, marker::PhantomData};
 
-use crate::lispi::ty::Type;
+use crate::lispi::{
+    console::{println, printlnuw, printuw},
+    ty::Type,
+};
 
 use super::basic_block::BasicBlock;
 
@@ -168,59 +172,68 @@ impl Display for AnnotatedInstr {
 }
 
 #[derive(Clone)]
-pub struct Function<'a> {
-    // pub name: String,
+pub struct Function {
+    pub name: String,
     pub args: Vec<(String, Type)>,
     pub body: Instructions,
     pub ty: Type,
 
-    pub head_bb: RefCell<&'a BasicBlock>,
-
-    pub arena: &'a Arena<BasicBlock>,
+    pub head_bb: Id<BasicBlock>,
 }
 
-impl<'a> Function<'a> {
+impl Function {
     pub fn new(
         name: String,
         args: Vec<(String, Type)>,
         body: Instructions,
         ty: Type,
-        arena: &'a Arena<BasicBlock>,
+        head_bb: Id<BasicBlock>,
     ) -> Self {
-        let bb = arena.alloc(BasicBlock::new(name));
-        let head_bb = RefCell::new(&*bb);
-
         Self {
+            name,
             args,
             body,
             ty,
             head_bb,
-            arena,
         }
     }
 
-    pub fn name(&self) -> String {
-        self.head_bb.borrow().label.clone()
+    pub fn replace_body_with<F>(self, replacer: F) -> Result<Self>
+    where
+        F: Fn(Instructions) -> Result<Instructions>,
+    {
+        let Function {
+            name,
+            args,
+            body,
+            ty,
+            head_bb,
+        } = self;
+        let body = replacer(body)?;
+        Ok(Function {
+            name,
+            args,
+            body,
+            ty,
+            head_bb,
+        })
     }
-}
 
-impl<'a> Display for Function<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} (", self.name())?;
+    pub fn dump(&self, arena: &Arena<BasicBlock>) {
+        let bb = arena.get(self.head_bb).unwrap();
+
+        print!("function {} (", self.name);
         for (id, ty) in &self.args {
-            write!(f, "%{}: {}, ", id, ty)?;
+            print!("%{}: {}, ", id, ty);
         }
-        writeln!(f, "): {} {{", self.ty)?;
-        for inst in &self.body {
-            writeln!(f, "{}", inst)?;
-        }
-        write!(f, "}}")?;
-        Ok(())
+        println!("): {} {{", self.ty);
+        println!("{}", bb);
+        println!("}}");
     }
 }
 
 pub type Instructions = Vec<AnnotatedInstr>;
-pub type Functions<'a> = Vec<Function<'a>>;
+pub type Functions = Vec<Function>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Operand {

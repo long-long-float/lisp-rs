@@ -3,7 +3,7 @@ use std::fmt::Display;
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use super::ir::instruction as i;
+use super::ir::{instruction as i, IrContext};
 
 type RegisterType = u32;
 const XLEN: u8 = 32;
@@ -402,7 +402,7 @@ fn generate_code_bin_op(
     Ok(())
 }
 
-pub fn generate_code(funcs: i::Functions) -> Result<Codes> {
+pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Codes> {
     fn load_operand_to(
         ctx: &mut Context,
         insts: &mut Vec<Instruction>,
@@ -482,7 +482,7 @@ pub fn generate_code(funcs: i::Functions) -> Result<Codes> {
     insts.push(Instruction::nop());
 
     for fun in funcs {
-        add_label(&mut ctx, &mut insts, fun.name());
+        add_label(&mut ctx, &mut insts, fun.name);
 
         ctx.reset_on_fun();
 
@@ -593,7 +593,7 @@ pub fn generate_code(funcs: i::Functions) -> Result<Codes> {
         rd: Register::zero(),
     }));
 
-    dump_instructions(&mut ctx, &insts);
+    // dump_instructions(&mut ctx, &insts);
 
     // Resolving label addresses
 
@@ -619,9 +619,9 @@ pub fn generate_code(funcs: i::Functions) -> Result<Codes> {
             }
             _ => inst,
         })
-        .collect();
+        .collect::<Vec<Instruction>>();
 
-    dump_instructions(&mut ctx, &insts);
+    // dump_instructions(&mut ctx, &insts);
 
     let result = insts
         .into_iter()

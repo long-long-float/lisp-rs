@@ -185,13 +185,13 @@ pub fn compile(program: Vec<String>) -> Result<()> {
 
     let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
     for fun in &funcs {
-        println!("{}", fun);
+        fun.dump(&ir_ctx.bb_arena);
     }
     let funcs = opt::constant_folding::optimize(funcs)?;
     for fun in &funcs {
-        println!("{}", fun);
+        fun.dump(&ir_ctx.bb_arena);
     }
-    let codes = riscv::generate_code(funcs)?;
+    let codes = riscv::generate_code(funcs, &mut ir_ctx)?;
 
     let big_endian = true;
 

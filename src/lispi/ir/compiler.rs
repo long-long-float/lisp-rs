@@ -1,7 +1,7 @@
-use std::{cell::RefCell, fmt::Display, vec};
+use std::{cell::RefCell, fmt::Display, ops::Deref, vec};
 
 use anyhow::Result;
-use typed_arena::Arena;
+use id_arena::{Arena, Id};
 
 use super::{
     super::{
@@ -11,18 +11,20 @@ use super::{
     basic_block::BasicBlock,
     IrContext,
 };
-use crate::{bug, unimplemented};
+use crate::{bug, lispi::console::println, unimplemented};
 
 use super::instruction::*;
 
 struct Context<'a> {
     env: Environment<Variable>,
     sym_table: SymbolTable,
-    func_env: Environment<(Label, Function<'a>)>,
+    func_env: Environment<(Label, Function)>,
     var_gen: UniqueGenerator,
 
     /// Arena for Function
-    arena: &'a Arena<BasicBlock>,
+    arena: &'a mut Arena<BasicBlock>,
+
+    current_bb: Id<BasicBlock>,
 }
 
 impl<'a> Context<'a> {
@@ -36,6 +38,14 @@ impl<'a> Context<'a> {
         Label {
             name: format!("label{}", self.var_gen.gen()),
         }
+    }
+
+    fn push_inst(&mut self, inst: AnnotatedInstr) {
+        self.arena.get_mut(self.current_bb).unwrap().push_inst(inst);
+    }
+
+    fn new_bb(&mut self, label: String) -> Id<BasicBlock> {
+        self.arena.alloc(BasicBlock::new(label))
     }
 }
 
@@ -55,11 +65,13 @@ fn compile_and_add(
 }
 
 fn add_instr(result: &mut Vec<AnnotatedInstr>, ctx: &mut Context, inst: Instruction, ty: Type) {
-    result.push(AnnotatedInstr {
+    let inst = AnnotatedInstr {
         result: ctx.gen_var(),
         inst,
         ty,
-    });
+    };
+    result.push(inst.clone());
+    ctx.push_inst(inst);
 }
 
 fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
@@ -264,7 +276,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
     Ok(result)
 }
 
-fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<AnnotatedAst> {
+fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<AnnotatedAst> {
     let AnnotatedAst { ast, location, ty } = ast;
 
     match ast {
@@ -286,13 +298,18 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
                 name: name.value.clone(),
             };
 
+            let bb = ctx.new_bb(label.name.clone());
+
             ctx.env.push_local();
+            let prev_bb = ctx.current_bb;
+            ctx.current_bb = bb;
 
             let insts = compile_asts(body, ctx)?;
 
+            ctx.current_bb = prev_bb;
             ctx.env.pop_local();
 
-            let fun = Function::new(name.value.clone(), args, insts, ty.clone(), &ctx.arena);
+            let fun = Function::new(name.value.clone(), args, insts, ty.clone(), bb);
 
             ctx.func_env.insert_var(name.clone(), (label, fun));
 
@@ -328,13 +345,12 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
 
                 ctx.env.push_local();
 
-                let mut fun = Function::new(
-                    proc_id.value.clone(),
-                    fargs,
-                    Vec::new(),
-                    Type::None,
-                    &ctx.arena,
-                );
+                let bb = ctx.new_bb(label.name.clone());
+
+                let mut fun =
+                    Function::new(proc_id.value.clone(), fargs, Vec::new(), Type::None, bb);
+
+                ctx.current_bb = bb;
 
                 ctx.func_env
                     .insert_var(proc_id.clone(), (label.clone(), fun.clone()));
@@ -385,34 +401,24 @@ pub fn compile<'a>(
     asts: Program,
     sym_table: SymbolTable,
     ir_ctx: &'a mut IrContext,
-) -> Result<Functions<'a>> {
+) -> Result<Functions> {
     let mut result = Vec::new();
+
+    let main_bb = ir_ctx.bb_arena.alloc(BasicBlock::new("main".to_string()));
 
     let mut ctx = Context {
         env: Environment::new(),
         sym_table,
         func_env: Environment::new(),
         var_gen: UniqueGenerator::new(),
-        arena: &ir_ctx.bb_arena,
+        arena: &mut ir_ctx.bb_arena,
+        current_bb: main_bb,
     };
 
     let asts = asts
         .into_iter()
         .map(|ast| compile_lambdas_ast(ast, &mut ctx))
         .collect::<Result<Vec<_>>>()?;
-
-    let fun_vars = ctx.func_env.current_local().variables.clone();
-    for (_, (_, mut fun)) in fun_vars {
-        let res = get_last_instr(&fun.body);
-        add_instr(
-            &mut fun.body,
-            &mut ctx,
-            Instruction::Ret(Operand::Variable(res.result)),
-            Type::None,
-        );
-
-        result.push(fun);
-    }
 
     {
         // 'main' function
@@ -436,8 +442,22 @@ pub fn compile<'a>(
             Vec::new(),
             body,
             Type::None,
-            &ctx.arena,
+            main_bb,
         ));
+    }
+
+    let fun_vars = ctx.func_env.current_local().variables.clone();
+    for (_, (_, mut fun)) in fun_vars {
+        let res = get_last_instr(&fun.body);
+        ctx.current_bb = fun.head_bb;
+        add_instr(
+            &mut fun.body,
+            &mut ctx,
+            Instruction::Ret(Operand::Variable(res.result)),
+            Type::None,
+        );
+
+        result.push(fun);
     }
 
     Ok(result)

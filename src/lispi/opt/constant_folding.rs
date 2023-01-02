@@ -282,25 +282,12 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
 pub fn optimize(funcs: Functions) -> Result<Functions> {
     let funcs = funcs
         .into_iter()
-        .map(
-            |Function {
-                 args,
-                 body,
-                 ty,
-                 head_bb,
-                 arena,
-             }| {
+        .map(|f| {
+            f.replace_body_with(|body| {
                 let body = fold_constants_insts(body)?;
-                let body = remove_deadcode(body)?;
-                Ok(Function {
-                    args,
-                    body,
-                    ty,
-                    head_bb,
-                    arena,
-                })
-            },
-        )
+                remove_deadcode(body)
+            })
+        })
         .collect::<Result<Vec<_>>>()?;
 
     Ok(funcs)
