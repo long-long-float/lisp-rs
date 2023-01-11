@@ -1,4 +1,6 @@
-use std::fmt::Display;
+use std::collections::HashSet;
+
+use id_arena::{Arena, Id};
 
 use super::instruction as i;
 
@@ -9,6 +11,39 @@ pub struct BasicBlock {
 }
 
 impl BasicBlock {
+    pub fn dump_by_id(
+        bb: Id<BasicBlock>,
+        arena: &Arena<BasicBlock>,
+        dumped_bb: &mut HashSet<Id<BasicBlock>>,
+    ) {
+        if dumped_bb.contains(&bb) {
+            return;
+        }
+        dumped_bb.insert(bb);
+
+        let bb = arena.get(bb).unwrap();
+
+        println!("  {}:", bb.label);
+        for inst in &bb.insts {
+            println!("  {}", inst);
+        }
+
+        for inst in &bb.insts {
+            match inst.inst {
+                i::Instruction::Branch {
+                    then_bb, else_bb, ..
+                } => {
+                    Self::dump_by_id(then_bb, arena, dumped_bb);
+                    Self::dump_by_id(else_bb, arena, dumped_bb);
+                }
+                i::Instruction::Jump(_, bb) => {
+                    Self::dump_by_id(bb, arena, dumped_bb);
+                }
+                _ => {}
+            }
+        }
+    }
+
     pub fn new(label: String) -> Self {
         Self {
             label,
@@ -18,15 +53,5 @@ impl BasicBlock {
 
     pub fn push_inst(&mut self, inst: i::AnnotatedInstr) {
         self.insts.push(inst);
-    }
-}
-
-impl Display for BasicBlock {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "  {}:", self.label)?;
-        for inst in &self.insts {
-            writeln!(f, "  {}", inst)?;
-        }
-        Ok(())
     }
 }

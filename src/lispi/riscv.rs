@@ -506,8 +506,9 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
                     cond: _,
                     then_label: _,
                     else_label: _,
+                    ..
                 } => {}
-                Jump(label) => {
+                Jump(label, _) => {
                     insts.push(J(JInstruction {
                         op: JInstructionOp::Jal,
                         imm: RelAddress::Label(label),

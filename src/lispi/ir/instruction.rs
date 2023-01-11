@@ -1,6 +1,6 @@
 use anyhow::Result;
 use id_arena::{Arena, Id};
-use std::{cell::RefCell, default, fmt::Display, marker::PhantomData};
+use std::{cell::RefCell, collections::HashSet, default, fmt::Display, marker::PhantomData};
 
 use crate::lispi::{
     console::{println, printlnuw, printuw},
@@ -15,8 +15,11 @@ pub enum Instruction {
         cond: Operand,
         then_label: Label,
         else_label: Label,
+
+        then_bb: Id<BasicBlock>,
+        else_bb: Id<BasicBlock>,
     },
-    Jump(Label),
+    Jump(Label, Id<BasicBlock>),
     Ret(Operand),
 
     Add(Operand, Operand),
@@ -40,7 +43,7 @@ impl Instruction {
         use Instruction::*;
 
         match self {
-            Branch { .. } | Jump(_) | Ret(_) => true,
+            Branch { .. } | Jump(_, _) | Ret(_) => true,
             _ => false,
         }
     }
@@ -86,10 +89,11 @@ impl Display for Instruction {
                 cond,
                 then_label,
                 else_label,
+                ..
             } => {
                 write!(f, "branch {}, {}, {}", cond, then_label, else_label)
             }
-            Jump(label) => {
+            Jump(label, _) => {
                 write!(f, "jump {}", label)
             }
             Ret(val) => {
@@ -148,7 +152,7 @@ impl Display for AnnotatedInstr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Instruction::*;
         match &self.inst {
-            Branch { .. } | Jump(_) | Ret(_) => {
+            Branch { .. } | Jump(_, _) | Ret(_) => {
                 write!(f, "  {}", self.inst)
             }
 
@@ -220,14 +224,14 @@ impl Function {
     }
 
     pub fn dump(&self, arena: &Arena<BasicBlock>) {
-        let bb = arena.get(self.head_bb).unwrap();
-
         print!("function {} (", self.name);
         for (id, ty) in &self.args {
             print!("%{}: {}, ", id, ty);
         }
         println!("): {} {{", self.ty);
-        println!("{}", bb);
+
+        BasicBlock::dump_by_id(self.head_bb, arena, &mut HashSet::new());
+
         println!("}}");
     }
 }

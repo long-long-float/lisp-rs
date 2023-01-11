@@ -33,6 +33,7 @@ fn remove_deadcode(insts: Instructions) -> Result<Instructions> {
                 cond,
                 then_label: _,
                 else_label: _,
+                ..
             } => {
                 register_as_used(&mut used_vars, cond);
             }
@@ -62,7 +63,7 @@ fn remove_deadcode(insts: Instructions) -> Result<Instructions> {
 
             Instruction::Operand(op) => register_as_used(&mut used_vars, op),
 
-            Instruction::Jump(_) | Instruction::Label(_) => {}
+            Instruction::Jump(_, _) | Instruction::Label(_) => {}
         }
 
         if inst.is_label() || inst.is_terminal() || used_vars.contains(&var) {
@@ -186,12 +187,16 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
                 cond,
                 then_label,
                 else_label,
+                then_bb,
+                else_bb,
             } => {
                 let cond = fold_imm(&mut ctx, cond);
                 Some(I::Branch {
                     cond,
                     then_label,
                     else_label,
+                    then_bb,
+                    else_bb,
                 })
             }
 
@@ -264,7 +269,7 @@ fn fold_constants_insts(insts: Instructions) -> Result<Instructions> {
                 Some(I::Call { fun, args })
             }
 
-            I::Jump(_) | I::Ret(_) | I::Phi(_) | I::Label(_) => Some(inst),
+            I::Jump(_, _) | I::Ret(_) | I::Phi(_) | I::Label(_) => Some(inst),
         };
 
         if let Some(inst) = inst {

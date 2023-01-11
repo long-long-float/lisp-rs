@@ -214,6 +214,9 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let else_label = ctx.gen_label();
             let end_label = ctx.gen_label();
 
+            let then_bb = ctx.new_bb(then_label.name.clone());
+            let else_bb = ctx.new_bb(else_label.name.clone());
+
             add_instr(
                 &mut result,
                 ctx,
@@ -221,23 +224,43 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                     cond: Operand::Variable(cond.result),
                     then_label: then_label.clone(),
                     else_label: else_label.clone(),
+                    then_bb,
+                    else_bb,
                 },
                 Type::None,
             );
 
-            add_instr(&mut result, ctx, I::Label(then_label.clone()), Type::None);
-            let then_res = compile_and_add(&mut result, *then_ast, ctx)?;
-            add_instr(&mut result, ctx, I::Jump(end_label.clone()), Type::None);
+            let end_bb = ctx.new_bb(end_label.name.clone());
 
-            add_instr(&mut result, ctx, I::Label(else_label.clone()), Type::None);
+            // label
+            ctx.current_bb = then_bb;
+            // add_instr(&mut result, ctx, I::Label(then_label.clone()), Type::None);
+            let then_res = compile_and_add(&mut result, *then_ast, ctx)?;
+            add_instr(
+                &mut result,
+                ctx,
+                I::Jump(end_label.clone(), end_bb),
+                Type::None,
+            );
+
+            // add_instr(&mut result, ctx, I::Label(else_label.clone()), Type::None);
             let else_res = if let Some(else_ast) = else_ast {
+                ctx.current_bb = else_bb;
                 Some(compile_and_add(&mut result, *else_ast, ctx)?)
             } else {
                 None
             };
-            add_instr(&mut result, ctx, I::Jump(end_label.clone()), Type::None);
+            add_instr(
+                &mut result,
+                ctx,
+                I::Jump(end_label.clone(), end_bb),
+                Type::None,
+            );
 
-            add_instr(&mut result, ctx, I::Label(end_label), Type::None);
+            // add_instr(&mut result, ctx, I::Label(end_label), Type::None);
+
+            ctx.current_bb = end_bb;
+
             if let Some(else_res) = else_res {
                 add_instr(
                     &mut result,
