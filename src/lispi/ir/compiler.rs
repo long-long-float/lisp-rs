@@ -24,7 +24,7 @@ struct Context<'a> {
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
 
-    current_bb: Id<BasicBlock>,
+    basic_blocks: Vec<Id<BasicBlock>>,
 }
 
 impl<'a> Context<'a> {
@@ -40,12 +40,23 @@ impl<'a> Context<'a> {
         }
     }
 
+    fn current_bb(&self) -> Id<BasicBlock> {
+        *self.basic_blocks.last().unwrap()
+    }
+
     fn push_inst(&mut self, inst: AnnotatedInstr) {
-        self.arena.get_mut(self.current_bb).unwrap().push_inst(inst);
+        self.arena
+            .get_mut(self.current_bb())
+            .unwrap()
+            .push_inst(inst);
     }
 
     fn new_bb(&mut self, label: String) -> Id<BasicBlock> {
         self.arena.alloc(BasicBlock::new(label))
+    }
+
+    fn add_bb(&mut self, bb: Id<BasicBlock>) {
+        self.basic_blocks.push(bb);
     }
 }
 
@@ -232,9 +243,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             let end_bb = ctx.new_bb(end_label.name.clone());
 
-            // label
-            ctx.current_bb = then_bb;
-            // add_instr(&mut result, ctx, I::Label(then_label.clone()), Type::None);
+            ctx.add_bb(then_bb);
             let then_res = compile_and_add(&mut result, *then_ast, ctx)?;
             add_instr(
                 &mut result,
@@ -243,9 +252,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 Type::None,
             );
 
-            // add_instr(&mut result, ctx, I::Label(else_label.clone()), Type::None);
+            ctx.add_bb(else_bb);
             let else_res = if let Some(else_ast) = else_ast {
-                ctx.current_bb = else_bb;
                 Some(compile_and_add(&mut result, *else_ast, ctx)?)
             } else {
                 None
@@ -257,10 +265,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 Type::None,
             );
 
-            // add_instr(&mut result, ctx, I::Label(end_label), Type::None);
-
-            ctx.current_bb = end_bb;
-
+            ctx.add_bb(end_bb);
             if let Some(else_res) = else_res {
                 add_instr(
                     &mut result,
@@ -324,15 +329,21 @@ fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<A
             let bb = ctx.new_bb(label.name.clone());
 
             ctx.env.push_local();
-            let prev_bb = ctx.current_bb;
-            ctx.current_bb = bb;
+
+            ctx.basic_blocks.clear();
+            ctx.add_bb(bb);
 
             let insts = compile_asts(body, ctx)?;
 
-            ctx.current_bb = prev_bb;
             ctx.env.pop_local();
 
-            let fun = Function::new(name.value.clone(), args, insts, ty.clone(), bb);
+            let fun = Function::new(
+                name.value.clone(),
+                args,
+                insts,
+                ty.clone(),
+                ctx.basic_blocks.drain(0..).collect(),
+            );
 
             ctx.func_env.insert_var(name.clone(), (label, fun));
 
@@ -370,15 +381,23 @@ fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<A
 
                 let bb = ctx.new_bb(label.name.clone());
 
-                let mut fun =
-                    Function::new(proc_id.value.clone(), fargs, Vec::new(), Type::None, bb);
+                let mut fun = Function::new(
+                    proc_id.value.clone(),
+                    fargs,
+                    Vec::new(),
+                    Type::None,
+                    Vec::new(),
+                );
 
-                ctx.current_bb = bb;
+                ctx.basic_blocks.clear();
+                ctx.add_bb(bb);
 
                 ctx.func_env
                     .insert_var(proc_id.clone(), (label.clone(), fun.clone()));
 
                 let insts = compile_asts(body, ctx)?;
+
+                fun.basic_blocks = ctx.basic_blocks.drain(0..).collect();
 
                 ctx.env.pop_local();
 
@@ -435,7 +454,7 @@ pub fn compile<'a>(
         func_env: Environment::new(),
         var_gen: UniqueGenerator::new(),
         arena: &mut ir_ctx.bb_arena,
-        current_bb: main_bb,
+        basic_blocks: Vec::new(),
     };
 
     let asts = asts
@@ -446,6 +465,9 @@ pub fn compile<'a>(
     {
         // 'main' function
         let mut body = Vec::new();
+
+        ctx.basic_blocks.clear();
+        ctx.add_bb(main_bb);
 
         for ast in asts {
             let mut insts = compile_ast(ast, &mut ctx)?;
@@ -465,21 +487,22 @@ pub fn compile<'a>(
             Vec::new(),
             body,
             Type::None,
-            main_bb,
+            ctx.basic_blocks.drain(0..).collect(),
         ));
     }
 
     let fun_vars = ctx.func_env.current_local().variables.clone();
     for (_, (_, mut fun)) in fun_vars {
         let res = get_last_instr(&fun.body);
-        ctx.current_bb = fun.head_bb;
-        add_instr(
-            &mut fun.body,
-            &mut ctx,
-            Instruction::Ret(Operand::Variable(res.result)),
-            Type::None,
-        );
-
+        let inst = AnnotatedInstr {
+            result: ctx.gen_var(),
+            inst: Instruction::Ret(Operand::Variable(res.result)),
+            ty: Type::None,
+        };
+        ctx.arena
+            .get_mut(*fun.basic_blocks.last().unwrap())
+            .unwrap()
+            .push_inst(inst);
         result.push(fun);
     }
 

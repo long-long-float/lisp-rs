@@ -182,7 +182,7 @@ pub struct Function {
     pub body: Instructions,
     pub ty: Type,
 
-    pub head_bb: Id<BasicBlock>,
+    pub basic_blocks: Vec<Id<BasicBlock>>,
 }
 
 impl Function {
@@ -191,14 +191,14 @@ impl Function {
         args: Vec<(String, Type)>,
         body: Instructions,
         ty: Type,
-        head_bb: Id<BasicBlock>,
+        basic_blocks: Vec<Id<BasicBlock>>,
     ) -> Self {
         Self {
             name,
             args,
             body,
             ty,
-            head_bb,
+            basic_blocks,
         }
     }
 
@@ -211,7 +211,7 @@ impl Function {
             args,
             body,
             ty,
-            head_bb,
+            basic_blocks: basic_basics,
         } = self;
         let body = replacer(body)?;
         Ok(Function {
@@ -219,7 +219,7 @@ impl Function {
             args,
             body,
             ty,
-            head_bb,
+            basic_blocks: basic_basics,
         })
     }
 
@@ -230,7 +230,13 @@ impl Function {
         }
         println!("): {} {{", self.ty);
 
-        BasicBlock::dump_by_id(self.head_bb, arena, &mut HashSet::new());
+        for bb in &self.basic_blocks {
+            let bb = arena.get(*bb).unwrap();
+            println!("  {}:", bb.label);
+            for inst in &bb.insts {
+                println!("  {}", inst);
+            }
+        }
 
         println!("}}");
     }
