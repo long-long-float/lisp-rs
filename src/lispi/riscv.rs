@@ -490,91 +490,95 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
             ctx.reg_map.insert(arg.clone(), Register::a(i as u32));
         }
 
-        for i::AnnotatedInstr {
-            result,
-            inst,
-            ty: _,
-        } in fun.body
-        {
-            use i::Instruction::*;
+        for bb in fun.basic_blocks {
+            let bb = ir_ctx.bb_arena.get(bb).unwrap();
 
-            let result_reg = ctx.allocate_reg();
-            ctx.reg_map.insert(result.name, result_reg.clone());
+            for i::AnnotatedInstr {
+                result,
+                inst,
+                ty: _,
+            } in bb.insts.clone()
+            {
+                use i::Instruction::*;
 
-            match inst {
-                Branch {
-                    cond: _,
-                    then_label: _,
-                    else_label: _,
-                    ..
-                } => {}
-                Jump(label, _) => {
-                    insts.push(J(JInstruction {
-                        op: JInstructionOp::Jal,
-                        imm: RelAddress::Label(label),
-                        rd: Register::zero(),
-                    }));
-                }
-                Ret(op) => {
-                    load_operand_to(&mut ctx, &mut insts, op, Register::a(0));
-                    insts.push(Instruction::ret());
-                }
-                Add(left, right) => {
-                    generate_code_bin_op(
-                        &mut ctx,
-                        &mut insts,
-                        left,
-                        right,
-                        RInstructionOp::Add,
-                        IInstructionOp::Addi,
-                        result_reg,
-                    )?;
-                }
-                Sub(_, _) => todo!(),
-                Mul(_, _) => todo!(),
-                Or(left, right) => {
-                    generate_code_bin_op(
-                        &mut ctx,
-                        &mut insts,
-                        left,
-                        right,
-                        RInstructionOp::Or,
-                        IInstructionOp::Ori,
-                        result_reg,
-                    )?;
-                }
-                Store(addr, value) => {
-                    let rs1 = load_operand(&mut ctx, &mut insts, addr);
-                    let rs2 = load_operand(&mut ctx, &mut insts, value);
+                let result_reg = ctx.allocate_reg();
+                ctx.reg_map.insert(result.name, result_reg.clone());
 
-                    insts.push(S(SInstruction {
-                        op: SInstructionOp::Sw,
-                        imm: Immediate::new(0, XLEN),
-                        rs1,
-                        rs2,
-                    }))
-                }
-                Cmp(_, _, _) => todo!(),
-                Call { fun, args } => {
-                    for arg in args {
-                        load_argument(&mut ctx, &mut insts, arg);
-                    }
-                    if let i::Operand::Immediate(i::Immediate::Label(label)) = fun {
+                match inst {
+                    Branch {
+                        cond: _,
+                        then_label: _,
+                        else_label: _,
+                        ..
+                    } => {}
+                    Jump(label, _) => {
                         insts.push(J(JInstruction {
                             op: JInstructionOp::Jal,
                             imm: RelAddress::Label(label),
-                            rd: Register::ra(),
+                            rd: Register::zero(),
                         }));
-                    } else {
-                        todo!()
                     }
-                }
-                Phi(nodes) => {}
-                Operand(op) => {
-                    load_operand_to(&mut ctx, &mut insts, op, result_reg);
-                }
-                Label(label) => {
-                    add_label(&mut ctx, &mut insts, label.name);
+                    Ret(op) => {
+                        load_operand_to(&mut ctx, &mut insts, op, Register::a(0));
+                        insts.push(Instruction::ret());
+                    }
+                    Add(left, right) => {
+                        generate_code_bin_op(
+                            &mut ctx,
+                            &mut insts,
+                            left,
+                            right,
+                            RInstructionOp::Add,
+                            IInstructionOp::Addi,
+                            result_reg,
+                        )?;
+                    }
+                    Sub(_, _) => todo!(),
+                    Mul(_, _) => todo!(),
+                    Or(left, right) => {
+                        generate_code_bin_op(
+                            &mut ctx,
+                            &mut insts,
+                            left,
+                            right,
+                            RInstructionOp::Or,
+                            IInstructionOp::Ori,
+                            result_reg,
+                        )?;
+                    }
+                    Store(addr, value) => {
+                        let rs1 = load_operand(&mut ctx, &mut insts, addr);
+                        let rs2 = load_operand(&mut ctx, &mut insts, value);
+
+                        insts.push(S(SInstruction {
+                            op: SInstructionOp::Sw,
+                            imm: Immediate::new(0, XLEN),
+                            rs1,
+                            rs2,
+                        }))
+                    }
+                    Cmp(_, _, _) => todo!(),
+                    Call { fun, args } => {
+                        for arg in args {
+                            load_argument(&mut ctx, &mut insts, arg);
+                        }
+                        if let i::Operand::Immediate(i::Immediate::Label(label)) = fun {
+                            insts.push(J(JInstruction {
+                                op: JInstructionOp::Jal,
+                                imm: RelAddress::Label(label),
+                                rd: Register::ra(),
+                            }));
+                        } else {
+                            todo!()
+                        }
+                    }
+                    Phi(_nodes) => {}
+                    Operand(op) => {
+                        load_operand_to(&mut ctx, &mut insts, op, result_reg);
+                    }
+                    Label(label) => {
+                        add_label(&mut ctx, &mut insts, label.name);
+                    }
                 }
             }
         }

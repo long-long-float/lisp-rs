@@ -187,7 +187,7 @@ pub fn compile(program: Vec<String>) -> Result<()> {
     for fun in &funcs {
         fun.dump(&ir_ctx.bb_arena);
     }
-    let funcs = opt::constant_folding::optimize(funcs)?;
+    let funcs = opt::constant_folding::optimize(funcs, &mut ir_ctx)?;
     for fun in &funcs {
         fun.dump(&ir_ctx.bb_arena);
     }

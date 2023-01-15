@@ -1,11 +1,7 @@
-use anyhow::Result;
 use id_arena::{Arena, Id};
-use std::{cell::RefCell, collections::HashSet, default, fmt::Display, marker::PhantomData};
+use std::fmt::Display;
 
-use crate::lispi::{
-    console::{println, printlnuw, printuw},
-    ty::Type,
-};
+use crate::lispi::ty::Type;
 
 use super::basic_block::BasicBlock;
 
@@ -175,53 +171,51 @@ impl Display for AnnotatedInstr {
     }
 }
 
+pub type BasicBlocks = Vec<Id<BasicBlock>>;
+
 #[derive(Clone)]
 pub struct Function {
     pub name: String,
     pub args: Vec<(String, Type)>,
-    pub body: Instructions,
+    // pub body: Instructions,
     pub ty: Type,
 
-    pub basic_blocks: Vec<Id<BasicBlock>>,
+    pub basic_blocks: BasicBlocks,
 }
 
 impl Function {
     pub fn new(
         name: String,
         args: Vec<(String, Type)>,
-        body: Instructions,
         ty: Type,
-        basic_blocks: Vec<Id<BasicBlock>>,
+        basic_blocks: BasicBlocks,
     ) -> Self {
         Self {
             name,
             args,
-            body,
             ty,
             basic_blocks,
         }
     }
 
-    pub fn replace_body_with<F>(self, replacer: F) -> Result<Self>
-    where
-        F: Fn(Instructions) -> Result<Instructions>,
-    {
-        let Function {
-            name,
-            args,
-            body,
-            ty,
-            basic_blocks: basic_basics,
-        } = self;
-        let body = replacer(body)?;
-        Ok(Function {
-            name,
-            args,
-            body,
-            ty,
-            basic_blocks: basic_basics,
-        })
-    }
+    // pub fn replace_bbs_with<F>(self, replacer: F) -> Result<Self>
+    // where
+    //     F: Fn(BasicBlocks) -> Result<BasicBlocks>,
+    // {
+    //     let Function {
+    //         name,
+    //         args,
+    //         ty,
+    //         basic_blocks,
+    //     } = self;
+    //     let body = replacer(basic_blocks)?;
+    //     Ok(Function {
+    //         name,
+    //         args,
+    //         ty,
+    //         basic_blocks,
+    //     })
+    // }
 
     pub fn dump(&self, arena: &Arena<BasicBlock>) {
         print!("function {} (", self.name);

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Display, ops::Deref, vec};
+use std::vec;
 
 use anyhow::Result;
 use id_arena::{Arena, Id};
@@ -11,7 +11,7 @@ use super::{
     basic_block::BasicBlock,
     IrContext,
 };
-use crate::{bug, lispi::console::println, unimplemented};
+use crate::{bug, unimplemented};
 
 use super::instruction::*;
 
@@ -308,7 +308,7 @@ fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<A
     let AnnotatedAst { ast, location, ty } = ast;
 
     match ast {
-        Ast::Lambda(Lambda { args, body }) => {
+        Ast::Lambda(Lambda { args, body: _ }) => {
             let args = args
                 .into_iter()
                 .map(|arg| {
@@ -333,14 +333,13 @@ fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<A
             ctx.basic_blocks.clear();
             ctx.add_bb(bb);
 
-            let insts = compile_asts(body, ctx)?;
+            // let insts = compile_asts(body, ctx)?;
 
             ctx.env.pop_local();
 
             let fun = Function::new(
                 name.value.clone(),
                 args,
-                insts,
                 ty.clone(),
                 ctx.basic_blocks.drain(0..).collect(),
             );
@@ -381,13 +380,7 @@ fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<A
 
                 let bb = ctx.new_bb(label.name.clone());
 
-                let mut fun = Function::new(
-                    proc_id.value.clone(),
-                    fargs,
-                    Vec::new(),
-                    Type::None,
-                    Vec::new(),
-                );
+                let mut fun = Function::new(proc_id.value.clone(), fargs, Type::None, Vec::new());
 
                 ctx.basic_blocks.clear();
                 ctx.add_bb(bb);
@@ -395,13 +388,12 @@ fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<A
                 ctx.func_env
                     .insert_var(proc_id.clone(), (label.clone(), fun.clone()));
 
-                let insts = compile_asts(body, ctx)?;
+                // let insts = compile_asts(body, ctx)?;
 
                 fun.basic_blocks = ctx.basic_blocks.drain(0..).collect();
 
                 ctx.env.pop_local();
 
-                fun.body = insts;
                 ctx.func_env.update_var(proc_id.clone(), &(label, fun))?;
 
                 let mut apply = vec![Ast::Symbol(proc_id).with_null_location()];
@@ -485,15 +477,17 @@ pub fn compile<'a>(
         result.push(Function::new(
             "main".to_string(),
             Vec::new(),
-            body,
             Type::None,
             ctx.basic_blocks.drain(0..).collect(),
         ));
     }
 
     let fun_vars = ctx.func_env.current_local().variables.clone();
-    for (_, (_, mut fun)) in fun_vars {
-        let res = get_last_instr(&fun.body);
+    for (_, (_, fun)) in fun_vars {
+        let last_bb = fun.basic_blocks.last().unwrap();
+        let last_bb = ctx.arena.get(*last_bb).unwrap();
+
+        let res = last_bb.insts.last().unwrap().clone();
         let inst = AnnotatedInstr {
             result: ctx.gen_var(),
             inst: Instruction::Ret(Operand::Variable(res.result)),
