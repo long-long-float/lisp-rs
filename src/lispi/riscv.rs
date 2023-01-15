@@ -3,6 +3,8 @@ use std::fmt::Display;
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
+use crate::lispi::console::printlnuw;
+
 use super::ir::{instruction as i, IrContext};
 
 type RegisterType = u32;
@@ -182,9 +184,19 @@ impl GenerateCode for JInstruction {
     fn generate_code(&self) -> RegisterType {
         use JInstructionOp::*;
 
-        match self.op {
-            Jal => todo!(),
-        }
+        let imm = self.imm.value();
+        let imm = (imm & (0b1 << 19))
+            | (imm & 0b1111_1111_11) << 11
+            | (imm & (0b1 << 10))
+            | (imm & 0b1111_1111) >> 11;
+
+        let rd = self.rd.as_int();
+
+        let opcode = match self.op {
+            Jal => 0b1101111,
+        };
+
+        (imm << 12) | (rd << 7) | opcode
     }
 }
 
@@ -192,6 +204,15 @@ impl GenerateCode for JInstruction {
 enum RelAddress {
     Label(i::Label),
     Immediate(Immediate),
+}
+
+impl RelAddress {
+    fn value(&self) -> RegisterType {
+        match self {
+            RelAddress::Label(_) => unimplemented!(),
+            RelAddress::Immediate(imm) => imm.value as RegisterType,
+        }
+    }
 }
 
 impl Display for RelAddress {
@@ -432,49 +453,58 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
     use Instruction::*;
 
     // Remove phi nodes
-    // let funcs = funcs.into_iter().map(|fun| {
-    //     let i::Function {
-    //         args,
-    //         body,
-    //         head_bb,
-    //         ty,
-    //     } = fun;
+    for fun in &funcs {
+        let i::Function {
+            name: _,
+            args: _,
+            ty: _,
+            basic_blocks,
+        } = fun;
 
-    //     let mut assign_map = FxHashMap::default();
+        let mut assign_map = FxHashMap::default();
 
-    //     let mut is_terminal = false;
-    //     let mut current_label = "".to_string();
+        for bb in basic_blocks.iter().rev() {
+            let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
 
-    //     let mut new_body = Vec::new();
+            let mut insts = Vec::new();
+            insts.append(&mut bb.insts);
 
-    //     for i::AnnotatedInstr { result, inst, ty } in body.into_iter().rev() {
-    //         if is_terminal {
-    //             let (result, op) = &assign_map[&current_label];
-    //             new_body.push(ir::AnnotatedInstr {});
-    //         }
+            let mut new_insts = Vec::new();
 
-    //         match &inst {
-    //             i::Instruction::Phi(nodes) => {
-    //                 for (node, label) in nodes {
-    //                     assign_map.insert(label.name.clone(), (result.clone(), node.clone()));
-    //                 }
-    //             }
-    //             _ => {}
-    //         }
+            for i::AnnotatedInstr { result, inst, ty } in insts {
+                match &inst {
+                    i::Instruction::Phi(nodes) => {
+                        for (node, label) in nodes {
+                            assign_map.insert(
+                                label.name.clone(),
+                                (result.clone(), ty.clone(), node.clone()),
+                            );
+                        }
+                    }
+                    _ => {
+                        if inst.is_terminal() {
+                            if let Some((result, ty, operand)) = assign_map.get(&bb.label) {
+                                new_insts.push(i::AnnotatedInstr {
+                                    result: result.clone(),
+                                    inst: i::Instruction::Operand(operand.clone()),
+                                    ty: ty.clone(),
+                                });
+                            }
+                        }
 
-    //         is_terminal = inst.is_terminal();
-    //         if is_terminal {}
+                        new_insts.push(i::AnnotatedInstr { result, inst, ty });
+                    }
+                }
+            }
 
-    //         new_body.push(i::AnnotatedInstr { result, inst, ty });
-    //     }
+            bb.insts = new_insts;
+        }
+    }
 
-    //     i::Function {
-    //         args,
-    //         body: new_body,
-    //         head_bb,
-    //         ty,
-    //     }
-    // });
+    printlnuw("Remove phi nodes");
+    for fun in &funcs {
+        fun.dump(&ir_ctx.bb_arena);
+    }
 
     let mut ctx = Context::new();
     let mut insts = Vec::new();
@@ -482,8 +512,6 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
     insts.push(Instruction::nop());
 
     for fun in funcs {
-        add_label(&mut ctx, &mut insts, fun.name);
-
         ctx.reset_on_fun();
 
         for (i, (arg, _)) in fun.args.iter().enumerate() {
@@ -492,6 +520,8 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
 
         for bb in fun.basic_blocks {
             let bb = ir_ctx.bb_arena.get(bb).unwrap();
+
+            add_label(&mut ctx, &mut insts, bb.label.clone());
 
             for i::AnnotatedInstr {
                 result,
@@ -626,7 +656,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
         })
         .collect::<Vec<Instruction>>();
 
-    // dump_instructions(&mut ctx, &insts);
+    dump_instructions(&mut ctx, &insts);
 
     let result = insts
         .into_iter()
