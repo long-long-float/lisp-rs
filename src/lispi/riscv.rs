@@ -20,6 +20,7 @@ enum Instruction {
 
 impl Instruction {
     // Pseudo instructions
+
     fn mv(rd: Register, rs1: Register) -> Instruction {
         Instruction::R(RInstruction {
             op: RInstructionOp::Add,
@@ -53,6 +54,35 @@ impl Instruction {
             imm: Immediate::new(0, XLEN),
             rs1: Register::zero(),
             rd: Register::zero(),
+        })
+    }
+
+    // Frequently used instructions
+
+    fn sw(rs2: Register, rs1: Register, imm: Immediate) -> Instruction {
+        Instruction::S(SInstruction {
+            op: SInstructionOp::Sw,
+            rs1,
+            rs2,
+            imm,
+        })
+    }
+
+    fn lw(rs1: Register, rd: Register, imm: Immediate) -> Instruction {
+        Instruction::I(IInstruction {
+            op: IInstructionOp::Lw,
+            rs1,
+            rd,
+            imm,
+        })
+    }
+
+    fn addi(rd: Register, rs1: Register, imm: Immediate) -> Instruction {
+        Instruction::I(IInstruction {
+            op: IInstructionOp::Addi,
+            rs1,
+            rd,
+            imm,
         })
     }
 }
@@ -97,6 +127,7 @@ enum IInstructionOp {
     Addi,
     Jalr,
     Ecall,
+    Lw,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -153,6 +184,7 @@ impl GenerateCode for IInstruction {
             Addi => (0b000, 0b0010011),
             Jalr => (0b000, 0b1100111),
             Ecall => (0b000, 0b1110011),
+            Lw => (0b010, 0b0000011),
         };
 
         let rd = self.rd.as_int();
@@ -242,6 +274,36 @@ impl Register {
 
     fn ra() -> Register {
         Register::Integer(1)
+    }
+
+    fn sp() -> Register {
+        Register::Integer(2)
+    }
+
+    fn gp() -> Register {
+        Register::Integer(3)
+    }
+
+    fn tp() -> Register {
+        Register::Integer(4)
+    }
+
+    fn t(i: u32) -> Register {
+        match i {
+            0..=2 => Register::Integer(5 + i),
+            3.. => Register::Integer(28 - 3 + i),
+        }
+    }
+
+    fn fp() -> Register {
+        Self::s(0)
+    }
+
+    fn s(i: u32) -> Register {
+        match i {
+            0 | 1 => Register::Integer(8 + i),
+            2.. => Register::Integer(18 - 2 + i),
+        }
     }
 
     fn a(i: u32) -> Register {
@@ -450,6 +512,47 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
         ctx.label_addrs.insert(label, insts.len() as i32);
     }
 
+    fn add_fun_header(insts: &mut Vec<Instruction>) {
+        insts.push(Instruction::addi(
+            Register::sp(),
+            Register::sp(),
+            Immediate::new(-8, XLEN),
+        ));
+        insts.push(Instruction::sw(
+            Register::ra(),
+            Register::sp(),
+            Immediate::new(0, XLEN),
+        ));
+        insts.push(Instruction::sw(
+            Register::s(0),
+            Register::sp(),
+            Immediate::new(4, XLEN),
+        ));
+        insts.push(Instruction::addi(
+            Register::s(0),
+            Register::sp(),
+            Immediate::new(8, XLEN),
+        ));
+    }
+
+    fn add_fun_footer(insts: &mut Vec<Instruction>) {
+        insts.push(Instruction::lw(
+            Register::s(0),
+            Register::sp(),
+            Immediate::new(4, XLEN),
+        ));
+        insts.push(Instruction::lw(
+            Register::s(0),
+            Register::sp(),
+            Immediate::new(4, XLEN),
+        ));
+        insts.push(Instruction::addi(
+            Register::sp(),
+            Register::sp(),
+            Immediate::new(8, XLEN),
+        ));
+    }
+
     use Instruction::*;
 
     // Remove phi nodes
@@ -501,7 +604,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
         }
     }
 
-    printlnuw("Remove phi nodes");
+    printlnuw("Remove phi nodes:");
     for fun in &funcs {
         fun.dump(&ir_ctx.bb_arena);
     }
@@ -518,10 +621,14 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
             ctx.reg_map.insert(arg.clone(), Register::a(i as u32));
         }
 
-        for bb in fun.basic_blocks {
+        for (bbi, bb) in fun.basic_blocks.into_iter().enumerate() {
             let bb = ir_ctx.bb_arena.get(bb).unwrap();
 
             add_label(&mut ctx, &mut insts, bb.label.clone());
+
+            if bbi == 0 {
+                add_fun_header(&mut insts);
+            }
 
             for i::AnnotatedInstr {
                 result,
@@ -612,6 +719,8 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
                 }
             }
         }
+
+        add_fun_footer(&mut insts);
     }
 
     insts[0] = Instruction::li(Register::ra(), Immediate::new(insts.len() as i32 * 4, XLEN));
