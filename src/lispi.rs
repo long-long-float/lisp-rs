@@ -28,6 +28,7 @@ use crate::lispi::{
     typer as ty,
 };
 
+use self::console::printlnuw;
 use self::{
     environment::Environment,
     evaluator::Value,
@@ -184,13 +185,26 @@ pub fn compile(program: Vec<String>) -> Result<()> {
     let mut ir_ctx = ir::IrContext::new();
 
     let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
+    printlnuw("Raw IR instructions:");
     for fun in &funcs {
         fun.dump(&ir_ctx.bb_arena);
     }
-    let funcs = opt::constant_folding::optimize(funcs, &mut ir_ctx)?;
+    printlnuw("");
+
+    opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
+    printlnuw("Remove duplicated assignments:");
     for fun in &funcs {
         fun.dump(&ir_ctx.bb_arena);
     }
+    printlnuw("");
+
+    opt::constant_folding::optimize(&funcs, &mut ir_ctx)?;
+    printlnuw("Constant folding:");
+    for fun in &funcs {
+        fun.dump(&ir_ctx.bb_arena);
+    }
+    printlnuw("");
+
     let codes = riscv::generate_code(funcs, &mut ir_ctx)?;
 
     let big_endian = true;

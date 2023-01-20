@@ -19,7 +19,7 @@ $ cargo test
 
 - [x] Run FizzBuzz
 - [x] Draw Mandelbrot set
-- [ ] Support statically type system with inference.
+- [x] Support statically type system with inference.
 - [ ] Compiler for RISC-V
 - [ ] Implement a lisp interpreter running in lisp-rs.
 

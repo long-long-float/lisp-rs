@@ -239,7 +239,7 @@ impl Function {
 pub type Instructions = Vec<AnnotatedInstr>;
 pub type Functions = Vec<Function>;
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Operand {
     Variable(Variable),
     Immediate(Immediate),
@@ -274,7 +274,7 @@ impl Display for CmpOperator {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Label {
     pub name: String,
 }
@@ -296,7 +296,7 @@ impl Display for Variable {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Immediate {
     Integer(i32),
     Boolean(bool),

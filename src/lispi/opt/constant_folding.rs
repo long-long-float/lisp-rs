@@ -300,15 +300,11 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
     Ok(())
 }
 
-pub fn optimize(funcs: Functions, ir_ctx: &mut IrContext) -> Result<Functions> {
-    funcs
-        .iter()
-        .map(|f| {
-            fold_constants_insts(f, ir_ctx)?;
-            remove_deadcode(f, ir_ctx)?;
-            Ok(())
-        })
-        .collect::<Result<Vec<_>>>()?;
+pub fn optimize(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
+    for fun in funcs {
+        fold_constants_insts(fun, ir_ctx)?;
+        remove_deadcode(fun, ir_ctx)?;
+    }
 
-    Ok(funcs)
+    Ok(())
 }
