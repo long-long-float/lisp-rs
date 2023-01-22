@@ -281,8 +281,11 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
 
                     Some(I::Call { fun, args })
                 }
+                I::Ret(op) => {
+                    Some(I::Ret(fold_imm(&mut ctx, op)))
+                }
 
-                I::Jump(_, _) | I::Ret(_) | I::Phi(_) | I::Label(_) => Some(inst),
+                I::Jump(_, _) | I::Phi(_) | I::Label(_) => Some(inst),
             };
 
             if let Some(inst) = inst {

@@ -125,7 +125,11 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
                     I::Call { fun, args }
                 }
 
-                I::Jump(_, _) | I::Ret(_) | I::Phi(_) | I::Label(_) => inst,
+                I::Ret(op) => {
+                    I::Ret(replace_var(&ctx, op))
+                }
+
+                I::Jump(_, _) | I::Phi(_) | I::Label(_) => inst,
             };
 
             result.push(AnnotatedInstr {
