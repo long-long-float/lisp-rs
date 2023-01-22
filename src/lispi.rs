@@ -1,6 +1,7 @@
 pub mod console;
 pub mod error;
 
+pub mod ir;
 pub mod opt;
 
 pub mod ast;
@@ -8,17 +9,31 @@ pub mod environment;
 pub mod evaluator;
 pub mod macro_expander;
 pub mod parser;
+pub mod riscv;
 pub mod tokenizer;
 pub mod typer;
+
+pub mod unique_generator;
+
+use object::elf::*;
+use object::write::elf::{FileHeader, ProgramHeader, Writer};
+use object::write::StreamingBuffer;
+use object::Endianness;
+use std::{fs::File, io::BufWriter, io::Write};
 
 use anyhow::Result;
 
 use crate::lispi::{
-    environment as env, evaluator as e, macro_expander as m,
-    parser as p, tokenizer as t, typer as ty,
+    environment as env, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
+    typer as ty,
 };
 
-use self::parser::SymbolTable;
+use self::console::printlnuw;
+use self::{
+    environment::Environment,
+    evaluator::Value,
+    parser::{Program, SymbolTable},
+};
 
 #[derive(Clone, Debug)]
 pub struct SymbolValue {
@@ -125,16 +140,7 @@ impl std::fmt::Display for LocationRange {
     }
 }
 
-/// Run the program as following steps.
-/// ```text
-/// Program as text --(tokenize)-->
-///   Tokens --(parse)-->
-///   Abstract Syntax Tree (AST) --(eval_program)-->
-///   Evaluated result value
-/// ```
-///
-/// Functions of each steps return Result to express errors.
-pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
+pub fn frontend(program: Vec<String>) -> Result<(Program, Environment<Value>, SymbolTable)> {
     // println!("{:#?}", program);
     let tokens = t::tokenize(program)?;
     // println!("{:#?}", tokens);
@@ -156,7 +162,97 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
     // for ast in &program {
     //     println!("{}", ast);
     // }
+    Ok((program, env, sym_table))
+}
+
+/// Run the program as following steps.
+/// ```text
+/// Program as text --(tokenize)-->
+///   Tokens --(parse)-->
+///   Abstract Syntax Tree (AST) --(eval_program)-->
+///   Evaluated result value
+/// ```
+///
+/// Functions of each steps return Result to express errors.
+pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
+    let (program, mut env, _) = frontend(program)?;
     e::eval_program(&program, &mut env)
+}
+
+pub fn compile(program: Vec<String>) -> Result<()> {
+    let (program, mut _env, sym_table) = frontend(program)?;
+
+    let mut ir_ctx = ir::IrContext::new();
+
+    let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
+    printlnuw("Raw IR instructions:");
+    for fun in &funcs {
+        fun.dump(&ir_ctx.bb_arena);
+    }
+    printlnuw("");
+
+    opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
+    printlnuw("Remove duplicated assignments:");
+    for fun in &funcs {
+        fun.dump(&ir_ctx.bb_arena);
+    }
+    printlnuw("");
+
+    opt::constant_folding::optimize(&funcs, &mut ir_ctx)?;
+    printlnuw("Constant folding:");
+    for fun in &funcs {
+        fun.dump(&ir_ctx.bb_arena);
+    }
+    printlnuw("");
+
+    let codes = riscv::generate_code(funcs, &mut ir_ctx)?;
+
+    let big_endian = true;
+
+    let mut codes = codes
+        .into_iter()
+        .map(|code| {
+            let mut codes = code.to_be_bytes();
+            if big_endian {
+                codes.reverse();
+            }
+            codes
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+
+    let mut output = StreamingBuffer::new(BufWriter::new(File::create("out.elf")?));
+    let mut writer = Writer::new(Endianness::Little, false, &mut output);
+    // References: https://keens.github.io/blog/2020/04/12/saishougennoelf/
+    writer.reserve_file_header();
+    writer.reserve_program_headers(1);
+
+    let p_offset = writer.reserve(codes.len(), 4) as u64;
+
+    writer.write_file_header(&FileHeader {
+        os_abi: 0x00,
+        abi_version: 0x00,
+        e_type: ET_EXEC,
+        e_machine: EM_RISCV,
+        e_entry: 0x000000,
+        e_flags: 0x00,
+    })?;
+    writer.write_program_header(&ProgramHeader {
+        p_type: PT_LOAD,
+        p_flags: 0x05,
+        p_offset,
+        p_vaddr: 0x000000,
+        p_paddr: 0x000000,
+        p_filesz: codes.len() as u64,
+        p_memsz: codes.len() as u64,
+        p_align: 0x200000,
+    });
+    writer.write(&codes);
+
+    let mut output = File::create("out.bin")?;
+    output.write_all(&mut codes)?;
+
+    Ok(())
 }
 
 pub fn interpret_with_env(

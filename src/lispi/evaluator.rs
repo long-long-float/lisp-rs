@@ -4,6 +4,7 @@ use super::{
     ast::*, console::*, environment::*, error::*, parser::*, typer::*, SymbolValue, TokenLocation,
 };
 
+#[macro_export]
 macro_rules! bug {
     () => {
         bug!("".to_string())
@@ -11,6 +12,19 @@ macro_rules! bug {
     ( $msg:expr ) => {
         Error::Bug {
             message: $msg,
+            file: file!(),
+            line: line!(),
+        }
+        .with_null_location()
+        .into()
+    };
+}
+
+#[macro_export]
+macro_rules! unimplemented {
+    () => {
+        Error::Bug {
+            message: "Unimplemented".to_string(),
             file: file!(),
             line: line!(),
         }
@@ -500,7 +514,7 @@ fn apply_function(
                 }
                 "display" => {
                     for arg in args {
-                        print!("{}", arg);
+                        printuw(arg);
                     }
                     Ok(Value::nil())
                 }
@@ -788,11 +802,9 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 }
             }
 
-            Err(
-                Error::Eval(format!("A variable `{}` is not defined!", value.value))
-                    .with_location(ast.location)
-                    .into(),
-            )
+            Err(Error::UndefinedVariable(value.value.clone())
+                .with_location(ast.location)
+                .into())
         }
         _ => Ok(Value::from(&ast.ast)),
     }
@@ -987,6 +999,16 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
         |_| {
             newlineuw();
             Ok(Value::List(vec![]))
+        },
+    );
+    insert_function(
+        env,
+        ty_env,
+        s("io-write"),
+        Type::function(vec![Type::Int, Type::Int], Type::Nil),
+        |_| {
+            printlnuw("Cannot call io-write in interpreter mode.");
+            Ok(Value::nil())
         },
     );
 

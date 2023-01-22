@@ -387,9 +387,9 @@ impl AnnotatedAst {
         }
     }
 
-    pub fn traverse<F, A>(self, ctx: &A, func: F) -> Result<Self>
+    pub fn traverse<F, A>(self, ctx: &mut A, func: F) -> Result<Self>
     where
-        F: Fn(Self, &A) -> Result<Self>,
+        F: Fn(Self, &mut A) -> Result<Self>,
     {
         let AnnotatedAst { ast, location, ty } = self;
         let ast = match ast {

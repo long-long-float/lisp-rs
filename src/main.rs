@@ -12,7 +12,7 @@ use std::io::{self, stdout, BufRead};
 use std::path::Path;
 
 use lisp_rs::lispi::error::ErrorWithLocation;
-use lisp_rs::lispi::interpret;
+use lisp_rs::lispi::*;
 use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e, parser as p};
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
@@ -23,6 +23,9 @@ struct Cli {
     /// Path of the script. If this option is not specified, it will run in REPL mode.
     #[clap(value_parser)]
     filename: Option<String>,
+
+    #[clap(short, long, action = clap::ArgAction::Count)]
+    compile: u8,
 }
 
 fn main() -> Result<()> {
@@ -31,14 +34,23 @@ fn main() -> Result<()> {
     if let Some(filename) = cli.filename {
         // Run the program from file
         let lines = read_lines(&filename)?;
-        let result = interpret(lines.clone());
-        match result {
-            Ok(result) => {
-                if let Some((result, ty)) = result.last() {
-                    println!("{}: {}", result, ty);
-                }
+
+        if cli.compile > 0 {
+            let result = compile(lines.clone());
+            match result {
+                Ok(_) => {}
+                Err(err) => show_error(err, filename, lines),
             }
-            Err(err) => show_error(err, filename, lines),
+        } else {
+            let result = interpret(lines.clone());
+            match result {
+                Ok(result) => {
+                    if let Some((result, ty)) = result.last() {
+                        println!("{}: {}", result, ty);
+                    }
+                }
+                Err(err) => show_error(err, filename, lines),
+            }
         }
     } else {
         // REPL mode

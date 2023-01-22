@@ -88,7 +88,7 @@ fn take_while(
     pred: fn(char) -> bool,
 ) -> Vec<String> {
     let mut buf = Vec::new();
-    while let Some(ch) = current_char(line, loc) {
+    while let Ok(ch) = current_char(line, loc) {
         if !pred(ch) {
             break;
         }
@@ -105,27 +105,24 @@ fn take_expected(
     loc: &mut Location,
     expected: char,
 ) -> Result<()> {
-    if let Some(c) = current_char(line, loc) {
-        if c == expected {
-            succ(program, line, loc);
-            Ok(())
-        } else {
-            Err(Error::Tokenize(format!("Unexpected {}", c))
-                .with_single_location(loc.clone())
-                .into())
-        }
+    let c = current_char(line, loc)?;
+    if c == expected {
+        succ(program, line, loc);
+        Ok(())
     } else {
-        Err(Error::Tokenize("Unexpected EOF".to_string())
+        Err(Error::Tokenize(format!("Unexpected {}", c))
             .with_single_location(loc.clone())
             .into())
     }
 }
 
-fn current_char(line: &Vec<char>, loc: &Location) -> Option<char> {
+fn current_char(line: &Vec<char>, loc: &Location) -> Result<char> {
     if let Some(ch) = line.get(loc.column) {
-        Some(*ch)
+        Ok(*ch)
     } else {
-        None
+        Err(Error::Tokenize("Unexpected EOF".to_string())
+            .with_single_location(loc.clone())
+            .into())
     }
 }
 
@@ -147,7 +144,7 @@ fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Locatio
     let result = loc.clone();
 
     let c = current_char(&line, loc);
-    let nl = if let Some(c) = c {
+    let nl = if let Ok(c) = c {
         if c == '\r' || c == '\n' {
             true
         } else {
@@ -171,20 +168,46 @@ fn tokenize_number(
     begin: Location,
     sign: bool,
 ) -> Result<TokenWithLocation> {
-    let int = take_while(program, line, loc, |c| c.is_ascii_digit());
-    let int = int.join("");
+    let head = current_char(line, loc)?;
 
-    if let Some('.') = current_char(line, loc) {
-        succ(program, line, loc);
-        let decimal = take_while(program, line, loc, |c| c.is_ascii_digit());
-        let decimal = decimal.join("");
-        let float = (int + "." + &decimal).parse::<f32>()?;
-        let float = if sign { float } else { -float };
-        Ok(Token::FloatLiteral(float).with_location(begin, loc.clone()))
-    } else {
-        let int = int.parse::<i32>()?;
-        let int = if sign { int } else { -int };
-        Ok(Token::IntegerLiteral(int).with_location(begin, loc.clone()))
+    match head {
+        '0' => {
+            // hex or binary
+            succ(program, line, loc);
+            let head = current_char(line, loc)?;
+            match head {
+                'x' | 'b' => {
+                    succ(program, line, loc);
+
+                    let int = take_while(program, line, loc, |c| c.is_ascii_hexdigit()).join("");
+                    let radix = if head == 'x' { 16 } else { 2 };
+                    let int = i32::from_str_radix(int.as_str(), radix)?;
+                    let int = if sign { int } else { -int };
+
+                    Ok(Token::IntegerLiteral(int).with_location(begin, loc.clone()))
+                }
+                _ => {
+                    // Just 0
+                    Ok(Token::IntegerLiteral(0).with_location(begin, loc.clone()))
+                }
+            }
+        }
+        _ => {
+            // ordinary integer
+            let int = take_while(program, line, loc, |c| c.is_ascii_digit()).join("");
+
+            if let Ok('.') = current_char(line, loc) {
+                succ(program, line, loc);
+                let decimal = take_while(program, line, loc, |c| c.is_ascii_digit()).join("");
+                let float = (int + "." + &decimal).parse::<f32>()?;
+                let float = if sign { float } else { -float };
+                Ok(Token::FloatLiteral(float).with_location(begin, loc.clone()))
+            } else {
+                let int = int.parse::<i32>()?;
+                let int = if sign { int } else { -int };
+                Ok(Token::IntegerLiteral(int).with_location(begin, loc.clone()))
+            }
+        }
     }
 }
 
@@ -206,7 +229,7 @@ fn tokenize_single<'a>(
     line: &'a mut Vec<char>,
     loc: &mut Location,
 ) -> Result<Option<TokenWithLocation>> {
-    if let Some(ch) = current_char(line, loc) {
+    if let Ok(ch) = current_char(line, loc) {
         let begin = loc.clone();
         let result = match ch {
             '(' => {
@@ -231,20 +254,15 @@ fn tokenize_single<'a>(
             }
             '#' => {
                 succ(program, line, loc);
-                let ret = match current_char(line, loc) {
-                    Some('t') => Token::BooleanLiteral(true),
-                    Some('f') => Token::BooleanLiteral(false),
-                    Some('\\') => {
+                let ret = match current_char(line, loc)? {
+                    't' => Token::BooleanLiteral(true),
+                    'f' => Token::BooleanLiteral(false),
+                    '\\' => {
                         succ(program, line, loc);
-                        let c = current_char(line, loc).ok_or(
-                            Error::Tokenize("Unexpected EOF".to_string())
-                                .with_single_location(loc.clone()),
-                        )?;
+                        let c = current_char(line, loc)?;
                         Token::CharLiteral(c)
                     }
-                    Some(c) => Err(Error::Tokenize(format!("Unexpected charactor {}", c))
-                        .with_single_location(loc.clone()))?,
-                    None => Err(Error::Tokenize("Unexpected EOF".to_string())
+                    c => Err(Error::Tokenize(format!("Unexpected charactor {}", c))
                         .with_single_location(loc.clone()))?,
                 };
                 succ(program, line, loc);
@@ -273,7 +291,7 @@ fn tokenize_single<'a>(
                 let op = current_char(line, loc).unwrap();
                 let end = succ(program, line, loc);
 
-                if let Some(ch) = current_char(line, loc) {
+                if let Ok(ch) = current_char(line, loc) {
                     if ch.is_ascii_digit() {
                         let sign = op == '+';
                         tokenize_number(program, line, loc, begin, sign)?
@@ -359,12 +377,29 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_number() {
+    fn test_tokenize_number_float() {
         assert_eq!(tok("3.14"), Token::FloatLiteral(3.14));
         assert_eq!(tok("3.0"), Token::FloatLiteral(3.0));
+    }
 
+    #[test]
+    fn test_tokenize_number_sign() {
         assert_eq!(tok("+3"), Token::IntegerLiteral(3));
         assert_eq!(tok("-3"), Token::IntegerLiteral(-3));
+    }
+
+    #[test]
+    fn test_tokenize_number_hex() {
+        assert_eq!(tok("0xFF"), Token::IntegerLiteral(255));
+        assert_eq!(tok("0xff"), Token::IntegerLiteral(255));
+
+        assert_eq!(tok("-0xff"), Token::IntegerLiteral(-255));
+    }
+
+    #[test]
+    fn test_tokenize_number_bin() {
+        assert_eq!(tok("0b0110"), Token::IntegerLiteral(6));
+        assert_eq!(tok("-0b0110"), Token::IntegerLiteral(-6));
     }
 
     #[test]
