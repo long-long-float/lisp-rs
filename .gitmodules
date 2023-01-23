@@ -1,0 +1,3 @@
+[submodule "rv32emu"]
+	path = rv32emu
+	url = https://github.com/long-long-float/rv32emu.git
