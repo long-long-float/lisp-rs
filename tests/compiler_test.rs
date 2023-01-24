@@ -4,10 +4,10 @@ use std::process::Command;
 use lisp_rs::lispi::compile;
 use serde_json::Value;
 
-#[test]
-#[cfg(feature = "rv32emu-test")]
-fn basic_compiler_test() {
-    assert_eq!(true, compile(vec!["42".to_string()]).is_ok());
+fn compile_and_run(program: &str) -> Value {
+    let program = program.split('\n').map(|l| l.to_string()).collect();
+
+    assert_eq!(true, compile(program).is_ok());
     assert_eq!(true, Path::new("out.bin").exists());
     assert_eq!(true, Path::new("out.elf").exists());
 
@@ -19,7 +19,20 @@ fn basic_compiler_test() {
     assert_eq!(true, output.status.success());
 
     let registers: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(Some(0), registers["x0"].as_i64());
-    assert_eq!(Some(40), registers["x1"].as_i64());
-    // TODO: Check all registers
+    println!("{:#?}", registers);
+    registers
+}
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn just_return_42() {
+    let registers = compile_and_run("42");
+    assert_eq!(Some(42), registers["x10"].as_i64());
+}
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn add_1_plus_2() {
+    let registers = compile_and_run("(+ 1 2)");
+    assert_eq!(Some(3), registers["x10"].as_i64());
 }

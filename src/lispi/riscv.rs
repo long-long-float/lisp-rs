@@ -92,7 +92,13 @@ impl Display for Instruction {
         use Instruction::*;
         match self {
             R(ri) => write!(f, "{:?} {} {} {}", ri.op, ri.rd, ri.rs1, ri.rs2),
-            I(ii) => write!(f, "{:?} {} {} {}", ii.op, ii.rd, ii.rs1, ii.imm),
+            I(ii) => {
+                if ii.is_nop() {
+                    write!(f, "Nop")
+                } else {
+                    write!(f, "{:?} {} {} {}", ii.op, ii.rd, ii.rs1, ii.imm)
+                }
+            }
             S(si) => write!(f, "{:?} {} {} {}", si.op, si.rs1, si.imm, si.rs2),
             J(ji) => write!(f, "{:?} {} {}", ji.op, ji.rd, ji.imm),
         }
@@ -119,6 +125,15 @@ struct IInstruction {
     imm: Immediate,
     rs1: Register,
     rd: Register,
+}
+
+impl IInstruction {
+    fn is_nop(&self) -> bool {
+        self.op == IInstructionOp::Addi
+            && self.imm.value == 0
+            && self.rs1.is_zero()
+            && self.rd.is_zero()
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -272,6 +287,10 @@ impl Register {
         Register::Integer(0)
     }
 
+    fn is_zero(&self) -> bool {
+        self.as_int() == 0
+    }
+
     fn ra() -> Register {
         Register::Integer(1)
     }
@@ -314,7 +333,8 @@ impl Register {
         if let Register::Integer(i) = self {
             *i
         } else {
-            0
+            // Invalid value
+            99
         }
     }
 }
@@ -657,6 +677,9 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
                     }
                     Ret(op) => {
                         load_operand_to(&mut ctx, &mut insts, op, Register::a(0));
+
+                        add_fun_footer(&mut insts);
+
                         insts.push(Instruction::ret());
                     }
                     Add(left, right) => {
@@ -719,8 +742,6 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
                 }
             }
         }
-
-        add_fun_footer(&mut insts);
     }
 
     insts[0] = Instruction::li(Register::ra(), Immediate::new(insts.len() as i32 * 4, XLEN));
@@ -728,7 +749,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
     insts.push(Instruction::nop());
 
     // syscall EXIT on rv32emu
-    insts.push(Instruction::li(Register::a(0), Immediate::new(0, XLEN)));
+    // insts.push(Instruction::li(Register::a(0), Immediate::new(0, XLEN)));
     insts.push(Instruction::li(Register::a(7), Immediate::new(93, XLEN)));
     insts.push(I(IInstruction {
         op: IInstructionOp::Ecall,
