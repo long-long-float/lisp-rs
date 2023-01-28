@@ -7,6 +7,8 @@ This is a lisp interpreter written in Rust.
 $ cargo run -r examples/mandelbrot.scm
 ```
 
+![mandelbrot](./examples/mandelbrot.png)
+
 To compile for RISC-V 32, use a option `-c`. 
 
 The compiler outputs `out.bin` and `out.elf`. 
@@ -19,15 +21,21 @@ Note that it is experimental, therefore the compiler fails or outputs invalid co
 $ cargo run -r -- -c source.scm
 ```
 
-![mandelbrot](./examples/mandelbrot.png)
-
-Run tests by
+## Testing
 
 ```
 $ cargo test
 ```
 
-It has following features.
+To test the compiler, add a feature flag `rv32emu-test`.
+
+Note that it uses [rv32emu](https://github.com/long-long-float/rv32emu.git) as a submodule.
+
+```
+$ cargo test --features rv32emu-test
+```
+
+## Features
 
 - Basic form and functions (define, if, +, -...)
 - Macros
@@ -37,7 +45,7 @@ It has following features.
 - Optimizing tail recursion
 - Generate code for RISC-V (WIP)
 
-# Milestones
+## Milestones
 
 - [x] Run FizzBuzz
 - [x] Draw Mandelbrot set
@@ -45,7 +53,7 @@ It has following features.
 - [ ] Compiler for RISC-V
 - [ ] Implement a lisp interpreter running in lisp-rs.
 
-# Reference
+## Reference
 
 * https://schemers.org/Documents/Standards/R5RS/HTML/
 * https://cs61a.org/articles/scheme-spec/
