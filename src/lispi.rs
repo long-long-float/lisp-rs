@@ -179,33 +179,40 @@ pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
     e::eval_program(&program, &mut env)
 }
 
-pub fn compile(program: Vec<String>) -> Result<()> {
+pub fn compile(program: Vec<String>, dump: bool) -> Result<()> {
     let (program, mut _env, sym_table) = frontend(program)?;
 
     let mut ir_ctx = ir::IrContext::new();
 
     let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
-    printlnuw("Raw IR instructions:");
-    for fun in &funcs {
-        fun.dump(&ir_ctx.bb_arena);
+
+    if dump {
+        printlnuw("Raw IR instructions:");
+        for fun in &funcs {
+            fun.dump(&ir_ctx.bb_arena);
+        }
+        printlnuw("");
     }
-    printlnuw("");
 
     opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
-    printlnuw("Remove duplicated assignments:");
-    for fun in &funcs {
-        fun.dump(&ir_ctx.bb_arena);
+    if dump {
+        printlnuw("Remove duplicated assignments:");
+        for fun in &funcs {
+            fun.dump(&ir_ctx.bb_arena);
+        }
+        printlnuw("");
     }
-    printlnuw("");
 
     opt::constant_folding::optimize(&funcs, &mut ir_ctx)?;
-    printlnuw("Constant folding:");
-    for fun in &funcs {
-        fun.dump(&ir_ctx.bb_arena);
+    if dump {
+        printlnuw("Constant folding:");
+        for fun in &funcs {
+            fun.dump(&ir_ctx.bb_arena);
+        }
+        printlnuw("");
     }
-    printlnuw("");
 
-    let codes = riscv::generate_code(funcs, &mut ir_ctx)?;
+    let codes = riscv::generate_code(funcs, &mut ir_ctx, dump)?;
 
     let big_endian = true;
 

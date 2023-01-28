@@ -24,8 +24,11 @@ struct Cli {
     #[clap(value_parser)]
     filename: Option<String>,
 
-    #[clap(short, long, action = clap::ArgAction::Count)]
-    compile: u8,
+    #[clap(short, long, action = clap::ArgAction::SetTrue)]
+    compile: bool,
+
+    #[clap(short, long, action = clap::ArgAction::SetTrue)]
+    dump: bool,
 }
 
 fn main() -> Result<()> {
@@ -35,8 +38,8 @@ fn main() -> Result<()> {
         // Run the program from file
         let lines = read_lines(&filename)?;
 
-        if cli.compile > 0 {
-            let result = compile(lines.clone());
+        if cli.compile {
+            let result = compile(lines.clone(), cli.dump);
             match result {
                 Ok(_) => {}
                 Err(err) => show_error(err, filename, lines),

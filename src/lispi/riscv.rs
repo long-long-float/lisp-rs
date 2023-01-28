@@ -505,7 +505,7 @@ fn generate_code_bin_op(
     Ok(())
 }
 
-pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Codes> {
+pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) -> Result<Codes> {
     fn load_operand_to(
         ctx: &mut Context,
         insts: &mut Vec<Instruction>,
@@ -624,9 +624,11 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
         }
     }
 
-    printlnuw("Remove phi nodes:");
-    for fun in &funcs {
-        fun.dump(&ir_ctx.bb_arena);
+    if dump {
+        printlnuw("Remove phi nodes:");
+        for fun in &funcs {
+            fun.dump(&ir_ctx.bb_arena);
+        }
     }
 
     let mut ctx = Context::new();
@@ -786,7 +788,9 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext) -> Result<Code
         })
         .collect::<Vec<Instruction>>();
 
-    dump_instructions(&mut ctx, &insts);
+    if dump {
+        dump_instructions(&mut ctx, &insts);
+    }
 
     let result = insts
         .into_iter()
