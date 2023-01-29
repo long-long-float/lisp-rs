@@ -16,7 +16,7 @@ pub mod typer;
 pub mod unique_generator;
 
 use object::elf::*;
-use object::write::elf::{FileHeader, ProgramHeader, Writer};
+use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Writer};
 use object::write::StreamingBuffer;
 use object::Endianness;
 use std::{fs::File, io::BufWriter, io::Write};
@@ -236,6 +236,14 @@ pub fn compile(program: Vec<String>, dump: bool) -> Result<()> {
 
     let p_offset = writer.reserve(codes.len(), 4) as u64;
 
+    let text_str = writer.add_section_name(".text".as_bytes());
+
+    writer.reserve_shstrtab_section_index();
+
+    writer.reserve_shstrtab();
+    writer.reserve_section_index();
+    writer.reserve_section_headers();
+
     writer.write_file_header(&FileHeader {
         os_abi: 0x00,
         abi_version: 0x00,
@@ -255,6 +263,22 @@ pub fn compile(program: Vec<String>, dump: bool) -> Result<()> {
         p_align: 0x200000,
     });
     writer.write(&codes);
+    writer.write_shstrtab();
+
+    writer.write_null_section_header();
+    writer.write_shstrtab_section_header();
+    writer.write_section_header(&SectionHeader {
+        name: Some(text_str),
+        sh_type: SHT_PROGBITS,
+        sh_flags: SHF_EXECINSTR as u64,
+        sh_addr: 0x000000,
+        sh_offset: p_offset,
+        sh_size: codes.len() as u64,
+        sh_link: 0,
+        sh_info: 0,
+        sh_addralign: 0x200000,
+        sh_entsize: 0,
+    });
 
     let mut output = File::create("out.bin")?;
     output.write_all(&mut codes)?;
