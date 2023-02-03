@@ -232,10 +232,14 @@ impl GenerateCode for JInstruction {
         use JInstructionOp::*;
 
         let imm = self.imm.value();
+        assert!(imm & 1 == 0);
+        let imm = imm >> 1;
+        // println!("{imm:#022b}");
         let imm = (imm & (0b1 << 19))
-            | (imm & 0b1111_1111_11) << 11
-            | (imm & (0b1 << 10))
-            | (imm & 0b1111_1111) >> 11;
+            | (imm & 0b1111_1111_11) << 9
+            | (imm & (0b1 << 8))
+            | (imm & 0b1111_1111) >> 9;
+        // println!("{imm:#022b}");
 
         let rd = self.rd.as_int();
 
@@ -634,8 +638,6 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
     let mut ctx = Context::new();
     let mut insts = Vec::new();
 
-    //insts.push(Instruction::nop());
-
     for fun in funcs {
         ctx.reset_on_fun();
 
@@ -758,10 +760,6 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
             }
         }
     }
-
-    //insts[0] = Instruction::li(Register::ra(), Immediate::new(insts.len() as i32 * 4, XLEN));
-
-    //insts.push(Instruction::nop());
 
     // Resolving label addresses
 
