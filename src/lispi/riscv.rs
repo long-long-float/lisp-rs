@@ -634,7 +634,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
     let mut ctx = Context::new();
     let mut insts = Vec::new();
 
-    insts.push(Instruction::nop());
+    //insts.push(Instruction::nop());
 
     for fun in funcs {
         ctx.reset_on_fun();
@@ -680,9 +680,21 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
                     Ret(op) => {
                         load_operand_to(&mut ctx, &mut insts, op, Register::a(0));
 
-                        add_fun_footer(&mut insts);
+                        if fun.name == "main" {
+                            // syscall EXIT on rv32emu
+                            // insts.push(Instruction::li(Register::a(0), Immediate::new(0, XLEN)));
+                            insts.push(Instruction::li(Register::a(7), Immediate::new(93, XLEN)));
+                            insts.push(I(IInstruction {
+                                op: IInstructionOp::Ecall,
+                                imm: Immediate::new(0, XLEN),
+                                rs1: Register::zero(),
+                                rd: Register::zero(),
+                            }));
+                        } else {
+                            add_fun_footer(&mut insts);
 
-                        insts.push(Instruction::ret());
+                            insts.push(Instruction::ret());
+                        }
                     }
                     Add(left, right) => {
                         generate_code_bin_op(
@@ -730,6 +742,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
                                 imm: RelAddress::Label(label),
                                 rd: Register::ra(),
                             }));
+                            insts.push(Instruction::mv(result_reg, Register::a(0)));
                         } else {
                             todo!()
                         }
@@ -746,21 +759,9 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
         }
     }
 
-    insts[0] = Instruction::li(Register::ra(), Immediate::new(insts.len() as i32 * 4, XLEN));
+    //insts[0] = Instruction::li(Register::ra(), Immediate::new(insts.len() as i32 * 4, XLEN));
 
-    insts.push(Instruction::nop());
-
-    // syscall EXIT on rv32emu
-    // insts.push(Instruction::li(Register::a(0), Immediate::new(0, XLEN)));
-    insts.push(Instruction::li(Register::a(7), Immediate::new(93, XLEN)));
-    insts.push(I(IInstruction {
-        op: IInstructionOp::Ecall,
-        imm: Immediate::new(0, XLEN),
-        rs1: Register::zero(),
-        rd: Register::zero(),
-    }));
-
-    // dump_instructions(&mut ctx, &insts);
+    //insts.push(Instruction::nop());
 
     // Resolving label addresses
 
