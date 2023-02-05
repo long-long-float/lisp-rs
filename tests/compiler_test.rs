@@ -39,7 +39,20 @@ fn add_1_plus_2() {
 
 #[test]
 #[cfg(feature = "rv32emu-test")]
-fn function1() {
+fn variables() {
+    let registers = compile_and_run(
+        r#"
+(define x 10)
+(set! x 20)
+x
+"#,
+    );
+    assert_eq!(Some(20), registers["x10"].as_i64());
+}
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn define_function_and_call() {
     let registers = compile_and_run(
         r#"
 (define double (lambda (x) (+ x x)))
@@ -47,4 +60,30 @@ fn function1() {
 "#,
     );
     assert_eq!(Some(42), registers["x10"].as_i64());
+
+    let registers = compile_and_run(
+        r#"
+(define f (lambda (x) (+ x x)))
+(define g (lambda (x) (+ (f x) (f x))))
+(double 4)
+"#,
+    );
+    assert_eq!(Some(16), registers["x10"].as_i64());
+
+    let registers = compile_and_run("((lambda (x) (* x x)) 5)");
+    assert_eq!(Some(25), registers["x10"].as_i64());
+}
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn define_recursive_function_and_call() {
+    let registers = compile_and_run(
+        r#"
+(let fact ([x 4]) 
+  (if (= x 0)
+      1
+    (* x (fact (- x 1)))))
+"#,
+    );
+    assert_eq!(Some(24), registers["x10"].as_i64());
 }
