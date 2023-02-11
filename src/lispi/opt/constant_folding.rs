@@ -71,7 +71,9 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                 Instruction::Jump(_, _) | Instruction::Label(_) => {}
             }
 
-            if inst.is_label() || inst.is_terminal() || used_vars.contains(&var) {
+            let used = inst.is_label() || inst.is_terminal() || used_vars.contains(&var);
+
+            if !inst.is_removable() || used {
                 result.push(AnnotatedInstr {
                     result: var,
                     inst,
@@ -281,9 +283,7 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
 
                     Some(I::Call { fun, args })
                 }
-                I::Ret(op) => {
-                    Some(I::Ret(fold_imm(&mut ctx, op)))
-                }
+                I::Ret(op) => Some(I::Ret(fold_imm(&mut ctx, op))),
 
                 I::Jump(_, _) | I::Phi(_) | I::Label(_) => Some(inst),
             };

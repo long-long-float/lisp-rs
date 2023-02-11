@@ -44,6 +44,15 @@ impl Instruction {
         }
     }
 
+    pub fn is_removable(&self) -> bool {
+        use Instruction::*;
+
+        match self {
+            Store(_, _) | Call { .. } => false,
+            _ => !self.is_terminal(),
+        }
+    }
+
     pub fn has_result(&self) -> bool {
         use Instruction::*;
 
