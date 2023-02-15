@@ -1,13 +1,20 @@
 use std::path::Path;
 use std::process::Command;
 
+use lisp_rs::lispi::cli_option::CliOption;
 use lisp_rs::lispi::compile;
 use serde_json::Value;
 
 fn compile_and_run(program: &str) -> Value {
     let program = program.split('\n').map(|l| l.to_string()).collect();
 
-    assert_eq!(true, compile(program, false).is_ok());
+    let opt = CliOption {
+        filename: None,
+        compile: true,
+        dump: false,
+    };
+
+    assert_eq!(true, compile(program, &opt).is_ok());
     assert_eq!(true, Path::new("out.bin").exists());
     assert_eq!(true, Path::new("out.elf").exists());
 

@@ -11,41 +11,29 @@ use std::fs::File;
 use std::io::{self, stdout, BufRead};
 use std::path::Path;
 
+use lisp_rs::lispi::cli_option::CliOption;
 use lisp_rs::lispi::error::ErrorWithLocation;
 use lisp_rs::lispi::*;
 use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e, parser as p};
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
-#[derive(Parser)]
-#[clap(author, version, about, long_about=None)]
-/// An interpreter of Scheme (subset)
-struct Cli {
-    /// Path of the script. If this option is not specified, it will run in REPL mode.
-    #[clap(value_parser)]
-    filename: Option<String>,
-
-    #[clap(short, long, action = clap::ArgAction::SetTrue)]
-    compile: bool,
-
-    #[clap(short, long, action = clap::ArgAction::SetTrue)]
-    dump: bool,
-}
-
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = CliOption::parse();
 
-    if let Some(filename) = cli.filename {
+    if let Some(filename) = &cli.filename {
+        let filename = filename.to_owned();
+
         // Run the program from file
         let lines = read_lines(&filename)?;
 
         if cli.compile {
-            let result = compile(lines.clone(), cli.dump);
+            let result = compile(lines.clone(), &cli);
             match result {
                 Ok(_) => {}
                 Err(err) => show_error(err, filename, lines),
             }
         } else {
-            let result = interpret(lines.clone());
+            let result = interpret(lines.clone(), &cli);
             match result {
                 Ok(result) => {
                     if let Some((result, ty)) = result.last() {

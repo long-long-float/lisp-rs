@@ -15,6 +15,8 @@ pub mod typer;
 
 pub mod unique_generator;
 
+pub mod cli_option;
+
 use object::elf::*;
 use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Writer};
 use object::write::StreamingBuffer;
@@ -23,6 +25,7 @@ use std::{fs::File, io::BufWriter, io::Write};
 
 use anyhow::Result;
 
+use crate::lispi::cli_option::CliOption;
 use crate::lispi::{
     environment as env, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
     typer as ty,
@@ -140,13 +143,28 @@ impl std::fmt::Display for LocationRange {
     }
 }
 
-pub fn frontend(program: Vec<String>) -> Result<(Program, Environment<Value>, SymbolTable)> {
-    // println!("{:#?}", program);
+pub fn frontend(
+    program: Vec<String>,
+    opt: &CliOption,
+) -> Result<(Program, Environment<Value>, SymbolTable)> {
     let tokens = t::tokenize(program)?;
-    // println!("{:#?}", tokens);
+
+    if opt.dump {
+        println!("Parsed AST:");
+        println!("{:#?}", tokens);
+        println!();
+    }
+
     let (program, mut sym_table) = p::parse(tokens)?;
-    // println!("{:#?}", program);
+
+    if opt.dump {
+        println!("Parsed AST:");
+        println!("{:#?}", program);
+        println!();
+    }
+
     let program = m::expand_macros(program, &mut sym_table)?;
+
     // println!("{:#?}", program);
     let mut env = env::Environment::new();
     let mut ty_env = env::Environment::new();
@@ -174,19 +192,19 @@ pub fn frontend(program: Vec<String>) -> Result<(Program, Environment<Value>, Sy
 /// ```
 ///
 /// Functions of each steps return Result to express errors.
-pub fn interpret(program: Vec<String>) -> Result<Vec<(e::Value, ty::Type)>> {
-    let (program, mut env, _) = frontend(program)?;
+pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value, ty::Type)>> {
+    let (program, mut env, _) = frontend(program, opt)?;
     e::eval_program(&program, &mut env)
 }
 
-pub fn compile(program: Vec<String>, dump: bool) -> Result<()> {
-    let (program, mut _env, sym_table) = frontend(program)?;
+pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
+    let (program, mut _env, sym_table) = frontend(program, &opt)?;
 
     let mut ir_ctx = ir::IrContext::new();
 
     let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
 
-    if dump {
+    if opt.dump {
         printlnuw("Raw IR instructions:");
         for fun in &funcs {
             fun.dump(&ir_ctx.bb_arena);
@@ -195,7 +213,7 @@ pub fn compile(program: Vec<String>, dump: bool) -> Result<()> {
     }
 
     opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
-    if dump {
+    if opt.dump {
         printlnuw("Remove duplicated assignments:");
         for fun in &funcs {
             fun.dump(&ir_ctx.bb_arena);
@@ -204,7 +222,7 @@ pub fn compile(program: Vec<String>, dump: bool) -> Result<()> {
     }
 
     opt::constant_folding::optimize(&funcs, &mut ir_ctx)?;
-    if dump {
+    if opt.dump {
         printlnuw("Constant folding:");
         for fun in &funcs {
             fun.dump(&ir_ctx.bb_arena);
@@ -212,7 +230,7 @@ pub fn compile(program: Vec<String>, dump: bool) -> Result<()> {
         printlnuw("");
     }
 
-    let codes = riscv::generate_code(funcs, &mut ir_ctx, dump)?;
+    let codes = riscv::generate_code(funcs, &mut ir_ctx, opt.dump)?;
 
     let big_endian = true;
 

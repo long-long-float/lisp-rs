@@ -1,6 +1,7 @@
 use std::stringify;
 
 use lisp_rs::lispi::{
+    cli_option::CliOption,
     error::{Error, ErrorWithLocation},
     evaluator::*,
     interpret, SymbolValue,
@@ -8,7 +9,14 @@ use lisp_rs::lispi::{
 
 fn interp(program: &str) -> Result<Value, Error> {
     let lines = program.split('\n').map(|l| l.to_string()).collect();
-    let result = interpret(lines);
+
+    let opt = CliOption {
+        filename: None,
+        compile: false,
+        dump: false,
+    };
+
+    let result = interpret(lines, &opt);
     match result {
         Ok(result) => Ok(result.last().unwrap().0.clone()),
         Err(err) => {
