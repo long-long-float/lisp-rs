@@ -1,5 +1,7 @@
 use std::stringify;
 
+mod common;
+
 use lisp_rs::lispi::{
     cli_option::CliOption,
     error::{Error, ErrorWithLocation},
@@ -28,39 +30,6 @@ fn interp(program: &str) -> Result<Value, Error> {
             }
         }
     }
-}
-
-macro_rules! assert_error {
-    ( $value:expr, $p:pat ) => {
-        let has_error = match $value {
-            Err($p) => true,
-            _ => false,
-        };
-        assert!(
-            has_error,
-            "{} must have an error {}",
-            stringify!($value),
-            stringify!($p)
-        );
-    };
-}
-
-static EPS: f32 = 0.0001;
-
-macro_rules! assert_eq_eps {
-    ( $expected:expr, $actual:expr) => {
-        if let Ok(Value::Float(v)) = $actual {
-            assert!(
-                (v - $expected).abs() <= EPS,
-                "|{} - {}| <= {}",
-                v,
-                $expected,
-                EPS
-            );
-        } else {
-            assert!(false, "{:?} must be a float value", $actual);
-        }
-    };
 }
 
 fn build_list(vs: Vec<i32>) -> Value {
