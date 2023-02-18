@@ -74,9 +74,20 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
             }
             "lambda" => {
                 match_special_args_with_rest!(args, body, ast_pat!(Ast::List(args), _loc), {
-                    let args = e::get_symbol_values(args)?;
+                    let args = args
+                        .iter()
+                        .map(|arg| match arg.ast.clone() {
+                            Ast::SymbolWithType(id, ty) => Ok((id, Some(ty))),
+                            Ast::Symbol(id) => Ok((id, None)),
+                            _ => Err(Error::Eval(format!("{:?} is not an symbol", arg.ast))
+                                .with_location(arg.location)
+                                .into()),
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    let (args, arg_types) = args.into_iter().unzip();
                     Ok(Ast::Lambda(Lambda {
                         args,
+                        arg_types,
                         body: body.to_vec(),
                     }))
                 })
@@ -304,6 +315,7 @@ pub struct Define {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Lambda {
     pub args: Vec<SymbolValue>,
+    pub arg_types: Vec<Option<SymbolValue>>,
     pub body: Vec<AnnotatedAst>,
 }
 
@@ -421,12 +433,20 @@ impl AnnotatedAst {
                 let init = Box::new(func(*init.clone(), ctx)?);
                 Ast::Define(Define { id, init })
             }
-            Ast::Lambda(Lambda { args, body }) => {
+            Ast::Lambda(Lambda {
+                args,
+                arg_types,
+                body,
+            }) => {
                 let body = body
                     .into_iter()
                     .map(|v| func(v, ctx))
                     .collect::<Result<Vec<_>>>()?;
-                Ast::Lambda(Lambda { args, body })
+                Ast::Lambda(Lambda {
+                    args,
+                    arg_types,
+                    body,
+                })
             }
             Ast::Assign(Assign {
                 var,
@@ -573,9 +593,26 @@ impl Display for AnnotatedAst {
             Ast::Define(Define { id, init }) => {
                 write!(f, "(define {} {})", id.value, *init)
             }
-            Ast::Lambda(Lambda { args, body }) => {
+            Ast::Lambda(Lambda {
+                args,
+                arg_types,
+                body,
+            }) => {
                 write!(f, "(lambda (")?;
-                write_values(f, &args.iter().map(|arg| &arg.value).collect::<Vec<_>>())?;
+                write_values(
+                    f,
+                    &args
+                        .iter()
+                        .zip(arg_types)
+                        .map(|(arg, ty)| {
+                            if let Some(ty) = ty {
+                                format!("{}: {}", arg.value, ty.value)
+                            } else {
+                                arg.value.to_owned()
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )?;
                 write!(f, ") ")?;
                 write_values(f, body)?;
                 write!(f, ")")

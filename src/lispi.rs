@@ -172,7 +172,7 @@ pub fn frontend(
     e::init_env(&mut env, &mut ty_env, &mut sym_table);
     // sym_table.dump();
 
-    let program = ty::check_and_inference_type(program, &ty_env)?;
+    let program = ty::check_and_inference_type(program, &ty_env, &mut sym_table)?;
     // for ast in &program {
     //     println!("{}", ast);
     // }
@@ -313,7 +313,7 @@ pub fn interpret_with_env(
     let tokens = t::tokenize(program)?;
     let program = p::parse_with_env(tokens, sym_table)?;
     let program = m::expand_macros(program, sym_table)?;
-    let program = ty::check_and_inference_type(program, &ty_env)?;
+    let program = ty::check_and_inference_type(program, &ty_env, sym_table)?;
     let program = opt::tail_recursion::optimize(program)?;
     e::eval_program(&program, env)
 }

@@ -308,7 +308,11 @@ fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<A
     let AnnotatedAst { ast, location, ty } = ast;
 
     match ast {
-        Ast::Lambda(Lambda { args, body }) => {
+        Ast::Lambda(Lambda {
+            args,
+            arg_types: _,
+            body,
+        }) => {
             let args = args
                 .into_iter()
                 .map(|arg| {

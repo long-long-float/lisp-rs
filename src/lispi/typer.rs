@@ -441,11 +441,25 @@ fn collect_constraints_from_ast(
             });
             Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
         }
-        Ast::Lambda(Lambda { args, body }) => {
-            let arg_types = args
+        Ast::Lambda(Lambda {
+            args,
+            arg_types: orig_arg_types,
+            body,
+        }) => {
+            let arg_types = orig_arg_types
                 .iter()
-                .map(|_| Box::new(ctx.gen_tv()))
-                .collect::<Vec<_>>();
+                .map(|ty| {
+                    if let Some(ty) = ty {
+                        ctx.env.find_var(ty).map(|ty| Box::new(ty)).ok_or_else(|| {
+                            Error::Type(format!("The type {} is not defined.", ty.value))
+                                .with_null_location()
+                                .into()
+                        })
+                    } else {
+                        Ok(Box::new(ctx.gen_tv()))
+                    }
+                })
+                .collect::<Result<Vec<_>>>()?;
 
             ctx.env.push_local();
 
@@ -465,6 +479,7 @@ fn collect_constraints_from_ast(
 
             let fun = Ast::Lambda(Lambda {
                 args: args.to_vec(),
+                arg_types: orig_arg_types.clone(),
                 body,
             });
             let fun_ty = Type::Function {
@@ -956,8 +971,29 @@ fn replace_asts(asts: Program, assign: &TypeAssignment) -> Program {
         .collect()
 }
 
-pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Result<Program> {
+pub fn check_and_inference_type(
+    asts: Program,
+    env: &Environment<Type>,
+    sym_table: &mut SymbolTable,
+) -> Result<Program> {
+    fn register_type(
+        env: &mut Environment<Type>,
+        sym_table: &mut SymbolTable,
+        name: &str,
+        ty: Type,
+    ) {
+        let sym = sym_table.create_symbol_value(name.to_string());
+        env.insert_var(sym, ty);
+    }
+
     let mut ty_env = TypeEnv::new();
+
+    register_type(&mut ty_env, sym_table, "int", Type::Int);
+    register_type(&mut ty_env, sym_table, "float", Type::Float);
+    register_type(&mut ty_env, sym_table, "bool", Type::Boolean);
+    register_type(&mut ty_env, sym_table, "char", Type::Char);
+    register_type(&mut ty_env, sym_table, "string", Type::String);
+
     for (id, ty) in &env.current_local().variables {
         ty_env.insert_var(
             SymbolValue {

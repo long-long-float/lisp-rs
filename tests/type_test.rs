@@ -35,3 +35,26 @@ fn list_test() {
     assert_error!(&typing("(car 1)"), Error::TypeNotMatched(_, _, _, _));
     assert_error!(&typing("(car '(1 2) 1)"), Error::Type(_));
 }
+
+#[test]
+fn type_annot_lambda_test() {
+    assert!(typing(
+        r#"
+(define not (lambda (x: bool)
+    (if x #f #t)
+))
+    "#
+    )
+    .is_ok());
+
+    assert_error!(
+        &typing(
+            r#"
+(define invalid-not (lambda (x: int)
+    (if x #f #t)
+))
+"#
+        ),
+        Error::TypeNotMatched(_, _, _, _)
+    );
+}

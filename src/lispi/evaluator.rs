@@ -623,7 +623,11 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             env.insert_var(id.clone(), value);
             Ok(Value::nil())
         }
-        Ast::Lambda(Lambda { args, body }) => {
+        Ast::Lambda(Lambda {
+            args,
+            arg_types: _,
+            body,
+        }) => {
             let func = Value::Function {
                 name: SymbolValue::empty(),
                 args: args.to_vec(),
