@@ -117,6 +117,8 @@ struct RInstruction {
 enum RInstructionOp {
     Add,
     Or,
+    ShiftLeft,
+    ShiftRight,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -181,6 +183,8 @@ impl GenerateCode for RInstruction {
         let (funct7, funct3, opcode) = match self.op {
             Add => (0b0000000, 0b000, 0b0110011),
             Or => (0b0000000, 0b110, 0b0110011),
+            ShiftLeft => (0b0110011, 0b001, 0b0000000),
+            ShiftRight => (0b0110011, 0b101, 0b0000000),
         };
 
         (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
@@ -721,6 +725,22 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
                             IInstructionOp::Ori,
                             result_reg,
                         )?;
+                    }
+                    Shift(op, left, right) => {
+                        let rs1 = load_operand(&mut ctx, &mut insts, left);
+                        let rs2 = load_operand(&mut ctx, &mut insts, right);
+
+                        let op = match op {
+                            i::ShiftOperator::LogicalLeft => RInstructionOp::ShiftLeft,
+                            i::ShiftOperator::LogicalRight => RInstructionOp::ShiftRight,
+                        };
+
+                        insts.push(R(RInstruction {
+                            op,
+                            rs1,
+                            rs2,
+                            rd: result_reg,
+                        }))
                     }
                     Store(addr, value) => {
                         let rs1 = load_operand(&mut ctx, &mut insts, addr);

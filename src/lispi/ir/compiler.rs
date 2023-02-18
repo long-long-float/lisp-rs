@@ -113,7 +113,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 {
                     let name = fun.value.as_str();
                     match name {
-                        "+" | "-" | "*" | "<=" | "or" => {
+                        "+" | "-" | "*" | "<=" | "or" | "<<" | ">>" => {
                             let AnnotatedInstr {
                                 result: left,
                                 inst: _inst,
@@ -130,6 +130,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                                 "*" => I::Mul(left, right),
                                 "<=" => I::Cmp(CmpOperator::SGE, left, right),
                                 "or" => I::Or(left, right),
+                                "<<" => I::Shift(ShiftOperator::LogicalLeft, left, right),
+                                ">>" => I::Shift(ShiftOperator::LogicalRight, left, right),
                                 _ => return Err(bug!()),
                             };
                             add_instr(&mut result, ctx, inst, ast_ty);

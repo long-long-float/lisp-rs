@@ -907,6 +907,28 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
             })
         },
     );
+    insert_function(
+        env,
+        ty_env,
+        s("<<"),
+        Type::function(vec![Type::int(), Type::int()], Type::int()),
+        |args| {
+            match_call_args!(args, Value::Integer(left), Value::Integer(right), {
+                Ok(Value::Integer(left << right))
+            })
+        },
+    );
+    insert_function(
+        env,
+        ty_env,
+        s(">>"),
+        Type::function(vec![Type::int(), Type::int()], Type::int()),
+        |args| {
+            match_call_args!(args, Value::Integer(left), Value::Integer(right), {
+                Ok(Value::Integer(left >> right))
+            })
+        },
+    );
     // TODO: Make mod to accept number
     insert_function(
         env,

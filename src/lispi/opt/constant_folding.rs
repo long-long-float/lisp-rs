@@ -48,6 +48,7 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                 | Instruction::Sub(l, r)
                 | Instruction::Mul(l, r)
                 | Instruction::Or(l, r)
+                | Instruction::Shift(_, l, r)
                 | Instruction::Store(l, r)
                 | Instruction::Cmp(_, l, r) => {
                     register_as_used(&mut used_vars, l);
@@ -246,6 +247,25 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     right,
                     |l, r| l | r,
                     |l, r| I::Or(l, r),
+                )),
+                I::Shift(op, left, right) => Some(fold_constants_arith(
+                    &mut ctx,
+                    &var,
+                    left,
+                    right,
+                    |l, r| {
+                        // TODO: The behavior of shift may be difference between host machine and target machine.
+                        // Take care this.
+                        match &op {
+                            ShiftOperator::LogicalLeft => l << r,
+                            ShiftOperator::LogicalRight => {
+                                let ul = l as u32;
+                                let ur = r;
+                                (ul >> ur) as i32
+                            }
+                        }
+                    },
+                    |l, r| I::Shift(op, l, r),
                 )),
                 I::Store(addr, value) => {
                     let addr = fold_imm(&mut ctx, addr);

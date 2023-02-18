@@ -22,6 +22,7 @@ pub enum Instruction {
     Sub(Operand, Operand),
     Mul(Operand, Operand),
     Or(Operand, Operand),
+    Shift(ShiftOperator, Operand, Operand),
     Store(Operand, Operand),
     Cmp(CmpOperator, Operand, Operand),
     Call {
@@ -116,6 +117,12 @@ impl Display for Instruction {
             Or(left, right) => {
                 write!(f, "or {}, {}", left, right)
             }
+            Shift(ShiftOperator::LogicalRight, left, right) => {
+                write!(f, "lrshift {}, {}", left, right)
+            }
+            Shift(ShiftOperator::LogicalLeft, left, right) => {
+                write!(f, "llshift {}, {}", left, right)
+            }
             Store(addr, value) => {
                 write!(f, "store {}, {}", addr, value)
             }
@@ -146,6 +153,12 @@ impl Display for Instruction {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ShiftOperator {
+    LogicalLeft,
+    LogicalRight,
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct AnnotatedInstr {
     pub result: Variable,
@@ -165,6 +178,7 @@ impl Display for AnnotatedInstr {
             | Sub(_, _)
             | Mul(_, _)
             | Or(_, _)
+            | Shift(_, _, _)
             | Store(_, _)
             | Cmp(_, _, _)
             | Call { .. }

@@ -46,6 +46,18 @@ fn add_1_plus_2() {
 
 #[test]
 #[cfg(feature = "rv32emu-test")]
+fn shift() {
+    let registers = compile_and_run("(<< 1 3)");
+    assert_eq!(Some(8), registers["x10"].as_i64());
+
+    let registers = compile_and_run("(>> 8 3)");
+    assert_eq!(Some(1), registers["x10"].as_i64());
+
+    // TODO: Test about logical/arithmetic shift
+}
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
 fn variables() {
     let registers = compile_and_run(
         r#"
