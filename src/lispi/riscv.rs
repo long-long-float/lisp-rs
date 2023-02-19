@@ -3,7 +3,7 @@ use std::fmt::Display;
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use crate::lispi::console::printlnuw;
+use crate::{bug, lispi::console::printlnuw};
 
 use super::ir::{instruction as i, IrContext};
 
@@ -339,10 +339,13 @@ impl Register {
 
     fn as_int(&self) -> u32 {
         if let Register::Integer(i) = self {
-            *i
+            if i >= &32u32 {
+                panic!("Register #{} is invalid!", *i)
+            } else {
+                *i
+            }
         } else {
-            // Invalid value
-            99
+            panic!("Register {} is invalid!", self)
         }
     }
 }

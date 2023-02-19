@@ -71,6 +71,25 @@ x
 
 #[test]
 #[cfg(feature = "rv32emu-test")]
+fn many_variables() {
+    let registers = compile_and_run(
+        r#"
+(define f (lambda (x)
+    (define a (+ x x))
+    (define b (+ a a))
+    (define c (+ b b))
+    (define d (+ c c))
+    (define e (+ d d))
+    (+ e e)
+    ))
+(f 2)
+"#,
+    );
+    assert_eq!(Some(128), registers["x10"].as_i64());
+}
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
 fn define_function_and_call() {
     let registers = compile_and_run(
         r#"
