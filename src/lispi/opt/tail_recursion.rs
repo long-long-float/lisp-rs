@@ -175,7 +175,7 @@ fn optimize_tail_recursion(
             }
             Ast::Cond(Cond { clauses }) => {
                 let clauses = clauses
-                    .into_iter()
+                    .iter()
                     .map(|CondClause { cond, body }| {
                         Some(CondClause {
                             cond: Box::new(_optimize_tail_recursion(func_name, locals, cond)?),
@@ -185,7 +185,7 @@ fn optimize_tail_recursion(
                     .collect::<Option<Vec<_>>>()?;
                 Some(ast.clone().with_new_ast(Ast::Cond(Cond { clauses })))
             }
-            Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, &v),
+            Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, v),
             Ast::Symbol(_)
             | Ast::SymbolWithType(_, _)
             | Ast::Integer(_)

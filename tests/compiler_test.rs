@@ -21,7 +21,7 @@ fn compile_and_run(program: &str) -> Value {
     let output = Command::new("./rv32emu/build/rv32emu")
         .args(["--dump-registers", "out.elf"])
         .output()
-        .expect(&format!("Failed to execute"));
+        .expect("Failed to execute");
 
     assert_eq!(true, output.status.success());
 

@@ -207,7 +207,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::DefineMacro(_) => todo!(),
         Ast::Define(Define { id, init }) => {
             let inst = compile_and_add(&mut result, *init, ctx)?;
-            ctx.env.insert_var(id.clone(), inst.result);
+            ctx.env.insert_var(id, inst.result);
         }
         Ast::Assign(Assign {
             var,
@@ -263,7 +263,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             add_instr(
                 &mut result,
                 ctx,
-                I::Jump(end_label.clone(), end_bb),
+                I::Jump(end_label, end_bb),
                 Type::None,
             );
 

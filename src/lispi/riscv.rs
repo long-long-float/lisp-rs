@@ -3,7 +3,7 @@ use std::fmt::Display;
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use crate::{bug, lispi::console::printlnuw};
+use crate::{lispi::console::printlnuw};
 
 use super::ir::{instruction as i, IrContext};
 
@@ -220,8 +220,8 @@ impl GenerateCode for SInstruction {
         let rs2 = self.rs2.as_int();
 
         let imm = self.imm.value as u32;
-        let imm1 = (imm >> 5) & 0b1111_111;
-        let imm2 = imm & 0b1111_1;
+        let imm1 = (imm >> 5) & 0b111_1111;
+        let imm2 = imm & 0b1_1111;
 
         let (funct3, opcode) = match self.op {
             Sw => (0b010, 0b0100011),
@@ -397,7 +397,7 @@ impl From<i::Immediate> for Immediate {
     fn from(imm: i::Immediate) -> Self {
         use i::Immediate::*;
         match imm {
-            Integer(v) => Immediate::new(v as i32, XLEN),
+            Integer(v) => Immediate::new(v, XLEN),
             Boolean(v) => Immediate::new(v as i32, 1),
             Label(_) => todo!(),
         }

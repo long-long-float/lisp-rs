@@ -123,7 +123,7 @@ where
     }
 
     pub fn update_var(&mut self, id: u32, value: &T) -> bool {
-        if let Some(_) = self.variables.get(&id) {
+        if self.variables.get(&id).is_some() {
             self.variables.insert(id, value.clone());
             true
         } else if let Some(parent) = &self.parent {

@@ -61,8 +61,7 @@ macro_rules! match_call_args {
 type Env = Environment<Value>;
 
 pub fn get_location(ast: Option<&AnnotatedAst>) -> TokenLocation {
-    ast.and_then(|arg| Some(arg.location))
-        .unwrap_or(TokenLocation::Null)
+    ast.map(|arg| arg.location).unwrap_or(TokenLocation::Null)
 }
 
 #[macro_export]
@@ -70,7 +69,7 @@ macro_rules! match_special_args {
     ( $args:expr, $p:pat, $b:block, $index:expr ) => {
         if let Some($p) = $args.get($index) {
             if $index != $args.len() - 1 {
-                let loc = crate::lispi::evaluator::get_location($args.get($index));
+                let loc = $crate::lispi::evaluator::get_location($args.get($index));
                 Err(anyhow!(Error::Eval(format!("The length of argument is invalid")).with_location(loc)))
             }
             else {
@@ -78,7 +77,7 @@ macro_rules! match_special_args {
             }
         }
         else {
-            let loc = crate::lispi::evaluator::get_location($args.last());
+            let loc = $crate::lispi::evaluator::get_location($args.last());
             Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
@@ -105,7 +104,7 @@ macro_rules! match_special_args_with_rest {
             $b
         }
         else {
-            let loc = crate::lispi::evaluator::get_location($args.last());
+            let loc = $crate::lispi::evaluator::get_location($args.last());
             Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
@@ -115,7 +114,7 @@ macro_rules! match_special_args_with_rest {
             match_special_args_with_rest!($args, $rest, $( $ps ),*, $b, ($index + 1))
         }
         else {
-            let loc = crate::lispi::evaluator::get_location($args.last());
+            let loc = $crate::lispi::evaluator::get_location($args.last());
             Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
@@ -197,7 +196,7 @@ impl std::fmt::Display for Value {
             Value::Char(v) => write!(f, "{}", v),
             Value::String(v) => write!(f, "{}", v),
             Value::List(vs) => {
-                if vs.len() == 0 {
+                if vs.is_empty() {
                     write!(f, "Nil")
                 } else {
                     write!(f, "(")?;
@@ -246,7 +245,7 @@ impl From<&Ast> for Value {
             Ast::String(v) => Value::String(v.clone()),
             Ast::Symbol(v) => Value::Symbol(v.clone()),
             Ast::SymbolWithType(v, _) => Value::Symbol(v.clone()),
-            Ast::Quoted(v) => Value::from(&(*v).ast),
+            Ast::Quoted(v) => Value::from(&v.ast),
             Ast::List(vs) => {
                 let vs = vs.iter().map(|v| Value::from(&v.ast)).collect();
                 Value::List(vs)
@@ -535,7 +534,7 @@ fn apply_function(
                             })
                             .collect::<Result<Vec<_>>>()?;
 
-                        if lists.len() == 0 {
+                        if lists.is_empty() {
                             return Err(anyhow!(err.clone()));
                         }
 
@@ -544,7 +543,7 @@ fn apply_function(
                         for idx in 0..list0_len {
                             let mut args = Vec::new();
                             for list in &lists {
-                                args.push(list.get(idx).map(|v| v.clone()).unwrap_or(Value::nil()));
+                                args.push(list.get(idx).cloned().unwrap_or(Value::nil()));
                             }
                             let arg_locs = [TokenLocation::Null].repeat(lists.len());
 
@@ -586,7 +585,7 @@ fn apply_function(
                 env.lambda_local = parent_local.clone();
             }
 
-            let result = eval_asts(&body, env);
+            let result = eval_asts(body, env);
 
             env.lambda_local = None;
 
@@ -664,12 +663,10 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             let cond = eval_ast(cond, env)?.is_true();
             if cond {
                 eval_ast(then_ast, env)
+            } else if let Some(else_ast) = else_ast {
+                eval_ast(else_ast, env)
             } else {
-                if let Some(else_ast) = else_ast {
-                    eval_ast(else_ast, env)
-                } else {
-                    Ok(Value::nil())
-                }
+                Ok(Value::nil())
             }
         }
         Ast::Let(Let {
@@ -704,7 +701,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 let mut exprs = exprs;
                 call_args.append(&mut exprs);
 
-                let result = eval_asts(&vec![Ast::List(call_args).with_null_location()], env);
+                let result = eval_asts(&[Ast::List(call_args).with_null_location()], env);
 
                 env.pop_local();
 
@@ -742,12 +739,12 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
 
             // Sequencial initialization
             for (id, expr) in inits {
-                let expr = eval_ast(&expr, env)?;
+                let expr = eval_ast(expr, env)?;
                 env.insert_var(id.clone(), expr);
             }
 
             let result = loop {
-                let results = eval_asts(&body, env);
+                let results = eval_asts(body, env);
                 let result = get_last_result(results?);
                 if let Value::Continue(id) = &result {
                     if id == label {
@@ -796,7 +793,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             }
         }
         Ast::Symbol(value) => {
-            if let Some(var) = env.find_var(&value) {
+            if let Some(var) = env.find_var(value) {
                 return Ok(var);
             }
 
@@ -875,7 +872,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
         env,
         ty_env,
         s("car"),
-        Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv.clone()))], tv.clone())),
+        Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv.clone()))], tv)),
         |args| {
             match_call_args!(args, Value::List(vs), {
                 let first = vs.first().map(|v| (*v).clone());
@@ -890,7 +887,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
         Type::for_all(|tv| {
             Type::function(
                 vec![Type::List(Box::new(tv.clone()))],
-                Type::List(Box::new(tv.clone())),
+                Type::List(Box::new(tv)),
             )
         }),
         |args| {
@@ -963,7 +960,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
         env,
         ty_env,
         s("length"),
-        Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv.clone()))], Type::Int)),
+        Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv))], Type::Int)),
         |args| {
             match_call_args!(args, Value::List(vs), {
                 Ok(Value::Integer(vs.len() as i32))
@@ -974,12 +971,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
         env,
         ty_env,
         s("list-ref"),
-        Type::for_all(|tv| {
-            Type::function(
-                vec![Type::List(Box::new(tv.clone())), Type::Int],
-                tv.clone(),
-            )
-        }),
+        Type::for_all(|tv| Type::function(vec![Type::List(Box::new(tv.clone())), Type::Int], tv)),
         |args| {
             match_call_args!(args, Value::List(vs), Value::Integer(idx), {
                 if let Some(v) = vs.get(*idx as usize) {
@@ -1000,7 +992,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut S
         Type::function(vec![Type::String], Type::List(Box::new(Type::Char))),
         |args| {
             match_call_args!(args, Value::String(value), {
-                let chars = value.chars().map(|c| Value::Char(c)).collect();
+                let chars = value.chars().map(Value::Char).collect();
                 Ok(Value::List(chars))
             })
         },

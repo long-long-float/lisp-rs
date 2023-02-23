@@ -122,7 +122,7 @@ pub fn expand_macros_ast(
             )) = vs.split_first()
             {
                 let mut args = args
-                    .into_iter()
+                    .iter()
                     .map(|arg| expand_macros_ast(arg.clone(), menv, sym_env))
                     .collect::<Result<Vec<_>>>()?;
 
@@ -145,7 +145,7 @@ pub fn expand_macros_ast(
                 } else {
                     let name = AnnotatedAst {
                         ast: Ast::Symbol(name.clone()),
-                        location: name_loc.clone(),
+                        location: *name_loc,
                         ty: name_ty.clone(),
                     };
 

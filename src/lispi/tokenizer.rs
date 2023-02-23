@@ -111,7 +111,7 @@ fn take_expected(
         Ok(())
     } else {
         Err(Error::Tokenize(format!("Unexpected {}", c))
-            .with_single_location(loc.clone())
+            .with_single_location(*loc)
             .into())
     }
 }
@@ -121,7 +121,7 @@ fn current_char(line: &Vec<char>, loc: &Location) -> Result<char> {
         Ok(*ch)
     } else {
         Err(Error::Tokenize("Unexpected EOF".to_string())
-            .with_single_location(loc.clone())
+            .with_single_location(*loc)
             .into())
     }
 }
@@ -141,15 +141,11 @@ fn move_to_next_line<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc:
 fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Location) -> Location {
     loc.column += 1;
 
-    let result = loc.clone();
+    let result = *loc;
 
-    let c = current_char(&line, loc);
+    let c = current_char(line, loc);
     let nl = if let Ok(c) = c {
-        if c == '\r' || c == '\n' {
-            true
-        } else {
-            false
-        }
+        c == '\r' || c == '\n'
     } else {
         true
     };
@@ -184,11 +180,11 @@ fn tokenize_number(
                     let int = i32::from_str_radix(int.as_str(), radix)?;
                     let int = if sign { int } else { -int };
 
-                    Ok(Token::IntegerLiteral(int).with_location(begin, loc.clone()))
+                    Ok(Token::IntegerLiteral(int).with_location(begin, *loc))
                 }
                 _ => {
                     // Just 0
-                    Ok(Token::IntegerLiteral(0).with_location(begin, loc.clone()))
+                    Ok(Token::IntegerLiteral(0).with_location(begin, *loc))
                 }
             }
         }
@@ -201,11 +197,11 @@ fn tokenize_number(
                 let decimal = take_while(program, line, loc, |c| c.is_ascii_digit()).join("");
                 let float = (int + "." + &decimal).parse::<f32>()?;
                 let float = if sign { float } else { -float };
-                Ok(Token::FloatLiteral(float).with_location(begin, loc.clone()))
+                Ok(Token::FloatLiteral(float).with_location(begin, *loc))
             } else {
                 let int = int.parse::<i32>()?;
                 let int = if sign { int } else { -int };
-                Ok(Token::IntegerLiteral(int).with_location(begin, loc.clone()))
+                Ok(Token::IntegerLiteral(int).with_location(begin, *loc))
             }
         }
     }
@@ -220,7 +216,7 @@ fn tokenize_identifier(
     let chars = take_while(program, line, loc, |c| c.is_identifier());
 
     let value = chars.join("");
-    Ok(Token::Identifier(value).with_location(begin, loc.clone()))
+    Ok(Token::Identifier(value).with_location(begin, *loc))
 }
 
 /// Get a single token from program and move loc to the location of next token
@@ -230,7 +226,7 @@ fn tokenize_single<'a>(
     loc: &mut Location,
 ) -> Result<Option<TokenWithLocation>> {
     if let Ok(ch) = current_char(line, loc) {
-        let begin = loc.clone();
+        let begin = *loc;
         let result = match ch {
             '(' => {
                 let end = succ(program, line, loc);
@@ -242,15 +238,15 @@ fn tokenize_single<'a>(
             }
             '[' => {
                 succ(program, line, loc);
-                Token::LeftSquareBracket.with_location(begin, loc.clone())
+                Token::LeftSquareBracket.with_location(begin, *loc)
             }
             ']' => {
                 succ(program, line, loc);
-                Token::RightSquareBracket.with_location(begin, loc.clone())
+                Token::RightSquareBracket.with_location(begin, *loc)
             }
             '\'' => {
                 succ(program, line, loc);
-                Token::Quote.with_location(begin, loc.clone())
+                Token::Quote.with_location(begin, *loc)
             }
             '#' => {
                 succ(program, line, loc);
@@ -263,10 +259,10 @@ fn tokenize_single<'a>(
                         Token::CharLiteral(c)
                     }
                     c => Err(Error::Tokenize(format!("Unexpected charactor {}", c))
-                        .with_single_location(loc.clone()))?,
+                        .with_single_location(*loc))?,
                 };
                 succ(program, line, loc);
-                ret.with_location(begin, loc.clone())
+                ret.with_location(begin, *loc)
             }
             ';' => {
                 move_to_next_line(program, line, loc);
@@ -274,7 +270,7 @@ fn tokenize_single<'a>(
             }
             ':' => {
                 succ(program, line, loc);
-                Token::Colon.with_location(begin, loc.clone())
+                Token::Colon.with_location(begin, *loc)
             }
             '"' => {
                 succ(program, line, loc);
@@ -282,9 +278,9 @@ fn tokenize_single<'a>(
                 let value = take_while(program, line, loc, |c| c != '"');
                 let value = value.join("");
 
-                take_expected(&program, line, loc, '"')?;
+                take_expected(program, line, loc, '"')?;
 
-                Token::StringLiteral(value).with_location(begin, loc.clone())
+                Token::StringLiteral(value).with_location(begin, *loc)
             }
             // Unary operator
             '+' | '-' => {
@@ -312,7 +308,7 @@ fn tokenize_single<'a>(
             }
             c => {
                 return Err(Error::Tokenize(format!("Unexpected charactor `{:?}`", c))
-                    .with_location(TokenLocation::Range(LocationRange::new(begin, loc.clone())))
+                    .with_location(TokenLocation::Range(LocationRange::new(begin, *loc)))
                     .into())
             }
         };

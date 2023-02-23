@@ -235,7 +235,7 @@ impl Ast {
             Value::Function {
                 name, args, body, ..
             } => {
-                if name.value == "" {
+                if name.value.is_empty() {
                     // Function created by lambda
                     let mut elem = vec![
                         Ast::Symbol(SymbolValue {
@@ -253,7 +253,7 @@ impl Ast {
                     elem.append(
                         &mut body
                             .into_iter()
-                            .map(|v| Ast::from(v.ast).with_null_location())
+                            .map(|v| v.ast.with_null_location())
                             .collect(),
                     );
                     Ok(Ast::List(elem))
@@ -421,7 +421,7 @@ impl AnnotatedAst {
                     .collect::<Result<Vec<_>>>()?;
                 Ast::List(vs)
             }
-            Ast::Quoted(v) => Ast::Quoted(Box::new(func(*v.clone(), ctx)?)),
+            Ast::Quoted(v) => Ast::Quoted(Box::new(func(*v, ctx)?)),
             Ast::DefineMacro(DefineMacro { id, args, body }) => {
                 let body = body
                     .into_iter()
@@ -430,7 +430,7 @@ impl AnnotatedAst {
                 Ast::DefineMacro(DefineMacro { id, args, body })
             }
             Ast::Define(Define { id, init }) => {
-                let init = Box::new(func(*init.clone(), ctx)?);
+                let init = Box::new(func(*init, ctx)?);
                 Ast::Define(Define { id, init })
             }
             Ast::Lambda(Lambda {
@@ -453,7 +453,7 @@ impl AnnotatedAst {
                 var_loc,
                 value,
             }) => {
-                let value = Box::new(func(*value.clone(), ctx)?);
+                let value = Box::new(func(*value, ctx)?);
                 Ast::Assign(Assign {
                     var,
                     var_loc,
@@ -465,10 +465,10 @@ impl AnnotatedAst {
                 then_ast,
                 else_ast,
             }) => {
-                let cond = Box::new(func(*cond.clone(), ctx)?);
-                let then_ast = Box::new(func(*then_ast.clone(), ctx)?);
+                let cond = Box::new(func(*cond, ctx)?);
+                let then_ast = Box::new(func(*then_ast, ctx)?);
                 if let Some(else_ast) = else_ast {
-                    let else_ast = Box::new(func(*else_ast.clone(), ctx)?);
+                    let else_ast = Box::new(func(*else_ast, ctx)?);
                     Ast::IfExpr(IfExpr {
                         cond,
                         then_ast,
@@ -486,7 +486,7 @@ impl AnnotatedAst {
                 let clauses = clauses
                     .into_iter()
                     .map(|CondClause { cond, body }| {
-                        let cond = Box::new(func(*cond.clone(), ctx)?);
+                        let cond = Box::new(func(*cond, ctx)?);
                         let body = body
                             .into_iter()
                             .map(|v| func(v, ctx))

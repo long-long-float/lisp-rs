@@ -140,7 +140,7 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
             let val = if_int(*left, *right);
 
             let op = Operand::Immediate(Immediate::Integer(val));
-            insert_imm(ctx, &op, &var);
+            insert_imm(ctx, &op, var);
             I::Operand(op)
         } else {
             if_else(left, right)
@@ -170,7 +170,7 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
             let val = if_int(*left, *right);
 
             let op = Operand::Immediate(Immediate::Boolean(val));
-            insert_imm(ctx, &op, &var);
+            insert_imm(ctx, &op, var);
             I::Operand(op)
         } else {
             if_else(left, right)
@@ -222,7 +222,7 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     left,
                     right,
                     |l, r| l + r,
-                    |l, r| I::Add(l, r),
+                    I::Add,
                 )),
                 I::Sub(left, right) => Some(fold_constants_arith(
                     &mut ctx,
@@ -230,7 +230,7 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     left,
                     right,
                     |l, r| l - r,
-                    |l, r| I::Sub(l, r),
+                    I::Sub,
                 )),
                 I::Mul(left, right) => Some(fold_constants_arith(
                     &mut ctx,
@@ -238,7 +238,7 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     left,
                     right,
                     |l, r| l * r,
-                    |l, r| I::Mul(l, r),
+                    I::Mul,
                 )),
                 I::Or(left, right) => Some(fold_constants_logical(
                     &mut ctx,
@@ -246,7 +246,7 @@ fn fold_constants_insts(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     left,
                     right,
                     |l, r| l | r,
-                    |l, r| I::Or(l, r),
+                    I::Or,
                 )),
                 I::Shift(op, left, right) => Some(fold_constants_arith(
                     &mut ctx,

@@ -77,7 +77,7 @@ impl Location {
         Location { line: 0, column: 0 }
     }
 
-    fn newline(self: &mut Self) {
+    fn newline(&mut self) {
         self.line += 1;
         self.column = 0;
     }
@@ -198,7 +198,7 @@ pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value,
 }
 
 pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
-    let (program, mut _env, sym_table) = frontend(program, &opt)?;
+    let (program, mut _env, sym_table) = frontend(program, opt)?;
 
     let mut ir_ctx = ir::IrContext::new();
 
@@ -236,14 +236,13 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
 
     let mut codes = codes
         .into_iter()
-        .map(|code| {
+        .flat_map(|code| {
             let mut codes = code.to_be_bytes();
             if big_endian {
                 codes.reverse();
             }
             codes
         })
-        .flatten()
         .collect::<Vec<_>>();
 
     let mut output = StreamingBuffer::new(BufWriter::new(File::create("out.elf")?));
@@ -313,7 +312,7 @@ pub fn interpret_with_env(
     let tokens = t::tokenize(program)?;
     let program = p::parse_with_env(tokens, sym_table)?;
     let program = m::expand_macros(program, sym_table)?;
-    let program = ty::check_and_inference_type(program, &ty_env, sym_table)?;
+    let program = ty::check_and_inference_type(program, ty_env, sym_table)?;
     let program = opt::tail_recursion::optimize(program)?;
     e::eval_program(&program, env)
 }

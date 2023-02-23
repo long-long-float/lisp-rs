@@ -48,14 +48,14 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
         {
             match inst {
                 I::Operand(Operand::Variable(var)) => {
-                    if let Some(rvar) = ctx.assign_var_map.get(&var) {
+                    if let Some(rvar) = ctx.assign_var_map.get(var) {
                         ctx.replace_var_map.insert(result_var.clone(), rvar.clone());
                     } else {
                         ctx.assign_var_map.insert(var.clone(), result_var.clone());
                     }
                 }
                 I::Operand(Operand::Immediate(imm)) => {
-                    if let Some(rvar) = ctx.assign_imm_map.get(&imm) {
+                    if let Some(rvar) = ctx.assign_imm_map.get(imm) {
                         ctx.replace_var_map.insert(result_var.clone(), rvar.clone());
                     } else {
                         ctx.assign_imm_map.insert(imm.clone(), result_var.clone());

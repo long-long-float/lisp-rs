@@ -8,7 +8,7 @@ fn main() {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
-            .expect(&format!("Failed to execute make"));
+            .expect("Failed to execute make");
         if !output.status.success() {
             panic!("make failed with status {}", output.status);
         }

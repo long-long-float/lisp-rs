@@ -307,7 +307,7 @@ fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<
     } else {
         // ctx.env.dump_local();
         Err(Error::UndefinedVariable(id.value.clone())
-            .with_location(loc.clone())
+            .with_location(*loc)
             .into())
     }
 }
@@ -382,7 +382,7 @@ fn collect_constraints_from_ast(
                 let mut ct = vec![TypeEquality::new(
                     fun_ty.with_locations(&fun_ty_locs, true),
                     Type::Function {
-                        args: arg_types.clone(),
+                        args: arg_types,
                         result: Box::new(result_type.clone()),
                     }
                     .with_locations(&fun_ty_locs, false),
@@ -450,7 +450,7 @@ fn collect_constraints_from_ast(
                 .iter()
                 .map(|ty| {
                     if let Some(ty) = ty {
-                        ctx.env.find_var(ty).map(|ty| Box::new(ty)).ok_or_else(|| {
+                        ctx.env.find_var(ty).map(Box::new).ok_or_else(|| {
                             Error::Type(format!("The type {} is not defined.", ty.value))
                                 .with_null_location()
                                 .into()
@@ -498,13 +498,13 @@ fn collect_constraints_from_ast(
             let (value, mut vct) = collect_constraints_from_ast(*value.clone(), ctx)?;
 
             vct.push(TypeEquality::new(
-                var_ty.with_location(var_loc.clone(), false),
+                var_ty.with_location(*var_loc, false),
                 value.ty.clone().with_location(value.location, false),
             ));
 
             let assign = Ast::Assign(Assign {
                 var: var.clone(),
-                var_loc: var_loc.clone(),
+                var_loc: *var_loc,
                 value: Box::new(value),
             });
 
@@ -768,8 +768,8 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
     if let Some((c, rest)) = constraints.split_first() {
         match (&c.left.ty, &c.right.ty) {
             (s, t) if s == t => unify(rest.to_vec()),
-            (Type::Variable(x), t) if !t.has_free_var(&x) => unify_type_var(x, t, &c.right, rest),
-            (t, Type::Variable(x)) if !t.has_free_var(&x) => unify_type_var(x, t, &c.left, rest),
+            (Type::Variable(x), t) if !t.has_free_var(x) => unify_type_var(x, t, &c.right, rest),
+            (t, Type::Variable(x)) if !t.has_free_var(x) => unify_type_var(x, t, &c.left, rest),
             (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
             (Type::Numeric, Type::Int)
             | (Type::Int, Type::Numeric)
@@ -806,8 +806,8 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
                 let args1 = args1.iter().zip(c.right.loc.iter().skip(1));
                 for ((a0, l0), (a1, l1)) in args0.zip(args1) {
                     rest.push(TypeEquality::new(
-                        a0.clone().with_location(l0.clone(), c.left.expected),
-                        a1.clone().with_location(l1.clone(), c.right.expected),
+                        a0.clone().with_location(*l0, c.left.expected),
+                        a1.clone().with_location(*l1, c.right.expected),
                     ));
                 }
                 rest.push(TypeEquality::new(
@@ -1018,7 +1018,7 @@ pub fn check_and_inference_type(
     for assign in &assigns {
         // println!("{} => {}", assign.left.name, assign.right);
 
-        asts = replace_asts(asts, &assign);
+        asts = replace_asts(asts, assign);
     }
 
     Ok(asts)

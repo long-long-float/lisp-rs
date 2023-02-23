@@ -53,7 +53,7 @@ fn consume<'a>(
 ) -> ParseResult<'a, LocationRange> {
     if let Some((first, rest)) = tokens.split_first() {
         if &first.token == expected {
-            Ok((first.location.clone(), rest))
+            Ok((first.location, rest))
         } else {
             Err(
                 Error::Parse(format!("Expected {:?}, actual {:?}", expected, first.token))
@@ -82,10 +82,10 @@ where
         if pred(&first.token) {
             let (first, rest) = consumer(tokens)?;
 
-            consume_while(rest, pred, consumer).and_then(|(mut asts, rest)| {
+            consume_while(rest, pred, consumer).map(|(mut asts, rest)| {
                 let mut result = vec![first];
                 result.append(&mut asts);
-                Ok((result, rest))
+                (result, rest)
             })
         } else {
             Ok((Vec::new(), tokens))
@@ -114,7 +114,7 @@ fn parse_list<'a>(
         |token| token != right_token,
         |t| parse_value(t, sym_table),
     )?;
-    let (tail_loc, tokens) = consume(tokens, &right_token)?;
+    let (tail_loc, tokens) = consume(tokens, right_token)?;
 
     let location = LocationRange::new(head_loc.begin, tail_loc.end);
 
@@ -136,7 +136,7 @@ fn parse_value<'a>(
         rest,
     )) = tokens.split_first()
     {
-        let loc = loc.clone();
+        let loc = *loc;
         match first {
             Token::Identifier(value) => {
                 if value.to_lowercase() == "nil" {

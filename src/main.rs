@@ -211,7 +211,7 @@ where
             .collect::<Vec<String>>();
         Ok(lines)
     } else {
-        Err(Error::Io(format!("Cannot open source file")))
+        Err(Error::Io("Cannot open source file".to_string()))
     }
 }
 
