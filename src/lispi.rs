@@ -204,6 +204,8 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
 
     let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
 
+    ir::register_allocation::create_interference_graph(&funcs, &mut ir_ctx);
+
     if opt.dump {
         printlnuw("Raw IR instructions:");
         for fun in &funcs {
@@ -234,7 +236,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
 
     let big_endian = true;
 
-    let mut codes = codes
+    let codes = codes
         .into_iter()
         .flat_map(|code| {
             let mut codes = code.to_be_bytes();
@@ -298,7 +300,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     });
 
     let mut output = File::create("out.bin")?;
-    output.write_all(&mut codes)?;
+    output.write_all(&codes)?;
 
     Ok(())
 }

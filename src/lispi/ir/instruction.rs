@@ -23,6 +23,7 @@ pub enum Instruction {
     Mul(Operand, Operand),
     Or(Operand, Operand),
     Shift(ShiftOperator, Operand, Operand),
+    /// addr, value
     Store(Operand, Operand),
     Cmp(CmpOperator, Operand, Operand),
     Call {

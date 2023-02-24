@@ -33,6 +33,7 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
             ty,
         } in bb.insts.clone().into_iter().rev()
         {
+            // TOOD: Use get_vars in register_allocation
             match &inst {
                 Instruction::Branch {
                     cond,

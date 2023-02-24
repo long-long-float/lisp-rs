@@ -260,12 +260,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             } else {
                 None
             };
-            add_instr(
-                &mut result,
-                ctx,
-                I::Jump(end_label, end_bb),
-                Type::None,
-            );
+            add_instr(&mut result, ctx, I::Jump(end_label, end_bb), Type::None);
 
             ctx.add_bb(end_bb);
             if let Some(else_res) = else_res {
@@ -306,7 +301,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
     Ok(result)
 }
 
-fn compile_lambdas_ast<'a>(ast: AnnotatedAst, ctx: &mut Context<'a>) -> Result<AnnotatedAst> {
+fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<AnnotatedAst> {
     let AnnotatedAst { ast, location, ty } = ast;
 
     match ast {
@@ -437,11 +432,7 @@ fn compile_asts(asts: Vec<AnnotatedAst>, ctx: &mut Context) -> Result<Instructio
     Ok(result)
 }
 
-pub fn compile<'a>(
-    asts: Program,
-    sym_table: SymbolTable,
-    ir_ctx: &'a mut IrContext,
-) -> Result<Functions> {
+pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) -> Result<Functions> {
     let mut result = Vec::new();
 
     let main_bb = ir_ctx.bb_arena.alloc(BasicBlock::new("main".to_string()));

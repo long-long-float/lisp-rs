@@ -3,7 +3,7 @@ use std::fmt::Display;
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use crate::{lispi::console::printlnuw};
+use crate::lispi::console::printlnuw;
 
 use super::ir::{instruction as i, IrContext};
 
@@ -447,7 +447,7 @@ impl Context {
 type Code = u32;
 type Codes = Vec<Code>;
 
-fn dump_instructions(ctx: &mut Context, insts: &Vec<Instruction>) {
+fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
     println!("RISC-V Instructions:");
     for (addr, inst) in insts.iter().enumerate() {
         let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
