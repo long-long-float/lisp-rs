@@ -72,8 +72,8 @@ fn main() -> Result<()> {
             Ok(())
         };
 
-        let mut env = env::Environment::new();
-        let mut ty_env = env::Environment::new();
+        let mut env = env::Environment::default();
+        let mut ty_env = env::Environment::default();
         let mut sym_table = p::SymbolTable::new();
         e::init_env(&mut env, &mut ty_env, &mut sym_table);
 

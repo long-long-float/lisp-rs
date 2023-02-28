@@ -127,8 +127,8 @@ pub fn expand_macros_ast(
                     .collect::<Result<Vec<_>>>()?;
 
                 if let Some(mac) = menv.get(&name.id) {
-                    let mut env = Environment::new();
-                    let mut ty_env = Environment::new();
+                    let mut env = Environment::default();
+                    let mut ty_env = Environment::default();
 
                     init_env(&mut env, &mut ty_env, sym_env);
 

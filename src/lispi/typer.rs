@@ -986,7 +986,7 @@ pub fn check_and_inference_type(
         env.insert_var(sym, ty);
     }
 
-    let mut ty_env = TypeEnv::new();
+    let mut ty_env = TypeEnv::default();
 
     register_type(&mut ty_env, sym_table, "int", Type::Int);
     register_type(&mut ty_env, sym_table, "float", Type::Float);

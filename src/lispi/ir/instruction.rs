@@ -40,10 +40,7 @@ impl Instruction {
     pub fn is_terminal(&self) -> bool {
         use Instruction::*;
 
-        match self {
-            Branch { .. } | Jump(_, _) | Ret(_) => true,
-            _ => false,
-        }
+        matches!(self, Branch { .. } | Jump(_, _) | Ret(_))
     }
 
     pub fn is_removable(&self) -> bool {
@@ -58,32 +55,18 @@ impl Instruction {
     pub fn has_result(&self) -> bool {
         use Instruction::*;
 
-        match self {
-            Add(_, _)
-            | Sub(_, _)
-            | Mul(_, _)
-            | Cmp(_, _, _)
-            | Call { .. }
-            | Operand(_)
-            | Phi(_) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Add(_, _) | Sub(_, _) | Mul(_, _) | Cmp(_, _, _) | Call { .. } | Operand(_) | Phi(_)
+        )
     }
 
     pub fn is_operand(&self) -> bool {
-        if let Instruction::Operand(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Instruction::Operand(_))
     }
 
     pub fn is_label(&self) -> bool {
-        if let Instruction::Label(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Instruction::Label(_))
     }
 }
 

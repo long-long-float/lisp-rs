@@ -438,9 +438,9 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
     let main_bb = ir_ctx.bb_arena.alloc(BasicBlock::new("main".to_string()));
 
     let mut ctx = Context {
-        env: Environment::new(),
+        env: Environment::default(),
         sym_table,
-        func_env: Environment::new(),
+        func_env: Environment::default(),
         var_gen: UniqueGenerator::new(),
         arena: &mut ir_ctx.bb_arena,
         basic_blocks: Vec::new(),

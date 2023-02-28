@@ -17,15 +17,6 @@ impl<T> Environment<T>
 where
     T: Clone,
 {
-    pub fn new() -> Environment<T> {
-        let mut env = Environment {
-            head_local: None,
-            lambda_local: None,
-        };
-        env.push_local();
-        env
-    }
-
     pub fn update_var(&mut self, name: SymbolValue, value: &T) -> Result<(), Error> {
         let mut local = self.head_local.as_mut().unwrap().borrow_mut();
         if local.update_var(name.id, value) {
@@ -67,6 +58,20 @@ where
             let parent = local.borrow().parent.clone();
             self.head_local = parent;
         }
+    }
+}
+
+impl<T> Default for Environment<T>
+where
+    T: Clone,
+{
+    fn default() -> Self {
+        let mut env = Environment {
+            head_local: None,
+            lambda_local: None,
+        };
+        env.push_local();
+        env
     }
 }
 

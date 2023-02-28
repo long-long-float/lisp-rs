@@ -82,7 +82,7 @@ impl CharExt for char {
 }
 
 fn take_while(
-    program: &Vec<String>,
+    program: &[String],
     line: &mut Vec<char>,
     loc: &mut Location,
     pred: fn(char) -> bool,
@@ -100,7 +100,7 @@ fn take_while(
 }
 
 fn take_expected(
-    program: &Vec<String>,
+    program: &[String],
     line: &mut Vec<char>,
     loc: &mut Location,
     expected: char,
@@ -116,7 +116,7 @@ fn take_expected(
     }
 }
 
-fn current_char(line: &Vec<char>, loc: &Location) -> Result<char> {
+fn current_char(line: &[char], loc: &Location) -> Result<char> {
     if let Some(ch) = line.get(loc.column) {
         Ok(*ch)
     } else {
@@ -126,7 +126,7 @@ fn current_char(line: &Vec<char>, loc: &Location) -> Result<char> {
     }
 }
 
-fn move_to_next_line<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Location) {
+fn move_to_next_line<'a>(program: &'a [String], line: &'a mut Vec<char>, loc: &mut Location) {
     loc.newline();
     if let Some(new_line) = program.get(loc.line) {
         *line = new_line.chars().collect();
@@ -138,7 +138,7 @@ fn move_to_next_line<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc:
 /// Move loc to next location.
 ///
 /// Returned value is moved location, however it is not next line when the column reaches the end of line.
-fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Location) -> Location {
+fn succ<'a>(program: &'a [String], line: &'a mut Vec<char>, loc: &mut Location) -> Location {
     loc.column += 1;
 
     let result = *loc;
@@ -158,7 +158,7 @@ fn succ<'a>(program: &'a Vec<String>, line: &'a mut Vec<char>, loc: &mut Locatio
 }
 
 fn tokenize_number(
-    program: &Vec<String>,
+    program: &[String],
     line: &mut Vec<char>,
     loc: &mut Location,
     begin: Location,
@@ -208,7 +208,7 @@ fn tokenize_number(
 }
 
 fn tokenize_identifier(
-    program: &Vec<String>,
+    program: &[String],
     line: &mut Vec<char>,
     loc: &mut Location,
     begin: Location,

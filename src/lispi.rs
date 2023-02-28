@@ -166,8 +166,8 @@ pub fn frontend(
     let program = m::expand_macros(program, &mut sym_table)?;
 
     // println!("{:#?}", program);
-    let mut env = env::Environment::new();
-    let mut ty_env = env::Environment::new();
+    let mut env = env::Environment::default();
+    let mut ty_env = env::Environment::default();
 
     e::init_env(&mut env, &mut ty_env, &mut sym_table);
     // sym_table.dump();
