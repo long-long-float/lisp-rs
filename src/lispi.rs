@@ -204,7 +204,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
 
     let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
 
-    ir::register_allocation::create_interference_graph(&funcs, &mut ir_ctx);
+    ir::register_allocation::create_interference_graph(&funcs, &mut ir_ctx)?;
 
     if opt.dump {
         printlnuw("Raw IR instructions:");

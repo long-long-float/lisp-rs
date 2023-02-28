@@ -359,10 +359,10 @@ pub fn show_tokens(tokens: Vec<TokenWithLocation>) -> Result<Vec<TokenWithLocati
     Ok(tokens)
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    #[allow(dead_code)]
     fn tok(value: &str) -> Token {
         tokenize(vec![value.to_string()])
             .unwrap()

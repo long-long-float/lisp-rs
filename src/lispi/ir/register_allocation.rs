@@ -1,13 +1,31 @@
+use anyhow::Result;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::lispi::ir::instruction::Operand;
+use crate::{bug, lispi::ir::instruction::Operand};
 
 use super::{
+    super::error::Error,
     instruction::{Functions, Instruction, Variable},
     IrContext,
 };
 
-type IGID = usize;
+/// ID in Interference Graph
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+struct IGID {
+    value: usize,
+}
+
+impl IGID {
+    fn new(value: usize) -> Self {
+        IGID { value }
+    }
+}
+
+impl From<usize> for IGID {
+    fn from(value: usize) -> Self {
+        IGID::new(value)
+    }
+}
 
 #[derive(Default)]
 /// Undirected graph for interference analyzation.
@@ -23,7 +41,7 @@ impl InterferenceGraph {
         if let Some(id) = self.vars.get(var) {
             *id
         } else {
-            let id = self.nodes.len();
+            let id = self.nodes.len().into();
             self.vars.insert(var.to_owned(), id);
 
             self.nodes.push(FxHashSet::default());
@@ -37,18 +55,28 @@ impl InterferenceGraph {
         let node1 = self.get_id_or_add_node(node1);
         let node2 = self.get_id_or_add_node(node2);
 
-        self.nodes[node1].insert(node2);
-        self.nodes[node2].insert(node1);
+        if node1 == node2 {
+            return;
+        }
+
+        self.nodes[node1.value].insert(node2);
+        self.nodes[node2.value].insert(node1);
     }
 
-    /// Remove edges from/to var. This doesn't remove node itself.
+    /// Remove var node and edges from/to var.
     fn remove(&mut self, var: &Variable) {
         if let Some(&id) = self.get_id(var) {
-            self.nodes[id].clear();
+            self.nodes[id.value].clear();
             for node in &mut self.nodes {
                 node.remove(&id);
             }
+
+            self.vars.remove(var);
         }
+    }
+
+    fn exists(&self, var: &Variable) -> bool {
+        self.vars.contains_key(var)
     }
 
     fn get_id_or_add_node(&mut self, var: &Variable) -> IGID {
@@ -59,15 +87,27 @@ impl InterferenceGraph {
         }
     }
 
-    fn get_id(&mut self, var: &Variable) -> Option<&IGID> {
+    fn get_id(&self, var: &Variable) -> Option<&IGID> {
         self.vars.get(var)
     }
 
-    fn is_connected_to(&mut self, src: &Variable, dest: &Variable) -> bool {
-        let src = self.get_id_or_add_node(src);
-        let dest = self.get_id_or_add_node(dest);
+    fn get_connected_vars(&self, var: &Variable) -> Vec<IGID> {
+        if let Some(&id) = self.get_id(var) {
+            self.nodes[id.value]
+                .iter()
+                .map(|id| id.to_owned())
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        }
+    }
 
-        self.nodes[src].contains(&dest)
+    fn is_connected_to(&self, src: &Variable, dest: &Variable) -> bool {
+        if let (Some(&src), Some(dest)) = (self.get_id(src), self.get_id(dest)) {
+            self.nodes[src.value].contains(dest)
+        } else {
+            false
+        }
     }
 }
 
@@ -128,7 +168,10 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
     }
 }
 
-pub fn create_interference_graph(funcs: &Functions, ir_ctx: &mut IrContext) {
+pub fn create_interference_graph(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
+    // TODO: Take the number from outside
+    let num_of_registers = 7;
+
     for func in funcs {
         let mut living_vars = FxHashSet::default();
 
@@ -143,8 +186,6 @@ pub fn create_interference_graph(funcs: &Functions, ir_ctx: &mut IrContext) {
 
                 for var in used_vars {
                     living_vars.insert(var);
-
-                    inter_graph.add_node(var);
                 }
 
                 for lvar1 in &living_vars {
@@ -155,12 +196,61 @@ pub fn create_interference_graph(funcs: &Functions, ir_ctx: &mut IrContext) {
 
                 let result_var = &annot_inst.result;
                 living_vars.remove(result_var);
-                inter_graph.remove(result_var);
             }
         }
+
+        // A vector of (IGID, connected IGIDs).
+        let mut removed_vars = Vec::new();
+
+        let vars = inter_graph.vars.clone();
+
+        for (var, id) in &vars {
+            let connected_var = inter_graph.get_connected_vars(var);
+
+            let register_pressure = connected_var.len();
+            if register_pressure > num_of_registers {
+                return Err(bug!("Register spill is not implemented!"));
+            }
+
+            inter_graph.remove(var);
+
+            removed_vars.push((id, connected_var));
+        }
+
+        // A mapping for IGID and register ID.
+        let mut allocation_map = FxHashMap::default();
+
+        for (&var, others) in removed_vars.iter().rev() {
+            let mut allocated = vec![false].repeat(num_of_registers);
+            for other in others {
+                if let Some(&reg_id) = allocation_map.get(other) {
+                    allocated[reg_id] = true;
+                }
+            }
+
+            let reg_id = allocated
+                .iter()
+                .enumerate()
+                .find(|(_, &alloc)| !alloc)
+                .map(|(id, _)| id);
+
+            if let Some(reg_id) = reg_id {
+                allocation_map.insert(var, reg_id);
+            } else {
+                return Err(bug!("Register cannot be allocated!"));
+            }
+        }
+
+        for (var, reg) in allocation_map {
+            let (var, _) = vars.iter().find(|(_, &id)| id == var).unwrap();
+            println!("{} -> {}", var, reg);
+        }
     }
+
+    Ok(())
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -173,25 +263,27 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        for v in &vars {
-            graph.add_node(v);
-        }
-
         graph.connect(&vars[0], &vars[1]);
         assert!(!graph.is_connected_to(&vars[0], &vars[0]));
         assert!(graph.is_connected_to(&vars[0], &vars[1]));
         assert!(graph.is_connected_to(&vars[1], &vars[0]));
         assert!(!graph.is_connected_to(&vars[0], &vars[2]));
+        assert_eq!(2, graph.vars.len());
 
         graph.remove(&vars[0]);
         assert!(!graph.is_connected_to(&vars[0], &vars[1]));
         assert!(!graph.is_connected_to(&vars[1], &vars[0]));
+        assert!(!graph.exists(&vars[0]));
+        assert!(graph.exists(&vars[1]));
+        assert_eq!(1, graph.vars.len());
 
         graph.connect(&vars[0], &vars[1]);
         graph.connect(&vars[1], &vars[2]);
         graph.connect(&vars[2], &vars[0]);
+        assert_eq!(3, graph.vars.len());
         graph.remove(&vars[0]);
         assert!(!graph.is_connected_to(&vars[1], &vars[0]));
         assert!(!graph.is_connected_to(&vars[2], &vars[0]));
+        assert_eq!(2, graph.vars.len());
     }
 }

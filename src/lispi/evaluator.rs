@@ -11,7 +11,7 @@ macro_rules! bug {
     };
     ( $msg:expr ) => {
         Error::Bug {
-            message: $msg,
+            message: $msg.to_string(),
             file: file!(),
             line: line!(),
         }
