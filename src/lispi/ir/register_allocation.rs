@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -5,9 +7,11 @@ use crate::{bug, lispi::ir::instruction::Operand};
 
 use super::{
     super::error::Error,
-    instruction::{Functions, Instruction, Variable},
+    instruction::{Function, Functions, Instruction, Variable},
     IrContext,
 };
+
+pub type RegisterMap = FxHashMap<Variable, usize>;
 
 /// ID in Interference Graph
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -168,86 +172,99 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
     }
 }
 
-pub fn create_interference_graph(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
+pub fn create_interference_graph(
+    funcs: Functions,
+    ir_ctx: &mut IrContext,
+) -> Result<Vec<(Function, RegisterMap)>> {
     // TODO: Take the number from outside
     let num_of_registers = 7;
 
-    for func in funcs {
-        let mut living_vars = FxHashSet::default();
+    funcs
+        .into_iter()
+        .map(|func| {
+            let mut living_vars = FxHashSet::default();
 
-        let mut inter_graph = InterferenceGraph::default();
+            let mut inter_graph = InterferenceGraph::default();
 
-        for bb in func.basic_blocks.iter().rev() {
-            let bb = ir_ctx.bb_arena.get(*bb).unwrap();
+            for bb in func.basic_blocks.iter().rev() {
+                let bb = ir_ctx.bb_arena.get(*bb).unwrap();
 
-            for annot_inst in bb.insts.iter().rev() {
-                let mut used_vars = Vec::new();
-                get_vars(&annot_inst.inst, &mut used_vars);
+                for annot_inst in bb.insts.iter().rev() {
+                    let mut used_vars = Vec::new();
+                    get_vars(&annot_inst.inst, &mut used_vars);
 
-                for var in used_vars {
-                    living_vars.insert(var);
+                    for var in used_vars {
+                        let in_args = func.args.iter().any(|(name, _)| &var.name == name);
+                        if in_args {
+                            continue;
+                        }
+
+                        living_vars.insert(var);
+                    }
+
+                    for lvar1 in &living_vars {
+                        for lvar2 in &living_vars {
+                            inter_graph.connect(lvar1, lvar2);
+                        }
+                    }
+
+                    let result_var = &annot_inst.result;
+                    living_vars.remove(result_var);
+                }
+            }
+
+            // A vector of (IGID, connected IGIDs).
+            let mut removed_vars = Vec::new();
+
+            let vars = inter_graph.vars.clone();
+
+            for (var, id) in &vars {
+                let connected_var = inter_graph.get_connected_vars(var);
+
+                let register_pressure = connected_var.len();
+                if register_pressure > num_of_registers {
+                    return Err(bug!("Register spill is not implemented!"));
                 }
 
-                for lvar1 in &living_vars {
-                    for lvar2 in &living_vars {
-                        inter_graph.connect(lvar1, lvar2);
+                inter_graph.remove(var);
+
+                removed_vars.push((id, connected_var));
+            }
+
+            // A mapping for IGID and register ID.
+            let mut allocation_map = FxHashMap::default();
+
+            for (&var, others) in removed_vars.iter().rev() {
+                let mut allocated = vec![false].repeat(num_of_registers);
+                for other in others {
+                    if let Some(&reg_id) = allocation_map.get(other) {
+                        allocated[reg_id] = true;
                     }
                 }
 
-                let result_var = &annot_inst.result;
-                living_vars.remove(result_var);
-            }
-        }
+                let reg_id = allocated
+                    .iter()
+                    .enumerate()
+                    .find(|(_, &alloc)| !alloc)
+                    .map(|(id, _)| id);
 
-        // A vector of (IGID, connected IGIDs).
-        let mut removed_vars = Vec::new();
-
-        let vars = inter_graph.vars.clone();
-
-        for (var, id) in &vars {
-            let connected_var = inter_graph.get_connected_vars(var);
-
-            let register_pressure = connected_var.len();
-            if register_pressure > num_of_registers {
-                return Err(bug!("Register spill is not implemented!"));
-            }
-
-            inter_graph.remove(var);
-
-            removed_vars.push((id, connected_var));
-        }
-
-        // A mapping for IGID and register ID.
-        let mut allocation_map = FxHashMap::default();
-
-        for (&var, others) in removed_vars.iter().rev() {
-            let mut allocated = vec![false].repeat(num_of_registers);
-            for other in others {
-                if let Some(&reg_id) = allocation_map.get(other) {
-                    allocated[reg_id] = true;
+                if let Some(reg_id) = reg_id {
+                    allocation_map.insert(var, reg_id);
+                } else {
+                    return Err(bug!("Register cannot be allocated!"));
                 }
             }
 
-            let reg_id = allocated
-                .iter()
-                .enumerate()
-                .find(|(_, &alloc)| !alloc)
-                .map(|(id, _)| id);
+            let mut result = FxHashMap::default();
 
-            if let Some(reg_id) = reg_id {
-                allocation_map.insert(var, reg_id);
-            } else {
-                return Err(bug!("Register cannot be allocated!"));
+            for (var, reg) in allocation_map {
+                let (var, _) = vars.iter().find(|(_, &id)| id == var).unwrap();
+                result.insert(var.to_owned(), reg);
             }
-        }
 
-        for (var, reg) in allocation_map {
-            let (var, _) = vars.iter().find(|(_, &id)| id == var).unwrap();
-            println!("{} -> {}", var, reg);
-        }
-    }
-
-    Ok(())
+            Ok((func, result))
+        })
+        .collect::<Result<Vec<_>>>()
 }
 
 #[cfg(test)]

@@ -94,7 +94,7 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
                     then_bb,
                     else_bb,
                 } => {
-                    let cond = replace_var(&mut ctx, cond);
+                    let cond = replace_var(&ctx, cond);
                     I::Branch {
                         cond,
                         then_label,
@@ -119,11 +119,8 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
                     I::Cmp(op, replace_var(&ctx, left), replace_var(&ctx, right))
                 }
                 I::Call { fun, args } => {
-                    let fun = replace_var(&mut ctx, fun);
-                    let args = args
-                        .into_iter()
-                        .map(|arg| replace_var(&mut ctx, arg))
-                        .collect();
+                    let fun = replace_var(&ctx, fun);
+                    let args = args.into_iter().map(|arg| replace_var(&ctx, arg)).collect();
 
                     I::Call { fun, args }
                 }

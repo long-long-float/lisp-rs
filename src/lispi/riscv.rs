@@ -3,9 +3,9 @@ use std::fmt::Display;
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use crate::lispi::console::printlnuw;
+use crate::lispi::{console::printlnuw, ir::register_allocation::RegisterMap};
 
-use super::ir::{instruction as i, IrContext};
+use super::ir::{instruction as i, register_allocation as ra, IrContext};
 
 type RegisterType = u32;
 const XLEN: u8 = 32;
@@ -516,16 +516,25 @@ fn generate_code_bin_op(
     Ok(())
 }
 
-pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) -> Result<Codes> {
+pub fn generate_code(
+    funcs: Vec<(i::Function, ra::RegisterMap)>,
+    ir_ctx: &mut IrContext,
+    dump: bool,
+) -> Result<Codes> {
     fn load_operand_to(
         ctx: &mut Context,
         insts: &mut Vec<Instruction>,
+        register_map: &RegisterMap,
         op: i::Operand,
         rd: Register,
     ) {
         match op {
             i::Operand::Variable(var) => {
-                let reg = ctx.reg_map.get(&var.name).unwrap().clone();
+                let reg = register_map
+                    .get(&var)
+                    .map(|&reg| Register::t(reg as u32))
+                    .or_else(|| ctx.reg_map.get(&var.name).cloned())
+                    .unwrap();
                 insts.push(Instruction::mv(rd, reg));
             }
             i::Operand::Immediate(imm) => {
@@ -534,9 +543,14 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
         }
     }
 
-    fn load_argument(ctx: &mut Context, insts: &mut Vec<Instruction>, op: i::Operand) {
+    fn load_argument(
+        ctx: &mut Context,
+        insts: &mut Vec<Instruction>,
+        register_map: &RegisterMap,
+        op: i::Operand,
+    ) {
         let rd = ctx.allocate_arg_reg();
-        load_operand_to(ctx, insts, op, rd);
+        load_operand_to(ctx, insts, register_map, op, rd);
     }
 
     fn add_label(ctx: &mut Context, insts: &mut Vec<Instruction>, label: String) {
@@ -587,7 +601,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
     use Instruction::*;
 
     // Remove phi nodes
-    for fun in &funcs {
+    for (fun, register_map) in &funcs {
         let i::Function {
             name: _,
             args: _,
@@ -637,7 +651,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
 
     if dump {
         printlnuw("Remove phi nodes:");
-        for fun in &funcs {
+        for (fun, _) in &funcs {
             fun.dump(&ir_ctx.bb_arena);
         }
     }
@@ -645,7 +659,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
     let mut ctx = Context::new();
     let mut insts = Vec::new();
 
-    for fun in funcs {
+    for (fun, register_map) in funcs {
         ctx.reset_on_fun();
 
         for (i, (arg, _)) in fun.args.iter().enumerate() {
@@ -669,8 +683,13 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
             {
                 use i::Instruction::*;
 
-                let result_reg = ctx.allocate_reg();
-                ctx.reg_map.insert(result.name, result_reg.clone());
+                let result_reg = if !inst.is_terminal() {
+                    let reg = Register::t(register_map.get(&result).unwrap().to_owned() as u32);
+                    ctx.reg_map.insert(result.name, reg.clone());
+                    reg
+                } else {
+                    Register::zero()
+                };
 
                 match inst {
                     Branch {
@@ -687,7 +706,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
                         }));
                     }
                     Ret(op) => {
-                        load_operand_to(&mut ctx, &mut insts, op, Register::a(0));
+                        load_operand_to(&mut ctx, &mut insts, &register_map, op, Register::a(0));
 
                         if fun.name == "main" {
                             // syscall EXIT on rv32emu
@@ -759,7 +778,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
                     Cmp(_, _, _) => todo!(),
                     Call { fun, args } => {
                         for arg in args {
-                            load_argument(&mut ctx, &mut insts, arg);
+                            load_argument(&mut ctx, &mut insts, &register_map, arg);
                         }
                         if let i::Operand::Immediate(i::Immediate::Label(label)) = fun {
                             insts.push(J(JInstruction {
@@ -774,7 +793,7 @@ pub fn generate_code(funcs: i::Functions, ir_ctx: &mut IrContext, dump: bool) ->
                     }
                     Phi(_nodes) => {}
                     Operand(op) => {
-                        load_operand_to(&mut ctx, &mut insts, op, result_reg);
+                        load_operand_to(&mut ctx, &mut insts, &register_map, op, result_reg);
                     }
                     Label(label) => {
                         add_label(&mut ctx, &mut insts, label.name);
