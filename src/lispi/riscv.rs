@@ -183,8 +183,8 @@ impl GenerateCode for RInstruction {
         let (funct7, funct3, opcode) = match self.op {
             Add => (0b0000000, 0b000, 0b0110011),
             Or => (0b0000000, 0b110, 0b0110011),
-            ShiftLeft => (0b0110011, 0b001, 0b0000000),
-            ShiftRight => (0b0110011, 0b101, 0b0000000),
+            ShiftLeft => (0b0000000, 0b001, 0b0110011),
+            ShiftRight => (0b0000000, 0b101, 0b0110011),
         };
 
         (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
