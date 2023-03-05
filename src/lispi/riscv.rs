@@ -1,11 +1,14 @@
-use std::fmt::Display;
+use std::{fmt::Display, fs::File, io::Write};
 
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
 use crate::lispi::{console::printlnuw, ir::register_allocation::RegisterMap};
 
-use super::ir::{instruction as i, register_allocation as ra, IrContext};
+use super::{
+    cli_option::CliOption,
+    ir::{instruction as i, register_allocation as ra, IrContext},
+};
 
 type RegisterType = u32;
 const XLEN: u8 = 32;
@@ -170,6 +173,7 @@ struct JInstruction {
 
 trait GenerateCode {
     fn generate_code(&self) -> RegisterType;
+    fn generate_asm(&self) -> String;
 }
 
 impl GenerateCode for RInstruction {
@@ -188,6 +192,19 @@ impl GenerateCode for RInstruction {
         };
 
         (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
+    }
+
+    fn generate_asm(&self) -> String {
+        use RInstructionOp::*;
+
+        let name = match self.op {
+            Add => "add",
+            Or => "or",
+            ShiftLeft => "sll",
+            ShiftRight => "srl",
+        };
+
+        format!("{} {}, {}, {}", name, self.rd, self.rs1, self.rs2)
     }
 }
 
@@ -210,6 +227,22 @@ impl GenerateCode for IInstruction {
 
         (imm << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
     }
+
+    fn generate_asm(&self) -> String {
+        use IInstructionOp::*;
+
+        match self.op {
+            Ori | Addi => {
+                let name = if self.op == Ori { "ori" } else { "addi" };
+                format!("{} {}, {}, {}", name, self.rd, self.rs1, self.imm)
+            }
+            Jalr => "jalr".to_string(),
+            Ecall => "ecall".to_string(),
+            Lw => {
+                format!("lw {}, {}({})", self.rd, self.imm, self.rs1)
+            }
+        }
+    }
 }
 
 impl GenerateCode for SInstruction {
@@ -229,6 +262,16 @@ impl GenerateCode for SInstruction {
 
         (imm1 << 24) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm2 << 7) | opcode
     }
+
+    fn generate_asm(&self) -> String {
+        use SInstructionOp::*;
+
+        match self.op {
+            Sw => {
+                format!("sw {}, {}({})", self.rs2, self.imm, self.rs1)
+            }
+        }
+    }
 }
 
 impl GenerateCode for JInstruction {
@@ -238,12 +281,10 @@ impl GenerateCode for JInstruction {
         let imm = self.imm.value();
         assert!(imm & 1 == 0);
         let imm = imm >> 1;
-        // println!("{imm:#022b}");
         let imm = (imm & (0b1 << 19))
             | (imm & 0b1111_1111_11) << 9
             | (imm & (0b1 << 8))
             | (imm & 0b1111_1111) >> 9;
-        // println!("{imm:#022b}");
 
         let rd = self.rd.as_int();
 
@@ -252,6 +293,16 @@ impl GenerateCode for JInstruction {
         };
 
         (imm << 12) | (rd << 7) | opcode
+    }
+
+    fn generate_asm(&self) -> String {
+        use JInstructionOp::*;
+
+        match self.op {
+            Jal => {
+                format!("jal {}, {}", self.rd, self.imm)
+            }
+        }
     }
 }
 
@@ -389,7 +440,7 @@ impl Immediate {
 
 impl Display for Immediate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.value, self.len)
+        write!(f, "{}", self.value)
     }
 }
 
@@ -519,7 +570,7 @@ fn generate_code_bin_op(
 pub fn generate_code(
     funcs: Vec<(i::Function, ra::RegisterMap)>,
     ir_ctx: &mut IrContext,
-    dump: bool,
+    opt: &CliOption,
 ) -> Result<Codes> {
     fn load_operand_to(
         ctx: &mut Context,
@@ -649,7 +700,7 @@ pub fn generate_code(
         }
     }
 
-    if dump {
+    if opt.dump {
         printlnuw("Remove phi nodes:");
         for (fun, _) in &funcs {
             fun.dump(&ir_ctx.bb_arena);
@@ -833,9 +884,21 @@ pub fn generate_code(
         })
         .collect::<Vec<Instruction>>();
 
-    if dump {
+    if opt.dump {
         dump_instructions(&mut ctx, &insts);
     }
+
+    let asm = insts
+        .iter()
+        .map(|inst| match inst {
+            R(ri) => ri.generate_asm(),
+            I(ii) => ii.generate_asm(),
+            S(si) => si.generate_asm(),
+            J(ji) => ji.generate_asm(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write("out.s", asm)?;
 
     let result = insts
         .into_iter()

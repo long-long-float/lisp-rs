@@ -233,7 +233,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     let func_with_reg_maps =
         ir::register_allocation::create_interference_graph(funcs, &mut ir_ctx)?;
 
-    let codes = riscv::generate_code(func_with_reg_maps, &mut ir_ctx, opt.dump)?;
+    let codes = riscv::generate_code(func_with_reg_maps, &mut ir_ctx, opt)?;
 
     let big_endian = true;
 
