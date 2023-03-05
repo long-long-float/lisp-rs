@@ -684,9 +684,13 @@ pub fn generate_code(
                 use i::Instruction::*;
 
                 let result_reg = if !inst.is_terminal() {
-                    let reg = Register::t(register_map.get(&result).unwrap().to_owned() as u32);
-                    ctx.reg_map.insert(result.name, reg.clone());
-                    reg
+                    if let Some(&reg) = register_map.get(&result) {
+                        let reg = Register::t(reg as u32);
+                        ctx.reg_map.insert(result.name, reg.clone());
+                        reg
+                    } else {
+                        Register::zero()
+                    }
                 } else {
                     Register::zero()
                 };
