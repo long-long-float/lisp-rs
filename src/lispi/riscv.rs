@@ -1,4 +1,8 @@
-use std::{fmt::Display, fs::File, io::Write};
+use std::{
+    fmt::{write, Display},
+    fs::File,
+    io::Write,
+};
 
 use anyhow::Result;
 use rustc_hash::FxHashMap;
@@ -19,6 +23,7 @@ enum Instruction {
     I(IInstruction),
     S(SInstruction),
     J(JInstruction),
+    U(UInstruction),
 }
 
 impl Instruction {
@@ -94,16 +99,11 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Instruction::*;
         match self {
-            R(ri) => write!(f, "{:?} {} {} {}", ri.op, ri.rd, ri.rs1, ri.rs2),
-            I(ii) => {
-                if ii.is_nop() {
-                    write!(f, "Nop")
-                } else {
-                    write!(f, "{:?} {} {} {}", ii.op, ii.rd, ii.rs1, ii.imm)
-                }
-            }
-            S(si) => write!(f, "{:?} {} {} {}", si.op, si.rs1, si.imm, si.rs2),
-            J(ji) => write!(f, "{:?} {} {}", ji.op, ji.rd, ji.imm),
+            R(ri) => write!(f, "{}", ri.generate_asm()),
+            I(ii) => write!(f, "{}", ii.generate_asm()),
+            S(si) => write!(f, "{}", si.generate_asm()),
+            J(ji) => write!(f, "{}", ji.generate_asm()),
+            U(ui) => write!(f, "{}", ui.generate_asm()),
         }
     }
 }
@@ -169,6 +169,23 @@ struct JInstruction {
     op: JInstructionOp,
     imm: RelAddress,
     rd: Register,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+enum JInstructionOp {
+    Jal,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+struct UInstruction {
+    op: UInstructionOp,
+    imm: Immediate,
+    rd: Register,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+enum UInstructionOp {
+    Lui,
 }
 
 trait GenerateCode {
@@ -306,6 +323,42 @@ impl GenerateCode for JInstruction {
     }
 }
 
+impl GenerateCode for UInstruction {
+    fn generate_code(&self) -> RegisterType {
+        use UInstructionOp::*;
+
+        let mut imm = self.imm.value as u32 & 0xfffff000;
+        if (imm & 1 << 31) != 0 {
+            // TODO: I don't knwo why it is needed.
+            imm += 0x1000;
+        }
+
+        let rd = self.rd.as_int();
+
+        let opcode = match self.op {
+            Lui => 0b0110111,
+        };
+
+        imm | (rd << 7) | opcode
+    }
+
+    fn generate_asm(&self) -> String {
+        use UInstructionOp::*;
+
+        match self.op {
+            Lui => {
+                let mut imm = self.imm.value as u32 & 0xfffff000;
+                if (imm & 1 << 31) != 0 {
+                    // TODO: I don't knwo why it is needed.
+                    imm += 0x1000;
+                }
+
+                format!("lui {}, {}", self.rd, imm >> 12)
+            }
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 enum RelAddress {
     Label(i::Label),
@@ -328,11 +381,6 @@ impl Display for RelAddress {
             RelAddress::Immediate(imm) => write!(f, "{}", imm.value),
         }
     }
-}
-
-#[derive(Clone, PartialEq, Debug)]
-enum JInstructionOp {
-    Jal,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -589,7 +637,26 @@ pub fn generate_code(
                 insts.push(Instruction::mv(rd, reg));
             }
             i::Operand::Immediate(imm) => {
-                insts.push(Instruction::li(rd, imm.into()));
+                let imm: Immediate = imm.into();
+                let mut last_set_bit = -1;
+                for i in (0..=31).rev() {
+                    if imm.value & (1 << i) != 0 {
+                        last_set_bit = i;
+                        break;
+                    }
+                }
+                if last_set_bit >= 12 {
+                    // Large integer
+                    let bot = Immediate::new(imm.value & 0xfff, 12);
+                    insts.push(Instruction::U(UInstruction {
+                        op: UInstructionOp::Lui,
+                        imm,
+                        rd: rd.clone(),
+                    }));
+                    insts.push(Instruction::addi(rd.clone(), rd, bot));
+                } else {
+                    insts.push(Instruction::li(rd, imm));
+                }
             }
         }
     }
@@ -895,6 +962,7 @@ pub fn generate_code(
             I(ii) => ii.generate_asm(),
             S(si) => si.generate_asm(),
             J(ji) => ji.generate_asm(),
+            U(ui) => ui.generate_asm(),
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -907,6 +975,7 @@ pub fn generate_code(
             I(ii) => ii.generate_code(),
             S(si) => si.generate_code(),
             J(ji) => ji.generate_code(),
+            U(ui) => ui.generate_code(),
         })
         .collect();
 

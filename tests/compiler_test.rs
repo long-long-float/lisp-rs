@@ -125,3 +125,28 @@ fn define_recursive_function_and_call() {
     );
     assert_eq!(Some(24), registers["x10"].as_i64());
 }
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn load_large_positive_integer() {
+    let registers = compile_and_run(
+        r#"
+2000000000
+"#,
+    );
+    assert_eq!(Some(2000000000), registers["x10"].as_i64());
+}
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn load_large_negative_integer() {
+    let registers = compile_and_run(
+        r#"
+-2000000000
+"#,
+    );
+    assert_eq!(
+        Some(-2000000000),
+        registers["x10"].as_i64().map(|i| i as i32)
+    );
+}
