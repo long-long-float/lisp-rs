@@ -76,7 +76,7 @@ impl Instruction {
         })
     }
 
-    fn lw(rs1: Register, rd: Register, imm: Immediate) -> Instruction {
+    fn lw(rd: Register, rs1: Register, imm: Immediate) -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Lw,
             rs1,
@@ -249,11 +249,15 @@ impl GenerateCode for IInstruction {
         use IInstructionOp::*;
 
         match self.op {
-            Ori | Addi => {
-                let name = if self.op == Ori { "ori" } else { "addi" };
+            Ori | Addi | Jalr => {
+                let name = match self.op {
+                    Ori => "ori",
+                    Addi => "addi",
+                    Jalr => "jalr",
+                    _ => "BUG",
+                };
                 format!("{} {}, {}, {}", name, self.rd, self.rs1, self.imm)
             }
-            Jalr => "jalr".to_string(),
             Ecall => "ecall".to_string(),
             Lw => {
                 format!("lw {}, {}({})", self.rd, self.imm, self.rs1)
@@ -564,13 +568,65 @@ fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
     println!();
 }
 
-fn load_operand(ctx: &mut Context, insts: &mut Vec<Instruction>, op: i::Operand) -> Register {
+fn load_operand(
+    ctx: &mut Context,
+    insts: &mut Vec<Instruction>,
+    register_map: &RegisterMap,
+    op: i::Operand,
+) -> Register {
     match op {
         i::Operand::Variable(var) => ctx.reg_map.get(&var.name).unwrap().clone(),
         i::Operand::Immediate(imm) => {
             let rd = ctx.allocate_reg();
-            insts.push(Instruction::li(rd.clone(), imm.into()));
+            load_operand_to(
+                ctx,
+                insts,
+                register_map,
+                i::Operand::Immediate(imm),
+                rd.clone(),
+            );
             rd
+        }
+    }
+}
+
+fn load_operand_to(
+    ctx: &mut Context,
+    insts: &mut Vec<Instruction>,
+    register_map: &RegisterMap,
+    op: i::Operand,
+    rd: Register,
+) {
+    match op {
+        i::Operand::Variable(var) => {
+            let reg = register_map
+                .get(&var)
+                .map(|&reg| Register::t(reg as u32))
+                .or_else(|| ctx.reg_map.get(&var.name).cloned())
+                .unwrap();
+            insts.push(Instruction::mv(rd, reg));
+        }
+        i::Operand::Immediate(imm) => {
+            let imm: Immediate = imm.into();
+            let mut last_set_bit = -1;
+            for i in (0..=31).rev() {
+                if imm.value & (1 << i) != 0 {
+                    last_set_bit = i;
+                    break;
+                }
+            }
+            if last_set_bit >= 12 {
+                // Large integer
+                let bot = Immediate::new(imm.value & 0xfff, 12);
+                insts.push(Instruction::U(UInstruction {
+                    op: UInstructionOp::Lui,
+                    imm,
+                    rd: rd.clone(),
+                }));
+                insts.push(Instruction::addi(rd.clone(), rd, bot));
+            } else {
+                insts.push(Instruction::li(rd, imm));
+            }
         }
     }
 }
@@ -578,6 +634,7 @@ fn load_operand(ctx: &mut Context, insts: &mut Vec<Instruction>, op: i::Operand)
 fn generate_code_bin_op(
     ctx: &mut Context,
     insts: &mut Vec<Instruction>,
+    register_map: &RegisterMap,
     left: i::Operand,
     right: i::Operand,
     op: RInstructionOp,
@@ -589,7 +646,7 @@ fn generate_code_bin_op(
 
     let inst = match (left, right) {
         (Immediate(imm), var) | (var, Immediate(imm)) => {
-            let rs1 = load_operand(ctx, insts, var);
+            let rs1 = load_operand(ctx, insts, register_map, var);
             I(IInstruction {
                 op: opi,
                 imm: imm.into(),
@@ -598,8 +655,8 @@ fn generate_code_bin_op(
             })
         }
         (left, right) => {
-            let rs1 = load_operand(ctx, insts, left);
-            let rs2 = load_operand(ctx, insts, right);
+            let rs1 = load_operand(ctx, insts, register_map, left);
+            let rs2 = load_operand(ctx, insts, register_map, right);
 
             R(RInstruction {
                 op,
@@ -620,47 +677,6 @@ pub fn generate_code(
     ir_ctx: &mut IrContext,
     opt: &CliOption,
 ) -> Result<Codes> {
-    fn load_operand_to(
-        ctx: &mut Context,
-        insts: &mut Vec<Instruction>,
-        register_map: &RegisterMap,
-        op: i::Operand,
-        rd: Register,
-    ) {
-        match op {
-            i::Operand::Variable(var) => {
-                let reg = register_map
-                    .get(&var)
-                    .map(|&reg| Register::t(reg as u32))
-                    .or_else(|| ctx.reg_map.get(&var.name).cloned())
-                    .unwrap();
-                insts.push(Instruction::mv(rd, reg));
-            }
-            i::Operand::Immediate(imm) => {
-                let imm: Immediate = imm.into();
-                let mut last_set_bit = -1;
-                for i in (0..=31).rev() {
-                    if imm.value & (1 << i) != 0 {
-                        last_set_bit = i;
-                        break;
-                    }
-                }
-                if last_set_bit >= 12 {
-                    // Large integer
-                    let bot = Immediate::new(imm.value & 0xfff, 12);
-                    insts.push(Instruction::U(UInstruction {
-                        op: UInstructionOp::Lui,
-                        imm,
-                        rd: rd.clone(),
-                    }));
-                    insts.push(Instruction::addi(rd.clone(), rd, bot));
-                } else {
-                    insts.push(Instruction::li(rd, imm));
-                }
-            }
-        }
-    }
-
     fn load_argument(
         ctx: &mut Context,
         insts: &mut Vec<Instruction>,
@@ -700,9 +716,9 @@ pub fn generate_code(
 
     fn add_fun_footer(insts: &mut Vec<Instruction>) {
         insts.push(Instruction::lw(
-            Register::s(0),
+            Register::ra(),
             Register::sp(),
-            Immediate::new(4, XLEN),
+            Immediate::new(0, XLEN),
         ));
         insts.push(Instruction::lw(
             Register::s(0),
@@ -850,6 +866,7 @@ pub fn generate_code(
                         generate_code_bin_op(
                             &mut ctx,
                             &mut insts,
+                            &register_map,
                             left,
                             right,
                             RInstructionOp::Add,
@@ -863,6 +880,7 @@ pub fn generate_code(
                         generate_code_bin_op(
                             &mut ctx,
                             &mut insts,
+                            &register_map,
                             left,
                             right,
                             RInstructionOp::Or,
@@ -871,8 +889,8 @@ pub fn generate_code(
                         )?;
                     }
                     Shift(op, left, right) => {
-                        let rs1 = load_operand(&mut ctx, &mut insts, left);
-                        let rs2 = load_operand(&mut ctx, &mut insts, right);
+                        let rs1 = load_operand(&mut ctx, &mut insts, &register_map, left);
+                        let rs2 = load_operand(&mut ctx, &mut insts, &register_map, right);
 
                         let op = match op {
                             i::ShiftOperator::LogicalLeft => RInstructionOp::ShiftLeft,
@@ -887,8 +905,8 @@ pub fn generate_code(
                         }))
                     }
                     Store(addr, value) => {
-                        let rs1 = load_operand(&mut ctx, &mut insts, addr);
-                        let rs2 = load_operand(&mut ctx, &mut insts, value);
+                        let rs1 = load_operand(&mut ctx, &mut insts, &register_map, addr);
+                        let rs2 = load_operand(&mut ctx, &mut insts, &register_map, value);
 
                         insts.push(S(SInstruction {
                             op: SInstructionOp::Sw,
