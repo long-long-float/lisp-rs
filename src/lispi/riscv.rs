@@ -1,16 +1,16 @@
-use std::{
-    fmt::{write, Display},
-    fs::File,
-    io::Write,
-};
+use std::fmt::Display;
 
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 
-use crate::lispi::{console::printlnuw, ir::register_allocation::RegisterMap};
+use crate::{
+    bug,
+    lispi::{console::printlnuw, ir::register_allocation::RegisterMap},
+};
 
 use super::{
     cli_option::CliOption,
+    error::*,
     ir::{instruction as i, register_allocation as ra, IrContext},
 };
 
@@ -247,6 +247,10 @@ impl GenerateCode for IInstruction {
 
     fn generate_asm(&self) -> String {
         use IInstructionOp::*;
+
+        if self.is_nop() {
+            return "nop".to_string();
+        }
 
         match self.op {
             Ori | Addi | Jalr => {
@@ -508,36 +512,24 @@ impl From<i::Immediate> for Immediate {
 }
 
 struct Context {
-    reg_map: FxHashMap<String, Register>,
-    reg_count: u32,
+    arg_reg_map: FxHashMap<String, Register>,
     arg_count: u32,
 
     label_addrs: FxHashMap<String, i32>,
 }
 
-/// t3
-const TEMP_REG_BASE: u32 = 28;
-
 impl Context {
     fn new() -> Context {
         Context {
-            reg_map: FxHashMap::default(),
-            reg_count: TEMP_REG_BASE,
+            arg_reg_map: FxHashMap::default(),
             arg_count: 0,
             label_addrs: FxHashMap::default(),
         }
     }
 
     fn reset_on_fun(&mut self) {
-        self.reg_map.clear();
-        self.reg_count = TEMP_REG_BASE;
+        self.arg_reg_map.clear();
         self.arg_count = 0;
-    }
-
-    fn allocate_reg(&mut self) -> Register {
-        let reg = Register::Integer(self.reg_count);
-        self.reg_count += 1;
-        reg
     }
 
     fn allocate_arg_reg(&mut self) -> Register {
@@ -569,24 +561,19 @@ fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
 }
 
 fn load_operand(
-    ctx: &mut Context,
-    insts: &mut Vec<Instruction>,
+    _ctx: &mut Context,
+    _insts: &mut Vec<Instruction>,
     register_map: &RegisterMap,
     op: i::Operand,
-) -> Register {
+) -> Result<Register> {
     match op {
-        i::Operand::Variable(var) => ctx.reg_map.get(&var.name).unwrap().clone(),
-        i::Operand::Immediate(imm) => {
-            let rd = ctx.allocate_reg();
-            load_operand_to(
-                ctx,
-                insts,
-                register_map,
-                i::Operand::Immediate(imm),
-                rd.clone(),
-            );
-            rd
+        i::Operand::Variable(var) => {
+            Ok(Register::t(register_map.get(&var).unwrap().clone() as u32))
         }
+        i::Operand::Immediate(imm) => Err(bug!(format!(
+            "Cannot load immediate operand. This should be formed as `%var = {}.`",
+            imm
+        ))),
     }
 }
 
@@ -602,7 +589,7 @@ fn load_operand_to(
             let reg = register_map
                 .get(&var)
                 .map(|&reg| Register::t(reg as u32))
-                .or_else(|| ctx.reg_map.get(&var.name).cloned())
+                .or_else(|| ctx.arg_reg_map.get(&var.name).cloned())
                 .unwrap();
             insts.push(Instruction::mv(rd, reg));
         }
@@ -646,7 +633,7 @@ fn generate_code_bin_op(
 
     let inst = match (left, right) {
         (Immediate(imm), var) | (var, Immediate(imm)) => {
-            let rs1 = load_operand(ctx, insts, register_map, var);
+            let rs1 = load_operand(ctx, insts, register_map, var)?;
             I(IInstruction {
                 op: opi,
                 imm: imm.into(),
@@ -655,8 +642,8 @@ fn generate_code_bin_op(
             })
         }
         (left, right) => {
-            let rs1 = load_operand(ctx, insts, register_map, left);
-            let rs2 = load_operand(ctx, insts, register_map, right);
+            let rs1 = load_operand(ctx, insts, register_map, left)?;
+            let rs2 = load_operand(ctx, insts, register_map, right)?;
 
             R(RInstruction {
                 op,
@@ -735,7 +722,7 @@ pub fn generate_code(
     use Instruction::*;
 
     // Remove phi nodes
-    for (fun, register_map) in &funcs {
+    for (fun, _register_map) in &funcs {
         let i::Function {
             name: _,
             args: _,
@@ -797,7 +784,7 @@ pub fn generate_code(
         ctx.reset_on_fun();
 
         for (i, (arg, _)) in fun.args.iter().enumerate() {
-            ctx.reg_map.insert(arg.clone(), Register::a(i as u32));
+            ctx.arg_reg_map.insert(arg.clone(), Register::a(i as u32));
         }
 
         for (bbi, bb) in fun.basic_blocks.into_iter().enumerate() {
@@ -820,7 +807,7 @@ pub fn generate_code(
                 let result_reg = if !inst.is_terminal() {
                     if let Some(&reg) = register_map.get(&result) {
                         let reg = Register::t(reg as u32);
-                        ctx.reg_map.insert(result.name, reg.clone());
+                        // ctx.reg_map.insert(result.name, reg.clone());
                         reg
                     } else {
                         Register::zero()
@@ -889,8 +876,8 @@ pub fn generate_code(
                         )?;
                     }
                     Shift(op, left, right) => {
-                        let rs1 = load_operand(&mut ctx, &mut insts, &register_map, left);
-                        let rs2 = load_operand(&mut ctx, &mut insts, &register_map, right);
+                        let rs1 = load_operand(&mut ctx, &mut insts, &register_map, left)?;
+                        let rs2 = load_operand(&mut ctx, &mut insts, &register_map, right)?;
 
                         let op = match op {
                             i::ShiftOperator::LogicalLeft => RInstructionOp::ShiftLeft,
@@ -905,8 +892,8 @@ pub fn generate_code(
                         }))
                     }
                     Store(addr, value) => {
-                        let rs1 = load_operand(&mut ctx, &mut insts, &register_map, addr);
-                        let rs2 = load_operand(&mut ctx, &mut insts, &register_map, value);
+                        let rs1 = load_operand(&mut ctx, &mut insts, &register_map, addr)?;
+                        let rs2 = load_operand(&mut ctx, &mut insts, &register_map, value)?;
 
                         insts.push(S(SInstruction {
                             op: SInstructionOp::Sw,

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use rustc_hash::{FxHashMap, FxHashSet};
 

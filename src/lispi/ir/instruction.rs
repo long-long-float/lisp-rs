@@ -180,7 +180,7 @@ impl Display for AnnotatedInstr {
 
 pub type BasicBlocks = Vec<Id<BasicBlock>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
     pub args: Vec<(String, Type)>,
@@ -308,4 +308,14 @@ pub enum Immediate {
     Integer(i32),
     Boolean(bool),
     Label(Label),
+}
+
+impl Display for Immediate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Immediate::Integer(v) => write!(f, "{}", v),
+            Immediate::Boolean(v) => write!(f, "{}", v),
+            Immediate::Label(v) => write!(f, "{}", v),
+        }
+    }
 }
