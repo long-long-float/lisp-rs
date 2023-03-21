@@ -18,7 +18,7 @@ pub mod unique_generator;
 pub mod cli_option;
 
 use object::elf::*;
-use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Writer};
+use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Sym, Writer};
 use object::write::StreamingBuffer;
 use object::Endianness;
 use std::{fs::File, io::BufWriter, io::Write};
@@ -263,10 +263,18 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     let p_offset = writer.reserve(codes.len(), 4) as u64;
 
     let text_str = writer.add_section_name(".text".as_bytes());
+    let main_str = writer.add_string("main".as_bytes());
+
+    writer.reserve_symtab_section_index();
+    writer.reserve_symbol_index(None);
+    writer.reserve_symtab();
+
+    writer.reserve_strtab_section_index();
+    writer.reserve_strtab();
 
     writer.reserve_shstrtab_section_index();
-
     writer.reserve_shstrtab();
+
     writer.reserve_section_index();
     writer.reserve_section_headers();
 
@@ -289,9 +297,25 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         p_align: 0x200000,
     });
     writer.write(&codes);
+
+    writer.write_null_symbol();
+    writer.write_symbol(&Sym {
+        name: Some(main_str),
+        section: None,
+        st_info: (STB_GLOBAL << 4) | STT_FUNC,
+        st_other: STV_DEFAULT,
+        st_shndx: 2, //TODO: Use variable rather than magic number
+        st_value: 0,
+        st_size: codes.len() as u64,
+    });
+
+    writer.write_strtab();
+
     writer.write_shstrtab();
 
     writer.write_null_section_header();
+    writer.write_symtab_section_header(0);
+    writer.write_strtab_section_header();
     writer.write_shstrtab_section_header();
     writer.write_section_header(&SectionHeader {
         name: Some(text_str),
