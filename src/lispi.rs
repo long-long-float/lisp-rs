@@ -281,7 +281,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     writer.write_file_header(&FileHeader {
         os_abi: 0x00,
         abi_version: 0x00,
-        e_type: ET_EXEC,
+        e_type: ET_REL,
         e_machine: EM_RISCV,
         e_entry: 0x000000,
         e_flags: 0x00,
