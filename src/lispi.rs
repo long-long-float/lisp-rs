@@ -258,7 +258,6 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     let mut writer = Writer::new(Endianness::Little, false, &mut output);
     // References: https://keens.github.io/blog/2020/04/12/saishougennoelf/
     writer.reserve_file_header();
-    writer.reserve_program_headers(1);
 
     let p_offset = writer.reserve(codes.len(), 4) as u64;
 
@@ -286,16 +285,6 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         e_entry: 0x000000,
         e_flags: 0x00,
     })?;
-    writer.write_program_header(&ProgramHeader {
-        p_type: PT_LOAD,
-        p_flags: 0x05,
-        p_offset,
-        p_vaddr: 0x000000,
-        p_paddr: 0x000000,
-        p_filesz: codes.len() as u64,
-        p_memsz: codes.len() as u64,
-        p_align: 0x200000,
-    });
     writer.write(&codes);
 
     writer.write_null_symbol();
@@ -326,7 +315,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         sh_size: codes.len() as u64,
         sh_link: 0,
         sh_info: 0,
-        sh_addralign: 0x200000,
+        sh_addralign: 0x4,
         sh_entsize: 0,
     });
 
