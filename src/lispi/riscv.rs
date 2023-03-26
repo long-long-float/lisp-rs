@@ -254,13 +254,20 @@ impl GenerateCode for IInstruction {
 
         match self.op {
             Ori | Addi | Jalr => {
+                let mut imm = self.imm.value;
                 let name = match self.op {
                     Ori => "ori",
-                    Addi => "addi",
+                    Addi => {
+                        if imm >> 11 & 1 == 1 {
+                            imm = -imm;
+                        }
+
+                        "addi"
+                    }
                     Jalr => "jalr",
                     _ => "BUG",
                 };
-                format!("{} {}, {}, {}", name, self.rd, self.rs1, self.imm)
+                format!("{} {}, {}, {}", name, self.rd, self.rs1, imm)
             }
             Ecall => "ecall".to_string(),
             Lw => {
@@ -335,12 +342,7 @@ impl GenerateCode for UInstruction {
     fn generate_code(&self) -> RegisterType {
         use UInstructionOp::*;
 
-        let mut imm = self.imm.value as u32 & 0xfffff000;
-        if (imm & 1 << 31) != 0 {
-            // TODO: I don't knwo why it is needed.
-            imm += 0x1000;
-        }
-
+        let imm = self.imm.value as u32 & 0xfffff000;
         let rd = self.rd.as_int();
 
         let opcode = match self.op {
@@ -355,12 +357,7 @@ impl GenerateCode for UInstruction {
 
         match self.op {
             Lui => {
-                let mut imm = self.imm.value as u32 & 0xfffff000;
-                if (imm & 1 << 31) != 0 {
-                    // TODO: I don't knwo why it is needed.
-                    imm += 0x1000;
-                }
-
+                let imm = self.imm.value as u32 & 0xfffff000;
                 format!("lui {}, {}", self.rd, imm >> 12)
             }
         }
@@ -492,6 +489,13 @@ impl Immediate {
     fn new(value: i32, len: u8) -> Immediate {
         Immediate { value, len }
     }
+
+    fn update(self, value: i32) -> Immediate {
+        Immediate {
+            value: self.value + value,
+            len: self.len,
+        }
+    }
 }
 
 impl Display for Immediate {
@@ -605,9 +609,14 @@ fn load_operand_to(
             if last_set_bit >= 12 {
                 // Large integer
                 let bot = Immediate::new(imm.value & 0xfff, 12);
+                let top = if (bot.value >> 11 & 1) == 1 {
+                    Immediate::new(imm.value + 0x1000, imm.len)
+                } else {
+                    imm
+                };
                 insts.push(Instruction::U(UInstruction {
                     op: UInstructionOp::Lui,
-                    imm,
+                    imm: top,
                     rd: rd.clone(),
                 }));
                 insts.push(Instruction::addi(rd.clone(), rd, bot));
