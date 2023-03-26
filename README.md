@@ -50,7 +50,7 @@ $ cargo test --features rv32emu-test
 - [x] Run FizzBuzz
 - [x] Draw Mandelbrot set
 - [x] Support statically type system with inference.
-- [ ] Compiler for RISC-V
+- [x] Compiler for RISC-V
 - [ ] Implement a lisp interpreter running in lisp-rs.
 
 ## Reference
