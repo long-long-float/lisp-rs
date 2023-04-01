@@ -132,8 +132,8 @@ fn type_test() {
 
 #[test]
 fn define_error_test() {
-    assert_error!(&interp("(define 1 2)"), Error::Eval(_));
-    assert_error!(&interp("(define x 2 'err)"), Error::Eval(_));
+    assert_error!(&interp("(define 1 2)"), Error::Parse(_));
+    assert_error!(&interp("(define x 2 'err)"), Error::Parse(_));
 }
 
 #[test]

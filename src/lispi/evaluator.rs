@@ -70,7 +70,7 @@ macro_rules! match_special_args {
         if let Some($p) = $args.get($index) {
             if $index != $args.len() - 1 {
                 let loc = $crate::lispi::evaluator::get_location($args.get($index));
-                Err(anyhow!(Error::Eval(format!("The length of argument is invalid")).with_location(loc)))
+                Err(anyhow!(Error::Parse(format!("The length of argument is invalid")).with_location(loc)))
             }
             else {
                 $b
@@ -78,7 +78,7 @@ macro_rules! match_special_args {
         }
         else {
             let loc = $crate::lispi::evaluator::get_location($args.last());
-            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
+            Err(Error::Parse(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
 
@@ -88,7 +88,7 @@ macro_rules! match_special_args {
         }
         else {
             let loc = crate::lispi::evaluator::get_location($args.last());
-            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
+            Err(Error::Parse(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
 
@@ -105,7 +105,7 @@ macro_rules! match_special_args_with_rest {
         }
         else {
             let loc = $crate::lispi::evaluator::get_location($args.last());
-            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
+            Err(Error::Parse(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
 
@@ -115,7 +115,7 @@ macro_rules! match_special_args_with_rest {
         }
         else {
             let loc = $crate::lispi::evaluator::get_location($args.last());
-            Err(Error::Eval(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
+            Err(Error::Parse(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
 
