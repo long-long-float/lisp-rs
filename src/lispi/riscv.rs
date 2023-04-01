@@ -24,6 +24,7 @@ enum Instruction {
     S(SInstruction),
     J(JInstruction),
     U(UInstruction),
+    SB(SBInstruction),
 }
 
 impl Instruction {
@@ -104,6 +105,7 @@ impl Display for Instruction {
             S(si) => write!(f, "{}", si.generate_asm()),
             J(ji) => write!(f, "{}", ji.generate_asm()),
             U(ui) => write!(f, "{}", ui.generate_asm()),
+            SB(sbi) => write!(f, "{}", sbi.generate_asm()),
         }
     }
 }
@@ -191,6 +193,22 @@ struct UInstruction {
 #[derive(Clone, PartialEq, Debug)]
 enum UInstructionOp {
     Lui,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+struct SBInstruction {
+    op: SBInstructionOp,
+    imm: RelAddress,
+    rs1: Register,
+    rs2: Register,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+enum SBInstructionOp {
+    /// Branch EQual
+    Beq,
+    /// Branch Not Equal
+    Bne,
 }
 
 trait GenerateCode {
@@ -372,6 +390,39 @@ impl GenerateCode for UInstruction {
                 format!("lui {}, {}", self.rd, imm >> 12)
             }
         }
+    }
+}
+
+impl GenerateCode for SBInstruction {
+    fn generate_code(&self) -> RegisterType {
+        use SBInstructionOp::*;
+
+        let imm = self.imm.value() as u32;
+        assert!(imm & 1 == 0);
+        // 7 bits
+        let imm_upper = ((imm & (1 << 12)) >> 5) | ((imm >> 5) & 0b11111);
+        // 5 bits
+        let imm_lower = (imm & 0b11110) | ((imm >> 11) & 1);
+
+        let rs1 = self.rs1.as_int();
+        let rs2 = self.rs2.as_int();
+
+        let (opcode, funct3) = match self.op {
+            Beq => (0b1100011, 0b000),
+            Bne => (0b1100011, 0b001),
+        };
+
+        (imm_upper << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm_lower << 7) | opcode
+    }
+
+    fn generate_asm(&self) -> String {
+        use SBInstructionOp::*;
+
+        let name = match self.op {
+            Beq => "beq",
+            Bne => "bne",
+        };
+        format!("{} {}, {}, {}", name, self.rs1, self.rs2, self.imm)
     }
 }
 
@@ -838,11 +889,20 @@ pub fn generate_code(
 
                 match inst {
                     Branch {
-                        cond: _,
-                        then_label: _,
+                        cond,
+                        then_label,
                         else_label: _,
-                        ..
-                    } => todo!(),
+                        then_bb: _,
+                        else_bb: _,
+                    } => {
+                        let cond = load_operand(&mut ctx, &mut insts, &register_map, cond)?;
+                        insts.push(SB(SBInstruction {
+                            op: SBInstructionOp::Bne,
+                            imm: RelAddress::Label(then_label),
+                            rs1: cond,
+                            rs2: Register::zero(),
+                        }));
+                    }
                     Jump(label, _) => {
                         insts.push(J(JInstruction {
                             op: JInstructionOp::Jal,
@@ -1014,6 +1074,7 @@ pub fn generate_code(
             S(si) => si.generate_asm(),
             J(ji) => ji.generate_asm(),
             U(ui) => ui.generate_asm(),
+            SB(sbi) => sbi.generate_asm(),
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -1027,6 +1088,7 @@ pub fn generate_code(
             S(si) => si.generate_code(),
             J(ji) => ji.generate_code(),
             U(ui) => ui.generate_code(),
+            SB(sbi) => sbi.generate_code(),
         })
         .collect();
 
