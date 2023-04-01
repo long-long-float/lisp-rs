@@ -523,20 +523,28 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
 
     let fun_vars = ctx.func_env.current_local().variables.clone();
     for (_, (_, fun)) in fun_vars {
-        let last_bb = fun.basic_blocks.last().unwrap();
-        let last_bb = ctx.arena.get(*last_bb).unwrap();
+        let last_bb = fun.basic_blocks.iter().rev().find_map(|bb| {
+            let bb = ctx.arena.get(*bb).unwrap();
+            if bb.insts.len() > 0 {
+                Some(bb)
+            } else {
+                None
+            }
+        });
 
-        let res = last_bb.insts.last().unwrap().clone();
-        let inst = AnnotatedInstr {
-            result: ctx.gen_var(),
-            inst: Instruction::Ret(Operand::Variable(res.result)),
-            ty: Type::None,
-        };
-        ctx.arena
-            .get_mut(*fun.basic_blocks.last().unwrap())
-            .unwrap()
-            .push_inst(inst);
-        result.push(fun);
+        if let Some(last_bb) = last_bb {
+            let res = last_bb.insts.last().unwrap().clone();
+            let inst = AnnotatedInstr {
+                result: ctx.gen_var(),
+                inst: Instruction::Ret(Operand::Variable(res.result)),
+                ty: Type::None,
+            };
+            ctx.arena
+                .get_mut(*fun.basic_blocks.last().unwrap())
+                .unwrap()
+                .push_inst(inst);
+            result.push(fun);
+        }
     }
 
     Ok(result)
