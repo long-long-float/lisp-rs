@@ -148,6 +148,7 @@ enum IInstructionOp {
     Jalr,
     Ecall,
     Lw,
+    Xori,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -238,6 +239,7 @@ impl GenerateCode for IInstruction {
             Jalr => (0b000, 0b1100111),
             Ecall => (0b000, 0b1110011),
             Lw => (0b010, 0b0000011),
+            Xori => (0b100, 0b0010011),
         };
 
         let rd = self.rd.as_int();
@@ -253,7 +255,7 @@ impl GenerateCode for IInstruction {
         }
 
         match self.op {
-            Ori | Addi | Jalr => {
+            Ori | Addi | Jalr | Xori => {
                 let mut imm = self.imm.value;
                 let name = match self.op {
                     Ori => "ori",
@@ -265,6 +267,7 @@ impl GenerateCode for IInstruction {
                         "addi"
                     }
                     Jalr => "jalr",
+                    Xori => "xori",
                     _ => "BUG",
                 };
                 format!("{} {}, {}, {}", name, self.rd, self.rs1, imm)
@@ -883,6 +886,15 @@ pub fn generate_code(
                             IInstructionOp::Ori,
                             result_reg,
                         )?;
+                    }
+                    Not(op) => {
+                        let op = load_operand(&mut ctx, &mut insts, &register_map, op)?;
+                        insts.push(I(IInstruction {
+                            op: IInstructionOp::Xori,
+                            imm: Immediate::new(0xffff_ffffu32 as i32, XLEN),
+                            rs1: op,
+                            rd: result_reg,
+                        }))
                     }
                     Shift(op, left, right) => {
                         let rs1 = load_operand(&mut ctx, &mut insts, &register_map, left)?;

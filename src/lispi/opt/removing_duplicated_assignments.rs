@@ -108,6 +108,7 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
                 I::Sub(left, right) => I::Sub(replace_var(&ctx, left), replace_var(&ctx, right)),
                 I::Mul(left, right) => I::Mul(replace_var(&ctx, left), replace_var(&ctx, right)),
                 I::Or(left, right) => I::Or(replace_var(&ctx, left), replace_var(&ctx, right)),
+                I::Not(op) => I::Not(replace_var(&ctx, op)),
                 I::Shift(op, left, right) => {
                     I::Shift(op, replace_var(&ctx, left), replace_var(&ctx, right))
                 }

@@ -22,6 +22,7 @@ pub enum Instruction {
     Sub(Operand, Operand),
     Mul(Operand, Operand),
     Or(Operand, Operand),
+    Not(Operand),
     Shift(ShiftOperator, Operand, Operand),
     /// addr, value
     Store(Operand, Operand),
@@ -101,6 +102,9 @@ impl Display for Instruction {
             Or(left, right) => {
                 write!(f, "or {}, {}", left, right)
             }
+            Not(val) => {
+                write!(f, "not {}", val)
+            }
             Shift(ShiftOperator::LogicalRight, left, right) => {
                 write!(f, "lrshift {}, {}", left, right)
             }
@@ -162,6 +166,7 @@ impl Display for AnnotatedInstr {
             | Sub(_, _)
             | Mul(_, _)
             | Or(_, _)
+            | Not(_)
             | Shift(_, _, _)
             | Store(_, _)
             | Cmp(_, _, _)
@@ -267,17 +272,21 @@ impl Display for Operand {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum CmpOperator {
-    /// <=
+    /// '<='
     SGE,
+    /// '>'
+    SLT,
 }
 
 impl Display for CmpOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use CmpOperator::*;
 
-        match self {
-            SGE => write!(f, "<="),
-        }
+        let str = match self {
+            SGE => "<=",
+            SLT => ">",
+        };
+        write!(f, "{}", str)
     }
 }
 

@@ -142,6 +142,9 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
             add_only_var(left, vars);
             add_only_var(right, vars);
         }
+        Instruction::Not(op) => {
+            add_only_var(op, vars);
+        }
         Instruction::Shift(_, left, right) => {
             add_only_var(left, vars);
             add_only_var(right, vars);

@@ -18,7 +18,7 @@ pub mod unique_generator;
 pub mod cli_option;
 
 use object::elf::*;
-use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Sym, Writer};
+use object::write::elf::{FileHeader, SectionHeader, Sym, Writer};
 use object::write::StreamingBuffer;
 use object::Endianness;
 use std::{fs::File, io::BufWriter, io::Write};

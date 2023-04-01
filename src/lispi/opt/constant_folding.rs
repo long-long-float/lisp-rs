@@ -55,6 +55,7 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     register_as_used(&mut used_vars, l);
                     register_as_used(&mut used_vars, r);
                 }
+                Instruction::Not(op) => register_as_used(&mut used_vars, op),
 
                 Instruction::Call { fun, args } => {
                     register_as_used(&mut used_vars, fun);
@@ -300,7 +301,16 @@ fn fold_constants_insts(
                         Some(I::Store(addr, value))
                     }
                 }
-
+                I::Not(op) => {
+                    let op = fold_imm(&mut ctx, op);
+                    if let Operand::Immediate(Immediate::Boolean(op)) = &op {
+                        let not_op = Operand::Immediate(Immediate::Boolean(!op));
+                        insert_imm(&mut ctx, &not_op, &var);
+                        Some(I::Operand(not_op))
+                    } else {
+                        Some(I::Not(op))
+                    }
+                }
                 I::Cmp(op, left, right) => {
                     let (left, right) = if !unfolding_for_riscv {
                         (fold_imm(&mut ctx, left), fold_imm(&mut ctx, right))
@@ -315,6 +325,7 @@ fn fold_constants_insts(
                     {
                         let val = match op {
                             CmpOperator::SGE => left <= right,
+                            CmpOperator::SLT => left > right,
                         };
 
                         let op = Operand::Immediate(Immediate::Boolean(val));

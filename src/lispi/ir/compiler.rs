@@ -113,12 +113,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 {
                     let name = fun.value.as_str();
                     match name {
-                        "+" | "-" | "*" | "<=" | "or" | "<<" | ">>" => {
-                            let AnnotatedInstr {
-                                result: left,
-                                inst: _inst,
-                                ty: _ty,
-                            } = args[0].clone();
+                        "+" | "-" | "*" | "<=" | ">" | "or" | "<<" | ">>" => {
+                            let left = args[0].result.clone();
                             let right = args[1].result.clone();
 
                             let left = Operand::Variable(left);
@@ -129,6 +125,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                                 "-" => I::Sub(left, right),
                                 "*" => I::Mul(left, right),
                                 "<=" => I::Cmp(CmpOperator::SGE, left, right),
+                                ">" => I::Cmp(CmpOperator::SLT, left, right),
                                 "or" => I::Or(left, right),
                                 "<<" => I::Shift(ShiftOperator::LogicalLeft, left, right),
                                 ">>" => I::Shift(ShiftOperator::LogicalRight, left, right),
@@ -146,6 +143,10 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                                 ),
                                 ast_ty,
                             );
+                        }
+                        "not" => {
+                            let value = args[0].result.clone();
+                            add_instr(&mut result, ctx, I::Not(Operand::Variable(value)), ast_ty);
                         }
                         _ => {
                             let fun = compile_and_add(&mut result, fun_ast.clone(), ctx)?;
@@ -292,7 +293,28 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         }
         Ast::Begin(_) => todo!(),
         Ast::BuildList(_) => todo!(),
-        Ast::Loop(_) => todo!(),
+        Ast::Loop(Loop {
+            inits,
+            label: _,
+            body,
+        }) => {
+            for (id, value) in inits {
+                let inst = compile_and_add(&mut result, value, ctx)?;
+                ctx.env.insert_var(id, inst.result);
+            }
+
+            let loop_label = ctx.gen_label();
+            let end_label = ctx.gen_label();
+
+            let loop_bb = ctx.new_bb(loop_label.name.clone());
+            ctx.add_bb(loop_bb);
+            for inst in body {
+                compile_and_add(&mut result, inst, ctx)?;
+            }
+
+            let end_bb = ctx.new_bb(end_label.name.clone());
+            ctx.add_bb(end_bb);
+        }
         Ast::Continue(_) => todo!(),
 
         Ast::Lambda(_) => {}
