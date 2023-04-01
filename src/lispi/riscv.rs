@@ -891,7 +891,7 @@ pub fn generate_code(
                     Branch {
                         cond,
                         then_label,
-                        else_label: _,
+                        else_label,
                         then_bb: _,
                         else_bb: _,
                     } => {
@@ -901,6 +901,11 @@ pub fn generate_code(
                             imm: RelAddress::Label(then_label),
                             rs1: cond,
                             rs2: Register::zero(),
+                        }));
+                        insts.push(J(JInstruction {
+                            op: JInstructionOp::Jal,
+                            imm: RelAddress::Label(else_label),
+                            rd: Register::zero(),
                         }));
                     }
                     Jump(label, _) => {
@@ -1041,24 +1046,39 @@ pub fn generate_code(
     let insts = insts
         .into_iter()
         .enumerate()
-        .map(|(addr, inst)| match inst {
-            J(JInstruction {
-                op: JInstructionOp::Jal,
-                imm: RelAddress::Label(label),
-                rd,
-            }) => {
-                let laddr = ctx.label_addrs.get(&label.name).unwrap();
-
-                let addr = addr as i32;
-                let laddr = *laddr;
-
+        .map(|(addr, inst)| {
+            let addr = addr as i32;
+            match inst {
                 J(JInstruction {
-                    op: JInstructionOp::Jal,
-                    imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4, 20)),
+                    op: op @ JInstructionOp::Jal,
+                    imm: RelAddress::Label(label),
                     rd,
-                })
+                }) => {
+                    let laddr = *ctx.label_addrs.get(&label.name).unwrap();
+
+                    J(JInstruction {
+                        op,
+                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4, 20)),
+                        rd,
+                    })
+                }
+                SB(SBInstruction {
+                    op,
+                    imm: RelAddress::Label(label),
+                    rs1,
+                    rs2,
+                }) => {
+                    let laddr = *ctx.label_addrs.get(&label.name).unwrap();
+
+                    SB(SBInstruction {
+                        op,
+                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4, 12)),
+                        rs1,
+                        rs2,
+                    })
+                }
+                _ => inst,
             }
-            _ => inst,
         })
         .collect::<Vec<Instruction>>();
 
