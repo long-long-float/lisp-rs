@@ -325,6 +325,7 @@ fn fold_constants_insts(
                     {
                         let val = match op {
                             CmpOperator::SGE => left <= right,
+                            CmpOperator::SGT => left < right,
                             CmpOperator::SLT => left > right,
                         };
 
@@ -336,17 +337,13 @@ fn fold_constants_insts(
                     }
                 }
                 I::Call { fun, args } => {
-                    if !unfolding_for_riscv {
-                        let fun = fold_imm(&mut ctx, fun);
-                        let args = args
-                            .into_iter()
-                            .map(|arg| fold_imm(&mut ctx, arg))
-                            .collect();
+                    let fun = fold_imm(&mut ctx, fun);
+                    let args = args
+                        .into_iter()
+                        .map(|arg| fold_imm(&mut ctx, arg))
+                        .collect();
 
-                        Some(I::Call { fun, args })
-                    } else {
-                        Some(I::Call { fun, args })
-                    }
+                    Some(I::Call { fun, args })
                 }
                 I::Ret(op) => {
                     if !unfolding_for_riscv {

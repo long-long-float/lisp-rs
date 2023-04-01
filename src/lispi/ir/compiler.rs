@@ -128,7 +128,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 {
                     let name = fun.value.as_str();
                     match name {
-                        "+" | "-" | "*" | "<=" | ">" | "or" | "<<" | ">>" => {
+                        "+" | "-" | "*" | "<=" | "<" | ">" | "or" | "<<" | ">>" => {
                             let left = args[0].result.clone();
                             let right = args[1].result.clone();
 
@@ -140,6 +140,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                                 "-" => I::Sub(left, right),
                                 "*" => I::Mul(left, right),
                                 "<=" => I::Cmp(CmpOperator::SGE, left, right),
+                                "<" => I::Cmp(CmpOperator::SGT, left, right),
                                 ">" => I::Cmp(CmpOperator::SLT, left, right),
                                 "or" => I::Or(left, right),
                                 "<<" => I::Shift(ShiftOperator::LogicalLeft, left, right),

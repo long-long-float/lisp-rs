@@ -122,6 +122,8 @@ enum RInstructionOp {
     Or,
     ShiftLeft,
     ShiftRight,
+    /// Set Less Than
+    Slt,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -149,6 +151,8 @@ enum IInstructionOp {
     Ecall,
     Lw,
     Xori,
+    /// Set Less Than Immediate
+    Slti,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -207,6 +211,7 @@ impl GenerateCode for RInstruction {
             Or => (0b0000000, 0b110, 0b0110011),
             ShiftLeft => (0b0000000, 0b001, 0b0110011),
             ShiftRight => (0b0000000, 0b101, 0b0110011),
+            Slt => (0b0000000, 0b010, 0b0110011),
         };
 
         (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
@@ -220,6 +225,7 @@ impl GenerateCode for RInstruction {
             Or => "or",
             ShiftLeft => "sll",
             ShiftRight => "srl",
+            Slt => "slt",
         };
 
         format!("{} {}, {}, {}", name, self.rd, self.rs1, self.rs2)
@@ -240,6 +246,7 @@ impl GenerateCode for IInstruction {
             Ecall => (0b000, 0b1110011),
             Lw => (0b010, 0b0000011),
             Xori => (0b100, 0b0010011),
+            Slti => (0b010, 0b0010011),
         };
 
         let rd = self.rd.as_int();
@@ -255,7 +262,7 @@ impl GenerateCode for IInstruction {
         }
 
         match self.op {
-            Ori | Addi | Jalr | Xori => {
+            Ori | Addi | Jalr | Xori | Slti => {
                 let mut imm = self.imm.value;
                 let name = match self.op {
                     Ori => "ori",
@@ -268,6 +275,7 @@ impl GenerateCode for IInstruction {
                     }
                     Jalr => "jalr",
                     Xori => "xori",
+                    Slti => "slti",
                     _ => "BUG",
                 };
                 format!("{} {}, {}, {}", name, self.rd, self.rs1, imm)
@@ -834,7 +842,7 @@ pub fn generate_code(
                         then_label: _,
                         else_label: _,
                         ..
-                    } => {}
+                    } => todo!(),
                     Jump(label, _) => {
                         insts.push(J(JInstruction {
                             op: JInstructionOp::Jal,
@@ -923,7 +931,24 @@ pub fn generate_code(
                             rs2,
                         }))
                     }
-                    Cmp(_, _, _) => todo!(),
+                    Cmp(op, left, right) => {
+                        let (inst_op, inst_opi) = match op {
+                            i::CmpOperator::SGE => todo!(),
+                            i::CmpOperator::SGT => (RInstructionOp::Slt, IInstructionOp::Slti),
+                            i::CmpOperator::SLT => todo!(),
+                        };
+
+                        generate_code_bin_op(
+                            &mut ctx,
+                            &mut insts,
+                            &register_map,
+                            left,
+                            right,
+                            inst_op,
+                            inst_opi,
+                            result_reg,
+                        )?;
+                    }
                     Call { fun, args } => {
                         for arg in args {
                             load_argument(&mut ctx, &mut insts, &register_map, arg);
