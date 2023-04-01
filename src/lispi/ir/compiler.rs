@@ -2,6 +2,7 @@ use std::vec;
 
 use anyhow::Result;
 use id_arena::{Arena, Id};
+use rustc_hash::FxHashMap;
 
 use super::{
     super::{
@@ -20,6 +21,8 @@ struct Context<'a> {
     sym_table: SymbolTable,
     func_env: Environment<(Label, Function)>,
     var_gen: UniqueGenerator,
+    /// Map loop label to end label and basic block
+    loop_label_map: FxHashMap<String, (Label, Id<BasicBlock>)>,
 
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
@@ -28,6 +31,18 @@ struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
+    fn new(sym_table: SymbolTable, arena: &'a mut Arena<BasicBlock>) -> Self {
+        Self {
+            env: Environment::default(),
+            sym_table,
+            func_env: Environment::default(),
+            var_gen: UniqueGenerator::new(),
+            arena,
+            basic_blocks: Vec::new(),
+            loop_label_map: FxHashMap::default(),
+        }
+    }
+
     fn gen_var(&mut self) -> Variable {
         Variable {
             name: format!("var{}", self.var_gen.gen()),
@@ -291,13 +306,13 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             result.append(&mut compile_asts(body, ctx)?);
         }
-        Ast::Begin(_) => todo!(),
+        Ast::Begin(Begin { body }) => {
+            for inst in body {
+                compile_and_add(&mut result, inst, ctx)?;
+            }
+        }
         Ast::BuildList(_) => todo!(),
-        Ast::Loop(Loop {
-            inits,
-            label: _,
-            body,
-        }) => {
+        Ast::Loop(Loop { inits, label, body }) => {
             for (id, value) in inits {
                 let inst = compile_and_add(&mut result, value, ctx)?;
                 ctx.env.insert_var(id, inst.result);
@@ -306,16 +321,28 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let loop_label = ctx.gen_label();
             let end_label = ctx.gen_label();
 
-            let loop_bb = ctx.new_bb(loop_label.name.clone());
+            let loop_bb = ctx.new_bb(loop_label.name);
+            let end_bb = ctx.new_bb(end_label.name.clone());
+
             ctx.add_bb(loop_bb);
+
+            ctx.loop_label_map.insert(label, (end_label, end_bb));
+
             for inst in body {
                 compile_and_add(&mut result, inst, ctx)?;
             }
 
-            let end_bb = ctx.new_bb(end_label.name.clone());
             ctx.add_bb(end_bb);
         }
-        Ast::Continue(_) => todo!(),
+        Ast::Continue(label) => {
+            let (end_label, end_bb) = ctx.loop_label_map.get(&label).unwrap();
+            add_instr(
+                &mut result,
+                ctx,
+                I::Jump(end_label.to_owned(), end_bb.to_owned()),
+                Type::None,
+            );
+        }
 
         Ast::Lambda(_) => {}
     }
@@ -459,14 +486,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
 
     let main_bb = ir_ctx.bb_arena.alloc(BasicBlock::new("main".to_string()));
 
-    let mut ctx = Context {
-        env: Environment::default(),
-        sym_table,
-        func_env: Environment::default(),
-        var_gen: UniqueGenerator::new(),
-        arena: &mut ir_ctx.bb_arena,
-        basic_blocks: Vec::new(),
-    };
+    let mut ctx = Context::new(sym_table, &mut ir_ctx.bb_arena);
 
     let asts = asts
         .into_iter()
