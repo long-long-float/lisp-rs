@@ -1,7 +1,11 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 
-use super::{ast::*, error::*, tokenizer::*, LocationRange, SymbolValue, TokenLocation};
+use crate::{ast_pat, match_special_args, match_special_args_with_rest};
+
+use super::{
+    ast::*, error::*, evaluator as e, tokenizer::*, LocationRange, SymbolValue, TokenLocation,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 /// Maps symbols such as 'x' to unique integer.
@@ -92,6 +96,184 @@ where
         }
     } else {
         Ok((Vec::new(), tokens))
+    }
+}
+
+pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Result<Ast> {
+    if let Some((
+        AnnotatedAst {
+            ast: Ast::Symbol(name),
+            ..
+        },
+        args,
+    )) = asts.split_first()
+    {
+        let name = name.value.as_str();
+        match name {
+            "define-macro" => {
+                match_special_args_with_rest!(
+                    args,
+                    body,
+                    ast_pat!(Ast::Symbol(fun_name), _loc1),
+                    ast_pat!(Ast::List(args)),
+                    {
+                        let args = e::get_symbol_values(args)?;
+                        Ok(Ast::DefineMacro(DefineMacro {
+                            id: fun_name.clone(),
+                            args,
+                            body: body.to_vec(),
+                        }))
+                    }
+                )
+            }
+            "define" => {
+                match_special_args!(args, ast_pat!(Ast::Symbol(id), _loc), init, {
+                    Ok(Ast::Define(Define {
+                        id: id.clone(),
+                        init: Box::new(init.clone()),
+                    }))
+                })
+            }
+            "lambda" => {
+                match_special_args_with_rest!(args, body, ast_pat!(Ast::List(args), _loc), {
+                    let args = args
+                        .iter()
+                        .map(|arg| match arg.ast.clone() {
+                            Ast::SymbolWithType(id, ty) => Ok((id, Some(ty))),
+                            Ast::Symbol(id) => Ok((id, None)),
+                            _ => Err(Error::Eval(format!("{:?} is not an symbol", arg.ast))
+                                .with_location(arg.location)
+                                .into()),
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    let (args, arg_types) = args.into_iter().unzip();
+                    Ok(Ast::Lambda(Lambda {
+                        args,
+                        arg_types,
+                        body: body.to_vec(),
+                    }))
+                })
+            }
+            "set!" => {
+                match_special_args!(args, ast_pat!(Ast::Symbol(name), loc), value, {
+                    Ok(Ast::Assign(Assign {
+                        var: name.clone(),
+                        var_loc: *loc,
+                        value: Box::new(value.clone()),
+                    }))
+                })
+            }
+            "if" => {
+                if let (Some(cond), Some(then_ast)) = (args.get(0), args.get(1)) {
+                    let if_expr = if let Some(else_ast) = args.get(2) {
+                        IfExpr {
+                            cond: Box::new(cond.clone()),
+                            then_ast: Box::new(then_ast.clone()),
+                            else_ast: Some(Box::new(else_ast.clone())),
+                        }
+                    } else {
+                        IfExpr {
+                            cond: Box::new(cond.clone()),
+                            then_ast: Box::new(then_ast.clone()),
+                            else_ast: None,
+                        }
+                    };
+                    Ok(Ast::IfExpr(if_expr))
+                } else {
+                    Err(
+                        Error::Parse("'if' is formed as (if cond then else)".to_string())
+                            .with_location(location)
+                            .into(),
+                    )
+                }
+            }
+            "let" | "let*" => {
+                let err = Error::Eval(
+                    "'let' is formed as (let ([id expr] ...) body ...) or named let (let proc-id ([id expr] ...) body ...)".to_string(),
+                ).with_location(location);
+
+                let sequential = name == "let*";
+
+                let parse_inits =
+                    |inits: &[AnnotatedAst]| -> Result<Vec<(SymbolValue, AnnotatedAst)>> {
+                        inits
+                            .iter()
+                            .map(|init| {
+                                if let ast_pat!(Ast::List(init)) = init {
+                                    match_special_args!(init, ast_pat!(Ast::Symbol(id)), expr, {
+                                        Ok((id.clone(), expr.clone()))
+                                    })
+                                } else {
+                                    Err(err.clone().into())
+                                }
+                            })
+                            .collect::<Result<Vec<_>>>()
+                    };
+
+                let let_expr =
+                    if let Some((ast_pat!(Ast::List(inits), _loc), body)) = args.split_first() {
+                        let inits = parse_inits(inits)?;
+
+                        Let {
+                            sequential,
+                            proc_id: None,
+                            inits,
+                            body: body.to_vec(),
+                        }
+                    } else if let (
+                        Some(ast_pat!(Ast::Symbol(proc_id))),
+                        Some(ast_pat!(Ast::List(inits))),
+                        (_, body),
+                    ) = (args.get(0), args.get(1), args.split_at(2))
+                    {
+                        // named let
+
+                        let inits = parse_inits(inits)?;
+
+                        Let {
+                            sequential,
+                            proc_id: Some(proc_id.clone()),
+                            inits,
+                            body: body.to_vec(),
+                        }
+                    } else {
+                        return Err(err.into());
+                    };
+
+                Ok(Ast::Let(let_expr))
+            }
+            "begin" => Ok(Ast::Begin(Begin {
+                body: args.to_vec(),
+            })),
+            "list" => Ok(Ast::BuildList(args.to_vec())),
+            "cond" => {
+                let err = Error::Eval("'cond' is formed as (cond (cond body ...) ...)".to_string())
+                    .with_location(location);
+
+                let clauses = args
+                    .iter()
+                    .map(|clause| {
+                        if let ast_pat!(Ast::List(arm)) = clause {
+                            if let Some((cond, body)) = arm.split_first() {
+                                Ok(CondClause {
+                                    cond: Box::new(cond.clone()),
+                                    body: body.to_vec(),
+                                })
+                            } else {
+                                Err(err.clone().into())
+                            }
+                        } else {
+                            Err(err.clone().into())
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(Ast::Cond(Cond { clauses }))
+            }
+            _ => Ok(Ast::List(asts.to_vec())),
+        }
+    } else {
+        Ok(Ast::List(asts.to_vec()))
     }
 }
 
