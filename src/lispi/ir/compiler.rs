@@ -21,7 +21,7 @@ struct Context<'a> {
     sym_table: SymbolTable,
     func_env: Environment<(Label, Function)>,
     var_gen: UniqueGenerator,
-    /// Map loop label to end label and basic block
+    /// Map loop label to loop label and basic block
     loop_label_map: FxHashMap<String, (Label, Id<BasicBlock>)>,
 
     /// Arena for Function
@@ -322,12 +322,12 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let loop_label = ctx.gen_label();
             let end_label = ctx.gen_label();
 
-            let loop_bb = ctx.new_bb(loop_label.name);
+            let loop_bb = ctx.new_bb(loop_label.name.clone());
             let end_bb = ctx.new_bb(end_label.name.clone());
 
             ctx.add_bb(loop_bb);
 
-            ctx.loop_label_map.insert(label, (end_label, end_bb));
+            ctx.loop_label_map.insert(label, (loop_label, loop_bb));
 
             for inst in body {
                 compile_and_add(&mut result, inst, ctx)?;
@@ -336,11 +336,11 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             ctx.add_bb(end_bb);
         }
         Ast::Continue(label) => {
-            let (end_label, end_bb) = ctx.loop_label_map.get(&label).unwrap();
+            let (loop_label, loop_bb) = ctx.loop_label_map.get(&label).unwrap();
             add_instr(
                 &mut result,
                 ctx,
-                I::Jump(end_label.to_owned(), end_bb.to_owned()),
+                I::Jump(loop_label.to_owned(), loop_bb.to_owned()),
                 Type::None,
             );
         }
