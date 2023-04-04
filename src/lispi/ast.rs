@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use std::fmt::Display;
 
 use super::{
-    evaluator::Value, parser::parse_special_form, typer::Type, LocationRange, SymbolValue,
-    TokenLocation,
+    console::printlnuw, evaluator::Value, parser::parse_special_form, typer::Type, LocationRange,
+    SymbolValue, TokenLocation,
 };
 
 #[derive(Clone, PartialEq, Debug)]
@@ -494,7 +494,7 @@ impl Display for AnnotatedAst {
             Ast::Loop(Loop { inits, label, body }) => {
                 write!(f, "(loop:{} ", label)?;
                 for (id, expr) in inits {
-                    write!(f, "(define {} {})", id.value, expr)?;
+                    write!(f, "(define {} {}) ", id.value, expr)?;
                 }
                 write_values(f, body)?;
                 write!(f, ")")
@@ -513,5 +513,11 @@ impl Display for AnnotatedAst {
         } else {
             Ok(())
         }
+    }
+}
+
+pub fn dump_asts(asts: &Vec<AnnotatedAst>) {
+    for ast in asts {
+        printlnuw(&format!("{}", ast));
     }
 }

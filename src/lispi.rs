@@ -25,6 +25,7 @@ use std::{fs::File, io::BufWriter, io::Write};
 
 use anyhow::Result;
 
+use crate::lispi::ast::dump_asts;
 use crate::lispi::cli_option::CliOption;
 use crate::lispi::{
     environment as env, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
@@ -150,7 +151,7 @@ pub fn frontend(
     let tokens = t::tokenize(program)?;
 
     if opt.dump {
-        println!("Parsed AST:");
+        println!("Tokens:");
         println!("{:#?}", tokens);
         println!();
     }
@@ -159,7 +160,7 @@ pub fn frontend(
 
     if opt.dump {
         println!("Parsed AST:");
-        println!("{:#?}", program);
+        dump_asts(&program);
         println!();
     }
 
@@ -176,10 +177,14 @@ pub fn frontend(
     // for ast in &program {
     //     println!("{}", ast);
     // }
+
     let program = opt::tail_recursion::optimize(program)?;
-    // for ast in &program {
-    //     println!("{}", ast);
-    // }
+
+    if opt.dump {
+        println!("Optimized AST:");
+        dump_asts(&program);
+        println!();
+    }
     Ok((program, env, sym_table))
 }
 
@@ -235,7 +240,12 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
 
     if opt.dump {
         printlnuw("Register allocation:");
-        printlnuw(&format!("{:#?}", func_with_reg_maps));
+        for (fun, reg_map) in &func_with_reg_maps {
+            printlnuw(&format!("{}:", fun.name));
+            for (var, id) in reg_map {
+                printlnuw(&format!("  %{} -> {}", var.name, id));
+            }
+        }
         printlnuw("");
     }
 
