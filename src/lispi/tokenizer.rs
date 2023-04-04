@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::fmt::Display;
 use std::num::{ParseFloatError, ParseIntError};
 
 use super::error::*;
@@ -59,6 +60,14 @@ impl Token {
 pub struct TokenWithLocation {
     pub token: Token,
     pub location: LocationRange,
+}
+
+impl Display for TokenWithLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let LocationRange { begin, end } = &self.location;
+        let loc = format!("@{}-{}", begin, end);
+        write!(f, "{:?}{}", self.token, loc.dimmed())
+    }
 }
 
 trait CharExt {

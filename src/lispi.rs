@@ -23,6 +23,8 @@ use object::write::StreamingBuffer;
 use object::Endianness;
 use std::{fs::File, io::BufWriter, io::Write};
 
+use colored::*;
+
 use anyhow::Result;
 
 use crate::lispi::ast::dump_asts;
@@ -151,22 +153,23 @@ pub fn frontend(
     let tokens = t::tokenize(program)?;
 
     if opt.dump {
-        println!("Tokens:");
-        println!("{:#?}", tokens);
+        println!("{}", "Tokens:".red());
+        for token in &tokens {
+            println!("{}", token);
+        }
         println!();
     }
 
     let (program, mut sym_table) = p::parse(tokens)?;
 
     if opt.dump {
-        println!("Parsed AST:");
+        println!("{}", "Parsed AST:".red());
         dump_asts(&program);
         println!();
     }
 
     let program = m::expand_macros(program, &mut sym_table)?;
 
-    // println!("{:#?}", program);
     let mut env = env::Environment::default();
     let mut ty_env = env::Environment::default();
 
@@ -181,7 +184,7 @@ pub fn frontend(
     let program = opt::tail_recursion::optimize(program)?;
 
     if opt.dump {
-        println!("Optimized AST:");
+        println!("{}", "Optimized AST:".red());
         dump_asts(&program);
         println!();
     }
@@ -210,7 +213,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
 
     if opt.dump {
-        printlnuw("Raw IR instructions:");
+        printlnuw(&"Raw IR instructions:".red());
         for fun in &funcs {
             fun.dump(&ir_ctx.bb_arena);
         }
@@ -219,7 +222,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
 
     opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
     if opt.dump {
-        printlnuw("Remove duplicated assignments:");
+        printlnuw(&"Remove duplicated assignments:".red());
         for fun in &funcs {
             fun.dump(&ir_ctx.bb_arena);
         }
@@ -228,7 +231,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
 
     opt::constant_folding::optimize(&funcs, &mut ir_ctx, true)?;
     if opt.dump {
-        printlnuw("Constant folding:");
+        printlnuw(&"Constant folding:".red());
         for fun in &funcs {
             fun.dump(&ir_ctx.bb_arena);
         }
@@ -239,7 +242,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         ir::register_allocation::create_interference_graph(funcs, &mut ir_ctx)?;
 
     if opt.dump {
-        printlnuw("Register allocation:");
+        printlnuw(&"Register allocation:".red());
         for (fun, reg_map) in &func_with_reg_maps {
             printlnuw(&format!("{}:", fun.name));
             for (var, id) in reg_map {

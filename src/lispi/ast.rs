@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use colored::*;
 use std::fmt::Display;
 
 use super::{
@@ -507,11 +508,13 @@ impl Display for AnnotatedAst {
             Ast::Continue(label) => write!(f, "(continue {})", label),
         }?;
 
-        if self.ty != Type::None {
-            // write!(f, ": {}", self.ty)
-            Ok(())
-        } else {
-            Ok(())
+        match &self.ty {
+            Type::Function { .. } | Type::None => Ok(()),
+
+            _ => {
+                let str = format!(":{}", self.ty);
+                write!(f, "{}", str.dimmed())
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use anyhow::Result;
+use colored::*;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -609,7 +610,7 @@ type Code = u32;
 type Codes = Vec<Code>;
 
 fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
-    println!("RISC-V Instructions:");
+    println!("{}", "RISC-V Instructions:".red());
     for (addr, inst) in insts.iter().enumerate() {
         let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
             if *laddr == addr as i32 {
@@ -842,7 +843,7 @@ pub fn generate_code(
     }
 
     if opt.dump {
-        printlnuw("Remove phi nodes:");
+        printlnuw(&"Remove phi nodes:".red());
         for (fun, _) in &funcs {
             fun.dump(&ir_ctx.bb_arena);
         }
@@ -999,8 +1000,8 @@ pub fn generate_code(
                     Cmp(op, left, right) => {
                         let (inst_op, inst_opi) = match op {
                             i::CmpOperator::SGE => todo!(),
-                            i::CmpOperator::SGT => (RInstructionOp::Slt, IInstructionOp::Slti),
-                            i::CmpOperator::SLT => todo!(),
+                            i::CmpOperator::SGT => todo!(),
+                            i::CmpOperator::SLT => (RInstructionOp::Slt, IInstructionOp::Slti),
                         };
 
                         generate_code_bin_op(
