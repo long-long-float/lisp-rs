@@ -264,7 +264,7 @@ impl From<&Ast> for Value {
             | Ast::BuildList(_)
             | Ast::Cond(_) => Value::nil(),
 
-            Ast::Continue(v) => Value::Continue(v.clone()),
+            Ast::Continue(v) => todo!(),
         }
     }
 }

@@ -44,6 +44,7 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
             result: result_var,
             inst,
             ty: _,
+            tags: _,
         } in &bb.insts
         {
             match inst {
@@ -78,6 +79,7 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
             result: result_var,
             inst,
             ty,
+            tags: _,
         } in bb.insts.clone()
         {
             if ctx.replace_var_map.contains_key(&result_var) {
@@ -128,14 +130,10 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
 
                 I::Ret(op) => I::Ret(replace_var(&ctx, op)),
 
-                I::Jump(_, _) | I::Phi(_) | I::Label(_) => inst,
+                I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => inst,
             };
 
-            result.push(AnnotatedInstr {
-                result: result_var,
-                inst,
-                ty,
-            });
+            result.push(AnnotatedInstr::new(result_var, inst, ty));
         }
 
         bb.insts = result;

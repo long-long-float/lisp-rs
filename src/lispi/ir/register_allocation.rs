@@ -170,6 +170,7 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
         }
         Instruction::Operand(op) => add_only_var(op, vars),
         Instruction::Label(_) => {}
+        Instruction::Nop => {}
     }
 }
 

@@ -34,7 +34,10 @@ pub enum Instruction {
     Phi(Vec<(Operand, Label)>),
 
     Operand(Operand),
+    /// TODO: Remove this
     Label(Label),
+
+    Nop,
 }
 
 impl Instruction {
@@ -137,6 +140,9 @@ impl Display for Instruction {
             Label(label) => {
                 write!(f, "{}", label)
             }
+            Nop => {
+                write!(f, "nop")
+            }
         }
     }
 }
@@ -152,13 +158,25 @@ pub struct AnnotatedInstr {
     pub result: Variable,
     pub inst: Instruction,
     pub ty: Type,
+    pub tags: Vec<()>,
+}
+
+impl AnnotatedInstr {
+    pub fn new(result: Variable, inst: Instruction, ty: Type) -> Self {
+        Self {
+            result,
+            inst,
+            ty,
+            tags: Vec::new(),
+        }
+    }
 }
 
 impl Display for AnnotatedInstr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Instruction::*;
         match &self.inst {
-            Branch { .. } | Jump(_, _) | Ret(_) => {
+            Branch { .. } | Jump(_, _) | Ret(_) | Nop => {
                 write!(f, "  {}", self.inst)
             }
 

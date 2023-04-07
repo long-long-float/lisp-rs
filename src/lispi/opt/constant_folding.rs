@@ -31,6 +31,7 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
             result: var,
             inst,
             ty,
+            tags: _,
         } in bb.insts.clone().into_iter().rev()
         {
             // TOOD: Use get_vars in register_allocation
@@ -71,17 +72,13 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
 
                 Instruction::Operand(op) => register_as_used(&mut used_vars, op),
 
-                Instruction::Jump(_, _) | Instruction::Label(_) => {}
+                Instruction::Jump(_, _) | Instruction::Label(_) | Instruction::Nop => {}
             }
 
             let used = inst.is_label() || inst.is_terminal() || used_vars.contains(&var);
 
             if !inst.is_removable() || used {
-                result.push(AnnotatedInstr {
-                    result: var,
-                    inst,
-                    ty,
-                });
+                result.push(AnnotatedInstr::new(var, inst, ty));
             }
         }
 
@@ -202,6 +199,7 @@ fn fold_constants_insts(
             result: var,
             inst,
             ty,
+            tags: _,
         } in bb.insts.clone()
         {
             let inst = match inst {
@@ -353,15 +351,11 @@ fn fold_constants_insts(
                     }
                 }
 
-                I::Jump(_, _) | I::Phi(_) | I::Label(_) => Some(inst),
+                I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => Some(inst),
             };
 
             if let Some(inst) = inst {
-                result.push(AnnotatedInstr {
-                    result: var,
-                    inst,
-                    ty,
-                });
+                result.push(AnnotatedInstr::new(var, inst, ty));
             }
         }
 

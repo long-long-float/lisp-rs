@@ -33,7 +33,7 @@ pub enum Ast {
 
     /// For optimizing tail recursion
     Loop(Loop),
-    Continue(String),
+    Continue(Continue),
 }
 
 impl Ast {
@@ -85,7 +85,7 @@ impl Ast {
             }
             Value::NativeFunction { name, func: _ } => Ok(Ast::Symbol(name)),
             Value::RawAst(ast) => Ok(ast.ast),
-            Value::Continue(v) => Ok(Ast::Continue(v)),
+            Value::Continue(v) => todo!(),
         }
     }
 
@@ -183,6 +183,14 @@ pub struct Loop {
     pub inits: Vec<(SymbolValue, AnnotatedAst)>,
     pub label: String,
     pub body: Vec<AnnotatedAst>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Continue {
+    /// Corresponds to [`Loop::label`]
+    pub label: String,
+    /// Each elements correspond to [`Loop::inits`]
+    pub updates: Vec<AnnotatedAst>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -505,7 +513,13 @@ impl Display for AnnotatedAst {
                 write_values(f, values)?;
                 write!(f, ")")
             }
-            Ast::Continue(label) => write!(f, "(continue {})", label),
+            Ast::Continue(Continue { label, updates }) => {
+                write!(f, "(continue:{} (", label)?;
+                for update in updates {
+                    write!(f, "{} ", update)?;
+                }
+                write!(f, ")")
+            }
         }?;
 
         match &self.ty {

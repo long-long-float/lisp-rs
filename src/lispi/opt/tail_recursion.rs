@@ -49,7 +49,7 @@ fn optimize_tail_recursion(
                                 args.iter().all(|arg| !includes_symbol(func_name, &arg.ast));
 
                             if name == func_name && not_in_args {
-                                let mut body = args
+                                let updates = args
                                     .iter()
                                     .zip(locals)
                                     .map(|(arg, sym)| {
@@ -62,9 +62,13 @@ fn optimize_tail_recursion(
                                     })
                                     .collect::<Vec<_>>();
 
-                                body.push(Ast::Continue(name.to_string()).with_null_location());
-
-                                return Some(Ast::Begin(Begin { body }).with_null_location());
+                                return Some(
+                                    Ast::Continue(Continue {
+                                        label: name.to_string(),
+                                        updates,
+                                    })
+                                    .with_null_location(),
+                                );
                             } else {
                                 None
                             }

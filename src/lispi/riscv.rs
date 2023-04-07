@@ -812,7 +812,13 @@ pub fn generate_code(
 
             let mut new_insts = Vec::new();
 
-            for i::AnnotatedInstr { result, inst, ty } in insts {
+            for i::AnnotatedInstr {
+                result,
+                inst,
+                ty,
+                tags: _,
+            } in insts
+            {
                 match &inst {
                     i::Instruction::Phi(nodes) => {
                         for (node, label) in nodes {
@@ -825,15 +831,15 @@ pub fn generate_code(
                     _ => {
                         if inst.is_terminal() {
                             if let Some((result, ty, operand)) = assign_map.get(&bb.label) {
-                                new_insts.push(i::AnnotatedInstr {
-                                    result: result.clone(),
-                                    inst: i::Instruction::Operand(operand.clone()),
-                                    ty: ty.clone(),
-                                });
+                                new_insts.push(i::AnnotatedInstr::new(
+                                    result.clone(),
+                                    i::Instruction::Operand(operand.clone()),
+                                    ty.clone(),
+                                ));
                             }
                         }
 
-                        new_insts.push(i::AnnotatedInstr { result, inst, ty });
+                        new_insts.push(i::AnnotatedInstr::new(result, inst, ty));
                     }
                 }
             }
@@ -872,6 +878,7 @@ pub fn generate_code(
                 result,
                 inst,
                 ty: _,
+                tags: _,
             } in bb.insts.clone()
             {
                 use i::Instruction::*;
@@ -1037,6 +1044,7 @@ pub fn generate_code(
                     Label(label) => {
                         add_label(&mut ctx, &mut insts, label.name);
                     }
+                    Nop => {}
                 }
             }
         }

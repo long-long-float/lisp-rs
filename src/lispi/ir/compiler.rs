@@ -91,11 +91,7 @@ fn compile_and_add(
 }
 
 fn add_instr(result: &mut Vec<AnnotatedInstr>, ctx: &mut Context, inst: Instruction, ty: Type) {
-    let inst = AnnotatedInstr {
-        result: ctx.gen_var(),
-        inst,
-        ty,
-    };
+    let inst = AnnotatedInstr::new(ctx.gen_var(), inst, ty);
     result.push(inst.clone());
     ctx.push_inst(inst);
 }
@@ -319,6 +315,9 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 ctx.env.insert_var(id, inst.result);
             }
 
+            // TODO: Loopの変数に対してPhiノードを追加する
+            // そのために、ここではループのラベルを示すタグを追加する
+
             let loop_label = ctx.gen_label();
             let end_label = ctx.gen_label();
 
@@ -332,11 +331,25 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             for inst in body {
                 compile_and_add(&mut result, inst, ctx)?;
             }
+            {
+                let nop_result = ctx.gen_var();
+                let loop_bb = ctx.arena.get_mut(loop_bb).unwrap();
+                if loop_bb.insts.is_empty() {
+                    let mut nop = AnnotatedInstr::new(nop_result, Instruction::Nop, Type::None);
+                    // TODO: Add tag to nop
+                    loop_bb.insts.push(nop)
+                } else {
+                    // TODO: Add tag to loop_bb.insts[0]
+                }
+            }
 
             ctx.add_bb(end_bb);
         }
-        Ast::Continue(label) => {
+        Ast::Continue(Continue { label, updates }) => {
             let (loop_label, loop_bb) = ctx.loop_label_map.get(&label).unwrap();
+
+            // TODO: Compile updates
+
             add_instr(
                 &mut result,
                 ctx,
@@ -535,11 +548,11 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
 
         if let Some(last_bb) = last_bb {
             let res = last_bb.insts.last().unwrap().clone();
-            let inst = AnnotatedInstr {
-                result: ctx.gen_var(),
-                inst: Instruction::Ret(Operand::Variable(res.result)),
-                ty: Type::None,
-            };
+            let inst = AnnotatedInstr::new(
+                ctx.gen_var(),
+                Instruction::Ret(Operand::Variable(res.result)),
+                Type::None,
+            );
             ctx.arena
                 .get_mut(*fun.basic_blocks.last().unwrap())
                 .unwrap()
