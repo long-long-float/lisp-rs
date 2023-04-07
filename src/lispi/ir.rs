@@ -2,6 +2,7 @@ pub mod basic_block;
 pub mod compiler;
 pub mod instruction;
 pub mod register_allocation;
+pub mod tag;
 
 use id_arena::Arena;
 

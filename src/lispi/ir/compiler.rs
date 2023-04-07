@@ -12,7 +12,7 @@ use super::{
     basic_block::BasicBlock,
     IrContext,
 };
-use crate::{bug, unimplemented};
+use crate::{bug, lispi::ir::tag::Tag, unimplemented};
 
 use super::instruction::*;
 
@@ -316,7 +316,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             }
 
             // TODO: Loopの変数に対してPhiノードを追加する
-            // そのために、ここではループのラベルを示すタグを追加する
 
             let loop_label = ctx.gen_label();
             let end_label = ctx.gen_label();
@@ -326,36 +325,37 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             ctx.add_bb(loop_bb);
 
-            ctx.loop_label_map.insert(label, (loop_label, loop_bb));
+            ctx.loop_label_map
+                .insert(label.clone(), (loop_label, loop_bb));
 
             for inst in body {
                 compile_and_add(&mut result, inst, ctx)?;
             }
             {
                 let nop_result = ctx.gen_var();
+
+                let tag = Tag::LoopLabel(label);
+
                 let loop_bb = ctx.arena.get_mut(loop_bb).unwrap();
                 if loop_bb.insts.is_empty() {
                     let mut nop = AnnotatedInstr::new(nop_result, Instruction::Nop, Type::None);
-                    // TODO: Add tag to nop
+                    nop.tags.push(tag);
                     loop_bb.insts.push(nop)
                 } else {
-                    // TODO: Add tag to loop_bb.insts[0]
+                    loop_bb.insts[0].tags.push(tag);
                 }
             }
 
             ctx.add_bb(end_bb);
         }
         Ast::Continue(Continue { label, updates }) => {
-            let (loop_label, loop_bb) = ctx.loop_label_map.get(&label).unwrap();
+            let (loop_label, loop_bb) = ctx.loop_label_map.get(&label).unwrap().clone();
 
-            // TODO: Compile updates
+            for update in updates {
+                compile_and_add(&mut result, update, ctx)?;
+            }
 
-            add_instr(
-                &mut result,
-                ctx,
-                I::Jump(loop_label.to_owned(), loop_bb.to_owned()),
-                Type::None,
-            );
+            add_instr(&mut result, ctx, I::Jump(loop_label, loop_bb), Type::None);
         }
 
         Ast::Lambda(_) => {}

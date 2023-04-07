@@ -1,9 +1,10 @@
+use colored::Colorize;
 use id_arena::{Arena, Id};
 use std::fmt::Display;
 
 use crate::lispi::ty::Type;
 
-use super::basic_block::BasicBlock;
+use super::{basic_block::BasicBlock, tag::Tag};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Instruction {
@@ -158,7 +159,7 @@ pub struct AnnotatedInstr {
     pub result: Variable,
     pub inst: Instruction,
     pub ty: Type,
-    pub tags: Vec<()>,
+    pub tags: Vec<Tag>,
 }
 
 impl AnnotatedInstr {
@@ -177,7 +178,7 @@ impl Display for AnnotatedInstr {
         use Instruction::*;
         match &self.inst {
             Branch { .. } | Jump(_, _) | Ret(_) | Nop => {
-                write!(f, "  {}", self.inst)
+                write!(f, "  {}", self.inst)?;
             }
 
             Add(_, _)
@@ -191,13 +192,23 @@ impl Display for AnnotatedInstr {
             | Call { .. }
             | Operand(_)
             | Phi(_) => {
-                write!(f, "  {}:{} = {}", self.result, self.ty, self.inst)
+                write!(f, "  {}:{} = {}", self.result, self.ty, self.inst)?;
             }
 
             Label(_) => {
-                write!(f, "{}:", self.inst)
+                write!(f, "{}:", self.inst)?;
             }
         }
+
+        if !self.tags.is_empty() {
+            write!(f, "  {}", "//".dimmed())?;
+            for tag in &self.tags {
+                let str = format!("{:?}, ", tag).dimmed();
+                write!(f, "  {}", str)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
