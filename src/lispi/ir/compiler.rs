@@ -10,6 +10,7 @@ use super::{
         unique_generator::UniqueGenerator,
     },
     basic_block::BasicBlock,
+    tag::LoopPhiFunctionSite,
     IrContext,
 };
 use crate::{bug, lispi::ir::tag::Tag, unimplemented};
@@ -23,6 +24,9 @@ struct Context<'a> {
     var_gen: UniqueGenerator,
     /// Map loop label to loop label and basic block
     loop_label_map: FxHashMap<String, (Label, Id<BasicBlock>)>,
+    /// TODO: Remove this
+    loop_inits_map: FxHashMap<String, Vec<AnnotatedInstr>>,
+    loop_updates_map: FxHashMap<String, Vec<AnnotatedInstr>>,
 
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
@@ -40,6 +44,8 @@ impl<'a> Context<'a> {
             arena,
             basic_blocks: Vec::new(),
             loop_label_map: FxHashMap::default(),
+            loop_inits_map: FxHashMap::default(),
+            loop_updates_map: FxHashMap::default(),
         }
     }
 
@@ -66,6 +72,14 @@ impl<'a> Context<'a> {
             .push_inst(inst);
     }
 
+    fn get_last_inst_mut(&mut self) -> Option<&mut AnnotatedInstr> {
+        self.arena
+            .get_mut(self.current_bb())
+            .unwrap()
+            .insts
+            .last_mut()
+    }
+
     fn new_bb(&mut self, label: String) -> Id<BasicBlock> {
         self.arena.alloc(BasicBlock::new(label))
     }
@@ -90,10 +104,30 @@ fn compile_and_add(
     Ok(inst)
 }
 
-fn add_instr(result: &mut Vec<AnnotatedInstr>, ctx: &mut Context, inst: Instruction, ty: Type) {
+fn add_instr(
+    result: &mut Vec<AnnotatedInstr>,
+    ctx: &mut Context,
+    inst: Instruction,
+    ty: Type,
+) -> AnnotatedInstr {
     let inst = AnnotatedInstr::new(ctx.gen_var(), inst, ty);
     result.push(inst.clone());
-    ctx.push_inst(inst);
+    ctx.push_inst(inst.clone());
+    inst
+}
+
+fn add_instr_with_tags(
+    result: &mut Vec<AnnotatedInstr>,
+    ctx: &mut Context,
+    inst: Instruction,
+    ty: Type,
+    tags: Vec<Tag>,
+) -> AnnotatedInstr {
+    let mut inst = AnnotatedInstr::new(ctx.gen_var(), inst, ty);
+    inst.tags = tags;
+    result.push(inst.clone());
+    ctx.push_inst(inst.clone());
+    inst
 }
 
 fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
@@ -184,12 +218,14 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             }
         }
         Ast::Quoted(_) => todo!(),
-        Ast::Integer(v) => add_instr(
-            &mut result,
-            ctx,
-            I::Operand(Operand::Immediate(Immediate::Integer(v))),
-            ast_ty,
-        ),
+        Ast::Integer(v) => {
+            add_instr(
+                &mut result,
+                ctx,
+                I::Operand(Operand::Immediate(Immediate::Integer(v))),
+                ast_ty,
+            );
+        }
         Ast::Float(_) => todo!(),
         Ast::Symbol(sym) => {
             if let Some((label, _)) = ctx.func_env.find_var(&sym) {
@@ -208,12 +244,14 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             }
         }
         Ast::SymbolWithType(_, _) => todo!(),
-        Ast::Boolean(v) => add_instr(
-            &mut result,
-            ctx,
-            I::Operand(Operand::Immediate(Immediate::Boolean(v))),
-            ast_ty,
-        ),
+        Ast::Boolean(v) => {
+            add_instr(
+                &mut result,
+                ctx,
+                I::Operand(Operand::Immediate(Immediate::Boolean(v))),
+                ast_ty,
+            );
+        }
         Ast::Char(_) => todo!(),
         Ast::String(_) => todo!(),
         Ast::Nil => todo!(),
@@ -310,20 +348,46 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         }
         Ast::BuildList(_) => todo!(),
         Ast::Loop(Loop { inits, label, body }) => {
-            for (id, value) in inits {
-                let inst = compile_and_add(&mut result, value, ctx)?;
-                ctx.env.insert_var(id, inst.result);
-            }
+            ctx.loop_inits_map.insert(label.clone(), Vec::new());
+            ctx.loop_updates_map.insert(label.clone(), Vec::new());
 
-            // TODO: Loopの変数に対してPhiノードを追加する
+            let header_label = ctx.gen_label();
+            let header_bb = ctx.new_bb(header_label.name.clone());
+            ctx.add_bb(header_bb);
+
+            let mut init_vars = Vec::new();
+            for (_id, value) in &inits {
+                let inst = compile_and_add(&mut result, value.clone(), ctx)?;
+                ctx.loop_inits_map
+                    .get_mut(&label)
+                    .unwrap()
+                    .push(inst.clone());
+                init_vars.push(inst.clone());
+            }
 
             let loop_label = ctx.gen_label();
             let end_label = ctx.gen_label();
 
             let loop_bb = ctx.new_bb(loop_label.name.clone());
-            let end_bb = ctx.new_bb(end_label.name.clone());
+            let end_bb = ctx.new_bb(end_label.name);
 
             ctx.add_bb(loop_bb);
+
+            for (index, ((id, _value), init)) in inits.into_iter().zip(init_vars).enumerate() {
+                let inst = add_instr_with_tags(
+                    &mut result,
+                    ctx,
+                    Instruction::Operand(Operand::Variable(init.result)),
+                    init.ty,
+                    vec![Tag::LoopPhiFunctionSite(LoopPhiFunctionSite {
+                        label: label.clone(),
+                        index,
+                        header_label: header_label.clone(),
+                        loop_label: loop_label.clone(), // TODO: Use the label updating vars instead of loop_label
+                    })],
+                );
+                ctx.env.insert_var(id, inst.result);
+            }
 
             ctx.loop_label_map
                 .insert(label.clone(), (loop_label, loop_bb));
@@ -331,29 +395,32 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             for inst in body {
                 compile_and_add(&mut result, inst, ctx)?;
             }
-            {
-                let nop_result = ctx.gen_var();
 
-                let tag = Tag::LoopLabel(label);
+            // {
+            //     let nop_result = ctx.gen_var();
 
-                let loop_bb = ctx.arena.get_mut(loop_bb).unwrap();
-                if loop_bb.insts.is_empty() {
-                    let mut nop = AnnotatedInstr::new(nop_result, Instruction::Nop, Type::None);
-                    nop.tags.push(tag);
-                    loop_bb.insts.push(nop)
-                } else {
-                    loop_bb.insts[0].tags.push(tag);
-                }
-            }
+            //     let tag = Tag::LoopHeader { label };
+
+            //     let loop_bb = ctx.arena.get_mut(loop_bb).unwrap();
+            //     if loop_bb.insts.is_empty() {
+            //         let mut nop = AnnotatedInstr::new(nop_result, Instruction::Nop, Type::None);
+            //         nop.tags.push(tag);
+            //         loop_bb.insts.push(nop)
+            //     } else {
+            //         loop_bb.insts[0].tags.push(tag);
+            //     }
+            // }
 
             ctx.add_bb(end_bb);
         }
         Ast::Continue(Continue { label, updates }) => {
             let (loop_label, loop_bb) = ctx.loop_label_map.get(&label).unwrap().clone();
 
-            for update in updates {
-                compile_and_add(&mut result, update, ctx)?;
-            }
+            let updated_vars = updates
+                .into_iter()
+                .map(|update| compile_and_add(&mut result, update, ctx))
+                .collect::<Result<Vec<_>>>()?;
+            ctx.loop_updates_map.insert(label, updated_vars);
 
             add_instr(&mut result, ctx, I::Jump(loop_label, loop_bb), Type::None);
         }
@@ -560,6 +627,87 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
             result.push(fun);
         }
     }
+
+    //
+    // Insert phi nodes beginning of the loops
+    //
+
+    // Moving is necessary because ctx is used in the following closure.
+    let loop_updates_map: FxHashMap<String, Vec<AnnotatedInstr>> =
+        ctx.loop_updates_map.drain().collect();
+    let result = result
+        .into_iter()
+        .map(
+            |Function {
+                 name,
+                 args,
+                 ty,
+                 basic_blocks,
+             }| {
+                for bb in &basic_blocks {
+                    let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
+
+                    let mut result = Vec::new();
+
+                    for AnnotatedInstr {
+                        result: var,
+                        inst,
+                        ty,
+                        tags,
+                    } in bb.insts.clone()
+                    {
+                        let inst = match inst {
+                            Instruction::Operand(Operand::Variable(init)) => {
+                                let tag = tags.iter().find_map(|tag| {
+                                    if let Tag::LoopPhiFunctionSite(tag) = tag {
+                                        Some(tag)
+                                    } else {
+                                        None
+                                    }
+                                });
+
+                                if let Some(tag) = tag {
+                                    // Translate
+                                    // %var = %init
+                                    // to
+                                    // %var = phi [%init, header_label], [%update, loop_label]
+                                    // Variable %update is taken from ctx.loop_updates_map
+
+                                    let update = loop_updates_map[&tag.label][tag.index].clone();
+                                    Instruction::Phi(vec![
+                                        (Operand::Variable(init), tag.header_label.to_owned()),
+                                        (
+                                            Operand::Variable(update.result),
+                                            tag.loop_label.to_owned(),
+                                        ),
+                                    ])
+                                } else {
+                                    Instruction::Operand(Operand::Variable(init))
+                                }
+                            }
+                            _ => inst,
+                        };
+
+                        result.push(AnnotatedInstr {
+                            result: var,
+                            inst,
+                            ty,
+                            tags,
+                        })
+                    }
+
+                    bb.insts = result;
+                }
+
+                Function {
+                    name,
+                    args,
+                    ty,
+                    basic_blocks,
+                }
+            },
+        )
+        .collect();
 
     Ok(result)
 }

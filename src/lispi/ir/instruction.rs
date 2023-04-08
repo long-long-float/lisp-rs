@@ -201,7 +201,7 @@ impl Display for AnnotatedInstr {
         }
 
         if !self.tags.is_empty() {
-            write!(f, "  {}", "//".dimmed())?;
+            write!(f, "  {}", ";".dimmed())?;
             for tag in &self.tags {
                 let str = format!("{:?}, ", tag).dimmed();
                 write!(f, "  {}", str)?;
