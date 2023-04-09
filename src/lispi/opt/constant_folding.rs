@@ -22,6 +22,18 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
 
     let mut used_vars = HashSet::new();
 
+    // Look phi functions first because they reference back variables.
+    for bb in fun.basic_blocks.iter().rev() {
+        let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
+        for AnnotatedInstr { inst, .. } in &bb.insts {
+            if let Instruction::Phi(nodes) = inst {
+                for (op, _) in nodes {
+                    register_as_used(&mut used_vars, op);
+                }
+            }
+        }
+    }
+
     for bb in fun.basic_blocks.iter().rev() {
         let mut result = Vec::new();
 
@@ -64,11 +76,7 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                         .for_each(|arg| register_as_used(&mut used_vars, arg));
                 }
 
-                Instruction::Phi(nodes) => {
-                    nodes
-                        .iter()
-                        .for_each(|(op, _)| register_as_used(&mut used_vars, op));
-                }
+                Instruction::Phi(_) => { /* Variables added in front. */ }
 
                 Instruction::Operand(op) => register_as_used(&mut used_vars, op),
 
