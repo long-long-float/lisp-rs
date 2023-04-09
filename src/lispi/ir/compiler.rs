@@ -26,7 +26,7 @@ struct Context<'a> {
     loop_label_map: FxHashMap<String, (Label, Id<BasicBlock>)>,
     /// TODO: Remove this
     loop_inits_map: FxHashMap<String, Vec<AnnotatedInstr>>,
-    loop_updates_map: FxHashMap<String, Vec<AnnotatedInstr>>,
+    loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, String)>>,
 
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
@@ -61,23 +61,17 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn current_bb(&self) -> Id<BasicBlock> {
-        *self.basic_blocks.last().unwrap()
+    fn current_bb(&mut self) -> &mut BasicBlock {
+        let id = *self.basic_blocks.last().unwrap();
+        self.arena.get_mut(id).unwrap()
     }
 
     fn push_inst(&mut self, inst: AnnotatedInstr) {
-        self.arena
-            .get_mut(self.current_bb())
-            .unwrap()
-            .push_inst(inst);
+        self.current_bb().push_inst(inst);
     }
 
     fn get_last_inst_mut(&mut self) -> Option<&mut AnnotatedInstr> {
-        self.arena
-            .get_mut(self.current_bb())
-            .unwrap()
-            .insts
-            .last_mut()
+        self.current_bb().insts.last_mut()
     }
 
     fn new_bb(&mut self, label: String) -> Id<BasicBlock> {
@@ -418,7 +412,12 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             let updated_vars = updates
                 .into_iter()
-                .map(|update| compile_and_add(&mut result, update, ctx))
+                .map(|update| {
+                    Ok((
+                        compile_and_add(&mut result, update, ctx)?,
+                        ctx.current_bb().label.to_owned(),
+                    ))
+                })
                 .collect::<Result<Vec<_>>>()?;
             ctx.loop_updates_map.insert(label, updated_vars);
 
@@ -440,22 +439,21 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
             arg_types: _,
             body,
         }) => {
-            let args = args
-                .into_iter()
-                .map(|arg| {
-                    let name = arg.value.clone();
-                    ctx.env.insert_var(arg, Variable { name: name.clone() });
-
-                    (name, Type::None)
-                })
-                .collect::<Vec<_>>();
-
             let name = ctx
                 .sym_table
                 .create_symbol_value(format!("fun{}", ctx.var_gen.gen_string()));
             let label = Label {
                 name: name.value.clone(),
             };
+
+            let args = args
+                .into_iter()
+                .map(|arg| {
+                    let name = arg.value.clone();
+                    ctx.env.insert_var(arg, Variable { name: name.clone() });
+                    (name, Type::None)
+                })
+                .collect::<Vec<_>>();
 
             let bb = ctx.new_bb(label.name.clone());
 
@@ -490,6 +488,10 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
             body,
         }) => {
             if let Some(proc_id) = proc_id {
+                let label = Label {
+                    name: proc_id.value.clone(),
+                };
+
                 let mut aargs = Vec::new();
                 let mut fargs = Vec::new();
                 for (id, init) in inits {
@@ -502,10 +504,6 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
                     fargs.push((id.value, init.ty.clone()));
                     aargs.push(init);
                 }
-
-                let label = Label {
-                    name: proc_id.value.clone(),
-                };
 
                 ctx.env.push_local();
 
@@ -615,6 +613,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
 
         if let Some(last_bb) = last_bb {
             let res = last_bb.insts.last().unwrap().clone();
+
             let inst = AnnotatedInstr::new(
                 ctx.gen_var(),
                 Instruction::Ret(Operand::Variable(res.result)),
@@ -633,7 +632,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
     //
 
     // Moving is necessary because ctx is used in the following closure.
-    let loop_updates_map: FxHashMap<String, Vec<AnnotatedInstr>> =
+    let loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, String)>> =
         ctx.loop_updates_map.drain().collect();
     let result = result
         .into_iter()
@@ -673,12 +672,15 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
                                     // %var = phi [%init, header_label], [%update, loop_label]
                                     // Variable %update is taken from ctx.loop_updates_map
 
-                                    let update = loop_updates_map[&tag.label][tag.index].clone();
+                                    let (update, loop_label) =
+                                        loop_updates_map[&tag.label][tag.index].clone();
                                     Instruction::Phi(vec![
                                         (Operand::Variable(init), tag.header_label.to_owned()),
                                         (
-                                            Operand::Variable(update.result),
-                                            tag.loop_label.to_owned(),
+                                            Operand::Variable(update.result.clone()),
+                                            Label {
+                                                name: loop_label.clone(),
+                                            },
                                         ),
                                     ])
                                 } else {
