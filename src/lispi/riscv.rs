@@ -793,7 +793,10 @@ pub fn generate_code(
 
     use Instruction::*;
 
+    //
     // Remove phi nodes
+    //
+
     for (fun, _register_map) in &funcs {
         let i::Function {
             name: _,
@@ -804,7 +807,28 @@ pub fn generate_code(
 
         let mut assign_map = FxHashMap::default();
 
-        for bb in basic_blocks.iter().rev() {
+        for bb in basic_blocks {
+            let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
+
+            for i::AnnotatedInstr {
+                result,
+                inst,
+                ty,
+                tags: _,
+            } in &bb.insts
+            {
+                if let i::Instruction::Phi(nodes) = &inst {
+                    for (node, label) in nodes {
+                        assign_map.insert(
+                            label.name.clone(),
+                            (result.clone(), ty.clone(), node.clone()),
+                        );
+                    }
+                }
+            }
+        }
+
+        for bb in basic_blocks {
             let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
 
             let mut insts = Vec::new();
@@ -812,24 +836,19 @@ pub fn generate_code(
 
             let mut new_insts = Vec::new();
 
+            let mut inserted_assign = false;
+
             for i::AnnotatedInstr {
                 result,
                 inst,
                 ty,
                 tags: _,
-            } in insts
+            } in insts.into_iter().rev()
             {
                 match &inst {
-                    i::Instruction::Phi(nodes) => {
-                        for (node, label) in nodes {
-                            assign_map.insert(
-                                label.name.clone(),
-                                (result.clone(), ty.clone(), node.clone()),
-                            );
-                        }
-                    }
+                    i::Instruction::Phi(_) => { /* Remove phi instruction */ }
                     _ => {
-                        if inst.is_terminal() {
+                        if !inst.is_terminal() && !inserted_assign {
                             if let Some((result, ty, operand)) = assign_map.get(&bb.label) {
                                 new_insts.push(i::AnnotatedInstr::new(
                                     result.clone(),
@@ -837,6 +856,7 @@ pub fn generate_code(
                                     ty.clone(),
                                 ));
                             }
+                            inserted_assign = true;
                         }
 
                         new_insts.push(i::AnnotatedInstr::new(result, inst, ty));
@@ -844,6 +864,7 @@ pub fn generate_code(
                 }
             }
 
+            new_insts.reverse();
             bb.insts = new_insts;
         }
     }
