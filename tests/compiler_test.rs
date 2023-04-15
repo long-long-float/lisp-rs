@@ -1,5 +1,7 @@
+use std::env;
 use std::path::Path;
 use std::process::Command;
+use std::str;
 
 use lisp_rs::lispi::cli_option::CliOption;
 use lisp_rs::lispi::compile;
@@ -8,25 +10,30 @@ use serde_json::Value;
 fn compile_and_run(program: &str) -> Value {
     let program = program.split('\n').map(|l| l.to_string()).collect();
 
+    let dump = env::var("DUMP").is_ok();
+
     let opt = CliOption {
         filename: None,
         compile: true,
-        dump: false,
+        dump,
     };
 
-    assert_eq!(true, compile(program, &opt).is_ok());
-    assert_eq!(true, Path::new("out.bin").exists());
-    assert_eq!(true, Path::new("out.elf").exists());
+    assert!(compile(program, &opt).is_ok());
+    assert!(Path::new("out.bin").exists());
+    assert!(Path::new("out.elf").exists());
 
     let output = Command::new("./rv32emu/build/rv32emu")
         .args(["--dump-registers", "out.elf"])
         .output()
         .expect("Failed to execute");
 
-    assert_eq!(true, output.status.success());
+    if dump {
+        println!("{}", str::from_utf8(&output.stdout).unwrap_or(""));
+    }
+
+    assert!(output.status.success());
 
     let registers: Value = serde_json::from_slice(&output.stdout).unwrap();
-    println!("{:#?}", registers);
     registers
 }
 
