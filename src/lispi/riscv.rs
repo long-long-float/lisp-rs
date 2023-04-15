@@ -255,6 +255,12 @@ impl GenerateCode for IInstruction {
     fn generate_code(&self) -> RegisterType {
         use IInstructionOp::*;
 
+        assert!(
+            (self.imm.value & !0xfff) == 0,
+            "Immediate of IInstruction must be under 0x1000. But the value is {:x}.",
+            self.imm.value
+        );
+
         let imm = (self.imm.value as u32) & 0xfff;
         let rs1 = self.rs1.as_int();
 
@@ -287,7 +293,8 @@ impl GenerateCode for IInstruction {
                     Ori => "ori",
                     Addi => {
                         if imm >> 11 & 1 == 1 {
-                            imm = -imm;
+                            // sign extension
+                            imm |= 0xffff_f000u32 as i32;
                         }
 
                         "addi"
@@ -662,31 +669,35 @@ fn load_operand_to(
         }
         i::Operand::Immediate(imm) => {
             let imm: Immediate = imm.into();
-            let mut last_set_bit = -1;
-            for i in (0..=31).rev() {
-                if imm.value & (1 << i) != 0 {
-                    last_set_bit = i;
-                    break;
-                }
-            }
-            if last_set_bit >= 12 {
-                // Large integer
-                let bot = Immediate::new(imm.value & 0xfff, 12);
-                let top = if (bot.value >> 11 & 1) == 1 {
-                    Immediate::new(imm.value + 0x1000, imm.len)
-                } else {
-                    imm
-                };
-                insts.push(Instruction::U(UInstruction {
-                    op: UInstructionOp::Lui,
-                    imm: top,
-                    rd: rd.clone(),
-                }));
-                insts.push(Instruction::addi(rd.clone(), rd, bot));
-            } else {
-                insts.push(Instruction::li(rd, imm));
-            }
+            load_immediate(insts, imm, rd);
         }
+    }
+}
+
+fn load_immediate(insts: &mut Vec<Instruction>, imm: Immediate, rd: Register) {
+    let mut last_set_bit = -1;
+    for i in (0..=31).rev() {
+        if imm.value & (1 << i) != 0 {
+            last_set_bit = i;
+            break;
+        }
+    }
+    if last_set_bit >= 12 {
+        // Large integer
+        let bot = Immediate::new(imm.value & 0xfff, 12);
+        let top = if (bot.value >> 11 & 1) == 1 {
+            Immediate::new(imm.value + 0x1000, imm.len)
+        } else {
+            imm
+        };
+        insts.push(Instruction::U(UInstruction {
+            op: UInstructionOp::Lui,
+            imm: top,
+            rd: rd.clone(),
+        }));
+        insts.push(Instruction::addi(rd.clone(), rd, bot));
+    } else {
+        insts.push(Instruction::li(rd, imm));
     }
 }
 
@@ -754,7 +765,7 @@ pub fn generate_code(
         insts.push(Instruction::addi(
             Register::sp(),
             Register::sp(),
-            Immediate::new(-8, XLEN),
+            Immediate::new(-8 & 0xfff, XLEN),
         ));
         insts.push(Instruction::sw(
             Register::ra(),
