@@ -890,6 +890,9 @@ pub fn generate_code(
     let mut ctx = Context::new();
     let mut insts = Vec::new();
 
+    // Initialize specific registers
+    load_immediate(&mut insts, Immediate::new(0x1000, XLEN), Register::sp());
+
     for (fun, register_map) in funcs {
         ctx.reset_on_fun();
 
