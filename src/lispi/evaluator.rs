@@ -170,7 +170,7 @@ pub enum Value {
     RawAst(AnnotatedAst),
 
     /// For optimizing tail recursion
-    Continue(String),
+    Continue(Continue),
 }
 
 impl Value {
@@ -261,7 +261,7 @@ impl From<&Ast> for Value {
             | Ast::BuildList(_)
             | Ast::Cond(_) => Value::nil(),
 
-            Ast::Continue(_) => todo!(),
+            Ast::Continue(v) => Value::Continue(v.clone()),
         }
     }
 }
@@ -743,9 +743,10 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             let result = loop {
                 let results = eval_asts(body, env);
                 let result = get_last_result(results?);
-                if let Value::Continue(id) = &result {
+                if let Value::Continue(Continue { label: id, updates }) = &result {
                     if id == label {
                         // continue
+                        eval_asts(updates, env)?;
                     } else {
                         break result;
                     }
