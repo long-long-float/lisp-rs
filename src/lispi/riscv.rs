@@ -1001,7 +1001,8 @@ pub fn generate_code(
                         let op = load_operand(&mut ctx, &mut insts, &register_map, op)?;
                         insts.push(I(IInstruction {
                             op: IInstructionOp::Xori,
-                            imm: Immediate::new(0xffff_ffffu32 as i32, XLEN),
+                            // imm: Immediate::new(0xfffu32 as i32, XLEN),
+                            imm: Immediate::new(0x1u32 as i32, XLEN),
                             rs1: op,
                             rd: result_reg,
                         }))
