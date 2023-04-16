@@ -259,7 +259,7 @@ impl GenerateCode for IInstruction {
 
         assert!(
             (self.imm.value & !0xfff) == 0,
-            "Immediate of IInstruction must be under 0x1000. But the value is {:x}.",
+            "Immediate of IInstruction must be under 0x1000. But the value is 0x{:x}.",
             self.imm.value
         );
 
@@ -291,16 +291,13 @@ impl GenerateCode for IInstruction {
         match self.op {
             Ori | Addi | Jalr | Xori | Slti => {
                 let mut imm = self.imm.value;
+                if imm >> 11 & 1 == 1 {
+                    // sign extension
+                    imm |= 0xffff_f000u32 as i32;
+                }
                 let name = match self.op {
                     Ori => "ori",
-                    Addi => {
-                        if imm >> 11 & 1 == 1 {
-                            // sign extension
-                            imm |= 0xffff_f000u32 as i32;
-                        }
-
-                        "addi"
-                    }
+                    Addi => "addi",
                     Jalr => "jalr",
                     Xori => "xori",
                     Slti => "slti",
