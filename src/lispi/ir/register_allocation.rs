@@ -77,10 +77,6 @@ impl InterferenceGraph {
         }
     }
 
-    fn exists(&self, var: &Variable) -> bool {
-        self.vars.contains_key(var)
-    }
-
     fn get_id_or_add_node(&mut self, var: &Variable) -> IGID {
         if let Some(id) = self.get_id(var) {
             *id
@@ -104,6 +100,12 @@ impl InterferenceGraph {
         }
     }
 
+    #[allow(dead_code)]
+    fn exists(&self, var: &Variable) -> bool {
+        self.vars.contains_key(var)
+    }
+
+    #[allow(dead_code)]
     fn is_connected_to(&self, src: &Variable, dest: &Variable) -> bool {
         if let (Some(&src), Some(dest)) = (self.get_id(src), self.get_id(dest)) {
             self.nodes[src.value].contains(dest)

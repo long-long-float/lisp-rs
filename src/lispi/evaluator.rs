@@ -87,7 +87,7 @@ macro_rules! match_special_args {
             match_special_args!($args, $( $ps ),*, $b, ($index + 1))
         }
         else {
-            let loc = crate::lispi::evaluator::get_location($args.last());
+            let loc = $crate::lispi::evaluator::get_location($args.last());
             Err(Error::Parse(format!("Cannot match {} with {:?}", stringify!($p), $args.get($index))).with_location(loc).into())
         }
     };
@@ -179,10 +179,7 @@ impl Value {
     }
 
     fn is_true(&self) -> bool {
-        match self {
-            Value::Boolean(false) => false,
-            _ => true,
-        }
+        !matches!(self, Value::Boolean(false))
     }
 }
 
@@ -264,7 +261,7 @@ impl From<&Ast> for Value {
             | Ast::BuildList(_)
             | Ast::Cond(_) => Value::nil(),
 
-            Ast::Continue(v) => todo!(),
+            Ast::Continue(_) => todo!(),
         }
     }
 }
@@ -307,7 +304,7 @@ pub fn get_last_result(results: Vec<Value>) -> Value {
     results.into_iter().last().unwrap_or(Value::nil())
 }
 
-pub fn get_symbol_values(symbols: &Vec<AnnotatedAst>) -> Result<Vec<SymbolValue>> {
+pub fn get_symbol_values(symbols: &[AnnotatedAst]) -> Result<Vec<SymbolValue>> {
     symbols
         .iter()
         .map(|symbol| {
@@ -490,15 +487,15 @@ fn apply_function(
                     }
 
                     if has_float_arg {
-                        let mut args = args.iter().map(|arg| match arg {
-                            &Number::Int(v) => v as f32,
-                            &Number::Float(v) => v,
+                        let mut args = args.iter().map(|arg| match *arg {
+                            Number::Int(v) => v as f32,
+                            Number::Float(v) => v,
                         });
                         Ok(Value::Float(calc!(args, f32)))
                     } else {
-                        let mut args = args.iter().map(|arg| match arg {
-                            &Number::Int(v) => v,
-                            &Number::Float(v) => v as i32,
+                        let mut args = args.iter().map(|arg| match *arg {
+                            Number::Int(v) => v,
+                            Number::Float(v) => v as i32,
                         });
                         Ok(Value::Integer(calc!(args, i32)))
                     }

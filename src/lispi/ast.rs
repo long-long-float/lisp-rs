@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use colored::*;
 use std::fmt::Display;
 
@@ -85,7 +85,7 @@ impl Ast {
             }
             Value::NativeFunction { name, func: _ } => Ok(Ast::Symbol(name)),
             Value::RawAst(ast) => Ok(ast.ast),
-            Value::Continue(v) => todo!(),
+            Value::Continue(_) => todo!(),
         }
     }
 

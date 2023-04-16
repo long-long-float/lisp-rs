@@ -58,6 +58,7 @@ impl Instruction {
         })
     }
 
+    #[allow(dead_code)]
     fn nop() -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Addi,
@@ -207,6 +208,7 @@ struct SBInstruction {
 #[derive(Clone, PartialEq, Debug)]
 enum SBInstructionOp {
     /// Branch EQual
+    #[allow(dead_code)]
     Beq,
     /// Branch Not Equal
     Bne,
@@ -405,7 +407,7 @@ impl GenerateCode for SBInstruction {
     fn generate_code(&self) -> RegisterType {
         use SBInstructionOp::*;
 
-        let imm = self.imm.value() as u32;
+        let imm = self.imm.value();
         assert!(imm & 1 == 0);
         // 7 bits
         let imm_upper = ((imm & (1 << 12)) >> 5) | ((imm >> 5) & 0b11111);
@@ -461,6 +463,7 @@ impl Display for RelAddress {
 #[derive(Clone, PartialEq, Debug)]
 enum Register {
     Integer(u32),
+    #[allow(dead_code)]
     Float(u32),
 }
 
@@ -481,10 +484,12 @@ impl Register {
         Register::Integer(2)
     }
 
+    #[allow(dead_code)]
     fn gp() -> Register {
         Register::Integer(3)
     }
 
+    #[allow(dead_code)]
     fn tp() -> Register {
         Register::Integer(4)
     }
@@ -496,6 +501,7 @@ impl Register {
         }
     }
 
+    #[allow(dead_code)]
     fn fp() -> Register {
         Self::s(0)
     }
@@ -558,13 +564,6 @@ struct Immediate {
 impl Immediate {
     fn new(value: i32, len: u8) -> Immediate {
         Immediate { value, len }
-    }
-
-    fn update(self, value: i32) -> Immediate {
-        Immediate {
-            value: self.value + value,
-            len: self.len,
-        }
     }
 }
 
@@ -636,14 +635,12 @@ fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
 
 fn load_operand(
     _ctx: &mut Context,
-    _insts: &mut Vec<Instruction>,
+    _insts: &mut [Instruction],
     register_map: &RegisterMap,
     op: i::Operand,
 ) -> Result<Register> {
     match op {
-        i::Operand::Variable(var) => {
-            Ok(Register::t(register_map.get(&var).unwrap().clone() as u32))
-        }
+        i::Operand::Variable(var) => Ok(Register::t(*register_map.get(&var).unwrap() as u32)),
         i::Operand::Immediate(imm) => Err(bug!(format!(
             "Cannot load immediate operand. This should be formed as `%var = {}.`",
             imm
@@ -922,9 +919,7 @@ pub fn generate_code(
 
                 let result_reg = if !inst.is_terminal() {
                     if let Some(&reg) = register_map.get(&result) {
-                        let reg = Register::t(reg as u32);
-                        // ctx.reg_map.insert(result.name, reg.clone());
-                        reg
+                        Register::t(reg as u32)
                     } else {
                         Register::zero()
                     }

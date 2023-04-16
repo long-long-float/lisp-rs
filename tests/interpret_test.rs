@@ -40,7 +40,7 @@ fn build_list(vs: Vec<i32>) -> Value {
 #[test]
 fn literal_test() {
     assert_eq!(Ok(Value::Integer(3)), interp("3"));
-    assert_eq!(Ok(Value::Float(3.14)), interp("3.14"));
+    assert_eq!(Ok(Value::Float(3.15)), interp("3.15"));
     assert_eq!(Ok(Value::Integer(3)), interp("+3"));
     assert_eq!(Ok(Value::Integer(-3)), interp("-3"));
 

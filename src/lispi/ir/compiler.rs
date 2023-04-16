@@ -70,10 +70,6 @@ impl<'a> Context<'a> {
         self.current_bb().push_inst(inst);
     }
 
-    fn get_last_inst_mut(&mut self) -> Option<&mut AnnotatedInstr> {
-        self.current_bb().insts.last_mut()
-    }
-
     fn new_bb(&mut self, label: String) -> Id<BasicBlock> {
         self.arena.alloc(BasicBlock::new(label))
     }
@@ -604,7 +600,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
     for (_, (_, fun)) in fun_vars {
         let last_bb = fun.basic_blocks.iter().rev().find_map(|bb| {
             let bb = ctx.arena.get(*bb).unwrap();
-            if bb.insts.len() > 0 {
+            if !bb.insts.is_empty() {
                 Some(bb)
             } else {
                 None

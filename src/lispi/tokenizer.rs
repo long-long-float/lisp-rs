@@ -383,7 +383,9 @@ mod tests {
 
     #[test]
     fn test_tokenize_number_float() {
-        assert_eq!(tok("3.14"), Token::FloatLiteral(3.14));
+        #[allow(clippy::approx_constant)]
+        let pi = 3.14;
+        assert_eq!(tok("3.14"), Token::FloatLiteral(pi));
         assert_eq!(tok("3.0"), Token::FloatLiteral(3.0));
     }
 

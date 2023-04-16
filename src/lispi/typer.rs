@@ -162,10 +162,10 @@ impl Type {
         }
     }
 
-    pub fn with_locations(self, loc: &Vec<TokenLocation>, expected: bool) -> TypeWithLocation {
+    pub fn with_locations(self, loc: &[TokenLocation], expected: bool) -> TypeWithLocation {
         TypeWithLocation {
             ty: self,
-            loc: loc.clone(),
+            loc: loc.to_vec(),
             expected,
         }
     }
