@@ -157,3 +157,19 @@ fn load_large_negative_integer() {
         registers["x10"].as_i64().map(|i| i as i32)
     );
 }
+
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn sum_by_loop() {
+    let registers = compile_and_run(
+        r#"
+(define sum 0)
+(let loop ((i 0))
+    (set! sum (+ sum i))
+    (if (not (> i 100))
+        (loop (+ i 1))))
+sum
+"#,
+    );
+    assert_eq!(Some(42), registers["x10"].as_i64());
+}
