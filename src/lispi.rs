@@ -18,7 +18,7 @@ pub mod unique_generator;
 pub mod cli_option;
 
 use object::elf::*;
-use object::write::elf::{FileHeader, SectionHeader, Sym, Writer};
+use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Sym, Writer};
 use object::write::StreamingBuffer;
 use object::Endianness;
 use std::{fs::File, io::BufWriter, io::Write};
@@ -299,6 +299,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         e_entry: 0x000000,
         e_flags: 0x00,
     })?;
+    // This is needed for rv32emu
     writer.write_program_header(&ProgramHeader {
         p_type: PT_LOAD,
         p_flags: 0x05,
@@ -339,7 +340,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         sh_size: codes.len() as u64,
         sh_link: 0,
         sh_info: 0,
-        sh_addralign: 0x200000,
+        sh_addralign: 0x4,
         sh_entsize: 0,
     });
 
