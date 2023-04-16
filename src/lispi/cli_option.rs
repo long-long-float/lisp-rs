@@ -13,4 +13,7 @@ pub struct CliOption {
 
     #[clap(short, long, action = clap::ArgAction::SetTrue)]
     pub dump: bool,
+
+    #[clap(long, action = clap::ArgAction::SetTrue)]
+    pub without_opts: bool,
 }

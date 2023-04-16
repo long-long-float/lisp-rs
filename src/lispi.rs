@@ -220,22 +220,24 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         printlnuw("");
     }
 
-    opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
-    if opt.dump {
-        printlnuw(&"Remove duplicated assignments:".red());
-        for fun in &funcs {
-            fun.dump(&ir_ctx.bb_arena);
+    if !opt.without_opts {
+        opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
+        if opt.dump {
+            printlnuw(&"Remove duplicated assignments:".red());
+            for fun in &funcs {
+                fun.dump(&ir_ctx.bb_arena);
+            }
+            printlnuw("");
         }
-        printlnuw("");
-    }
 
-    opt::constant_folding::optimize(&funcs, &mut ir_ctx, true)?;
-    if opt.dump {
-        printlnuw(&"Constant folding:".red());
-        for fun in &funcs {
-            fun.dump(&ir_ctx.bb_arena);
+        opt::constant_folding::optimize(&funcs, &mut ir_ctx, true)?;
+        if opt.dump {
+            printlnuw(&"Constant folding:".red());
+            for fun in &funcs {
+                fun.dump(&ir_ctx.bb_arena);
+            }
+            printlnuw("");
         }
-        printlnuw("");
     }
 
     let func_with_reg_maps =
