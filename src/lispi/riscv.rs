@@ -695,7 +695,9 @@ fn load_immediate(insts: &mut Vec<Instruction>, imm: Immediate, rd: Register) {
             imm: top,
             rd: rd.clone(),
         }));
-        insts.push(Instruction::addi(rd.clone(), rd, bot));
+        if bot.value > 0 {
+            insts.push(Instruction::addi(rd.clone(), rd, bot));
+        }
     } else {
         insts.push(Instruction::li(rd, imm));
     }
