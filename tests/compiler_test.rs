@@ -16,6 +16,7 @@ fn compile_and_run(program: &str) -> Value {
         filename: None,
         compile: true,
         dump,
+        without_opts: false,
     };
 
     assert!(compile(program, &opt).is_ok());

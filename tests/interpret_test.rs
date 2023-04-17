@@ -16,6 +16,7 @@ fn interp(program: &str) -> Result<Value, Error> {
         filename: None,
         compile: false,
         dump: false,
+        without_opts: false,
     };
 
     let result = interpret(lines, &opt);

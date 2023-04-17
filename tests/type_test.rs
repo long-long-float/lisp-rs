@@ -14,6 +14,7 @@ fn typing(program: &str) -> Result<Type, Error> {
         filename: None,
         compile: false,
         dump: false,
+        without_opts: false,
     };
 
     let result = frontend(lines, &opt);
