@@ -106,16 +106,24 @@ fn define_function_and_call() {
 "#,
     );
     assert_eq!(Some(42), registers["x10"].as_i64());
+}
 
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn define_function_and_call_rank2() {
     let registers = compile_and_run(
         r#"
 (define f (lambda (x) (+ x x)))
 (define g (lambda (x) (+ (f x) (f x))))
-(double 4)
+(g 4)
 "#,
     );
     assert_eq!(Some(16), registers["x10"].as_i64());
+}
 
+#[test]
+#[cfg(feature = "rv32emu-test")]
+fn define_function_and_call_directly() {
     let registers = compile_and_run("((lambda (x) (* x x)) 5)");
     assert_eq!(Some(25), registers["x10"].as_i64());
 }
