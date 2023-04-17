@@ -801,7 +801,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
                 }
             }
 
-            Err(Error::UndefinedVariable(value.value.clone())
+            Err(Error::UndefinedVariable(value.value.clone(), "evaluation")
                 .with_location(ast.location)
                 .into())
         }

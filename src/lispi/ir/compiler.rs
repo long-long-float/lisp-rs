@@ -228,7 +228,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             } else if let Some(var) = ctx.env.find_var(&sym) {
                 add_instr(&mut result, ctx, I::Operand(Operand::Variable(var)), ast_ty);
             } else {
-                return Err(Error::UndefinedVariable(sym.value)
+                return Err(Error::UndefinedVariable(sym.value, "compiling")
                     .with_null_location()
                     .into());
             }

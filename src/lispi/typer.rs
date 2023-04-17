@@ -306,7 +306,7 @@ fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<
         Ok(ty)
     } else {
         // ctx.env.dump_local();
-        Err(Error::UndefinedVariable(id.value.clone())
+        Err(Error::UndefinedVariable(id.value.clone(), "typing")
             .with_location(*loc)
             .into())
     }

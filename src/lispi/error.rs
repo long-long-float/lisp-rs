@@ -18,8 +18,8 @@ pub enum Error {
     #[error("Types {0} and {1} are not matched")]
     TypeNotMatched(Type, Type, TokenLocation, TokenLocation),
 
-    #[error("Undefined variable: `{0}`")]
-    UndefinedVariable(String),
+    #[error("Undefined variable: `{0}` at {1}")]
+    UndefinedVariable(String, &'static str),
 
     #[error("Bug: {message:?} at {file:?}:{line:?}")]
     Bug {

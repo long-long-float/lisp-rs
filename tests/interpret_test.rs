@@ -108,8 +108,8 @@ fn map_test() {
 
 #[test]
 fn undefined_function_test() {
-    assert_error!(&interp("(x 1 2)"), Error::UndefinedVariable(_));
-    assert_error!(&interp("(** 1 2)"), Error::UndefinedVariable(_));
+    assert_error!(&interp("(x 1 2)"), Error::UndefinedVariable(_, "typing"));
+    assert_error!(&interp("(** 1 2)"), Error::UndefinedVariable(_, "typing"));
 }
 
 #[test]
@@ -326,7 +326,7 @@ a"#
 
     assert_error!(
         interp("(let ([a 1] [b a]) (+ a b))"),
-        Error::UndefinedVariable(_)
+        Error::UndefinedVariable(_, "typing")
     );
 }
 
