@@ -97,7 +97,7 @@ fn compile_and_add(
     ctx: &mut Context,
 ) -> Result<AnnotatedInstr> {
     let mut insts = compile_ast(ast, ctx)?;
-    let inst = get_last_instr(&insts);
+    let inst = ctx.current_bb().insts.last().unwrap().clone();
     result.append(&mut insts);
     Ok(inst)
 }
@@ -256,6 +256,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::DefineMacro(_) => todo!(),
         Ast::Define(Define { id, init }) => {
             let inst = compile_and_add(&mut result, *init, ctx)?;
+            println!("define {}", id.value);
             ctx.env.insert_var(id, inst.result);
         }
         Ast::Assign(Assign {
@@ -428,16 +429,123 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             add_instr(&mut result, ctx, I::Jump(loop_label, loop_bb), Type::None);
         }
 
-        Ast::Lambda(_) => {}
+        Ast::Lambda(Lambda {
+            args,
+            arg_types: _,
+            body,
+        }) => {
+            let name = ctx
+                .sym_table
+                .create_symbol_value(format!("fun{}", ctx.var_gen.gen_string()));
+            let label = Label {
+                name: name.value.clone(),
+            };
+
+            let args = args
+                .into_iter()
+                .map(|arg| {
+                    let name = arg.value.clone();
+                    ctx.env.insert_var(arg, Variable { name: name.clone() });
+                    (name, Type::None)
+                })
+                .collect::<Vec<_>>();
+
+            let bb = ctx.new_bb(label.name.clone());
+
+            ctx.env.push_local();
+
+            ctx.basic_blocks.clear();
+            ctx.add_bb(bb);
+
+            compile_asts(body, ctx)?;
+
+            ctx.env.pop_local();
+
+            let fun = Function::new(
+                name.value.clone(),
+                args,
+                ast_ty.clone(),
+                ctx.basic_blocks.drain(0..).collect(),
+            );
+
+            //ctx.func_labels.insert_var(name.clone(), label);
+            ctx.funcs.insert_var(name.clone(), fun);
+
+            add_instr(
+                &mut result,
+                ctx,
+                I::Operand(Operand::Immediate(Immediate::Label(Label {
+                    name: name.value,
+                }))),
+                Type::None,
+            );
+        }
     }
 
     Ok(result)
 }
 
+/// Collect labels of lambdas
+/// TODO: Support nested functions
+// fn collect_lambda_labels(ast: AnnotatedAst, ctx: &mut Context) -> Result<AnnotatedAst> {
+//     let AnnotatedAst { ast, location, ty } = ast;
+
+//     match ast {
+//         Ast::Lambda(Lambda {
+//             args: _,
+//             arg_types: _,
+//             body: _,
+//         }) => {
+//             let name = ctx
+//                 .sym_table
+//                 .create_symbol_value(format!("fun{}", ctx.var_gen.gen_string()));
+//             let label = Label {
+//                 name: name.value.clone(),
+//             };
+
+//             ctx.func_labels.insert_var(name.clone(), label);
+
+//             Ok(AnnotatedAst {
+//                 ast: Ast::Symbol(name),
+//                 location,
+//                 ty,
+//             })
+//         }
+//         Ast::Let(Let {
+//             sequential: _,
+//             ref proc_id,
+//             inits: _,
+//             body: _,
+//         }) => {
+//             if let Some(proc_id) = proc_id {
+//                 let label = Label {
+//                     name: proc_id.value.clone(),
+//                 };
+
+//                 ctx.func_labels.insert_var(proc_id.clone(), label);
+
+//                 Ok(AnnotatedAst { ast, location, ty })
+//             } else {
+//                 AnnotatedAst { ast, location, ty }.traverse(ctx, collect_lambda_labels)
+//             }
+//         }
+//         _ => AnnotatedAst { ast, location, ty }.traverse(ctx, collect_lambda_labels),
+//     }
+// }
+
 fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<AnnotatedAst> {
     let AnnotatedAst { ast, location, ty } = ast;
 
     match ast {
+        // Ast::Define(Define { id, init }) => {
+        //     let inst = compile_lambdas_ast(*init.clone(), ctx)?;
+        //     ctx.env.insert_var(id.clone(), inst);
+        //     Ok(AnnotatedAst {
+        //         ast: Ast::Define(Define { id, init }),
+        //         location,
+        //         ty,
+        //     })
+        // }
         Ast::Lambda(Lambda {
             args,
             arg_types: _,
@@ -477,7 +585,7 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
                 ctx.basic_blocks.drain(0..).collect(),
             );
 
-            ctx.func_labels.insert_var(name.clone(), label);
+            //ctx.func_labels.insert_var(name.clone(), label);
             ctx.funcs.insert_var(name.clone(), fun);
 
             Ok(AnnotatedAst {
@@ -517,7 +625,7 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
                 ctx.basic_blocks.clear();
                 ctx.add_bb(bb);
 
-                ctx.func_labels.insert_var(proc_id.clone(), label);
+                // ctx.func_labels.insert_var(proc_id.clone(), label);
 
                 // let insts = compile_asts(body, ctx)?;
 
@@ -692,10 +800,10 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
 
     let mut ctx = Context::new(sym_table, &mut ir_ctx.bb_arena);
 
-    let asts = asts
-        .into_iter()
-        .map(|ast| compile_lambdas_ast(ast, &mut ctx))
-        .collect::<Result<Vec<_>>>()?;
+    // let asts = asts
+    //     .into_iter()
+    //     .map(|ast| compile_lambdas_ast(ast, &mut ctx))
+    //     .collect::<Result<Vec<_>>>()?;
 
     compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
 
