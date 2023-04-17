@@ -20,10 +20,17 @@ use super::instruction::*;
 struct Context<'a> {
     env: Environment<Variable>,
     sym_table: SymbolTable,
-    func_env: Environment<(Label, Function)>,
+
+    /// Used to reference functions
+    func_labels: Environment<Label>,
+    /// Used to list functions
+    funcs: Environment<Function>,
+
     var_gen: UniqueGenerator,
+
     /// Map loop label to loop label and basic block
     loop_label_map: FxHashMap<String, (Label, Id<BasicBlock>)>,
+
     /// TODO: Remove this
     loop_inits_map: FxHashMap<String, Vec<AnnotatedInstr>>,
     loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, String)>>,
@@ -39,7 +46,8 @@ impl<'a> Context<'a> {
         Self {
             env: Environment::default(),
             sym_table,
-            func_env: Environment::default(),
+            func_labels: Environment::default(),
+            funcs: Environment::default(),
             var_gen: UniqueGenerator::new(),
             arena,
             basic_blocks: Vec::new(),
@@ -218,7 +226,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         }
         Ast::Float(_) => todo!(),
         Ast::Symbol(sym) => {
-            if let Some((label, _)) = ctx.func_env.find_var(&sym) {
+            if let Some(label) = ctx.func_labels.find_var(&sym) {
                 add_instr(
                     &mut result,
                     ctx,
@@ -469,7 +477,8 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
                 ctx.basic_blocks.drain(0..).collect(),
             );
 
-            ctx.func_env.insert_var(name.clone(), (label, fun));
+            ctx.func_labels.insert_var(name.clone(), label);
+            ctx.funcs.insert_var(name.clone(), fun);
 
             Ok(AnnotatedAst {
                 ast: Ast::Symbol(name),
@@ -505,21 +514,23 @@ fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Annotated
 
                 let bb = ctx.new_bb(label.name.clone());
 
-                let mut fun = Function::new(proc_id.value.clone(), fargs, Type::None, Vec::new());
-
                 ctx.basic_blocks.clear();
                 ctx.add_bb(bb);
 
-                ctx.func_env
-                    .insert_var(proc_id.clone(), (label.clone(), fun.clone()));
+                ctx.func_labels.insert_var(proc_id.clone(), label);
 
                 // let insts = compile_asts(body, ctx)?;
 
-                fun.basic_blocks = ctx.basic_blocks.drain(0..).collect();
+                let fun = Function::new(
+                    proc_id.value.clone(),
+                    fargs,
+                    Type::None,
+                    ctx.basic_blocks.drain(0..).collect(),
+                );
 
                 ctx.env.pop_local();
 
-                ctx.func_env.update_var(proc_id.clone(), &(label, fun))?;
+                ctx.funcs.insert_var(proc_id.clone(), fun);
 
                 let mut apply = vec![Ast::Symbol(proc_id).with_null_location()];
                 apply.append(&mut aargs);
@@ -688,8 +699,8 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
 
     compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
 
-    let fun_vars = ctx.func_env.current_local().variables.clone();
-    for (_, (_, fun)) in fun_vars {
+    let fun_vars = ctx.funcs.current_local().variables.clone();
+    for (_, fun) in fun_vars {
         let last_bb = fun.basic_blocks.iter().rev().find_map(|bb| {
             let bb = ctx.arena.get(*bb).unwrap();
             if !bb.insts.is_empty() {
