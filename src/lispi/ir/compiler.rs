@@ -556,81 +556,47 @@ fn compile_asts(asts: Vec<AnnotatedAst>, ctx: &mut Context) -> Result<Instructio
     Ok(result)
 }
 
-pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) -> Result<Functions> {
-    let mut result = Vec::new();
+fn compile_main_function(
+    asts: Program,
+    result: &mut Vec<Function>,
+    main_bb: Id<BasicBlock>,
+    ctx: &mut Context,
+) -> Result<()> {
+    let mut body = Vec::new();
 
-    let main_bb = ir_ctx.bb_arena.alloc(BasicBlock::new("main".to_string()));
+    ctx.basic_blocks.clear();
+    ctx.add_bb(main_bb);
 
-    let mut ctx = Context::new(sym_table, &mut ir_ctx.bb_arena);
-
-    let asts = asts
-        .into_iter()
-        .map(|ast| compile_lambdas_ast(ast, &mut ctx))
-        .collect::<Result<Vec<_>>>()?;
-
-    {
-        // 'main' function
-        let mut body = Vec::new();
-
-        ctx.basic_blocks.clear();
-        ctx.add_bb(main_bb);
-
-        for ast in asts {
-            let mut insts = compile_ast(ast, &mut ctx)?;
-            body.append(&mut insts);
-        }
-
-        let res = get_last_instr(&body);
-        add_instr(
-            &mut body,
-            &mut ctx,
-            Instruction::Ret(Operand::Variable(res.result)),
-            Type::None,
-        );
-
-        result.push(Function::new(
-            "main".to_string(),
-            Vec::new(),
-            Type::None,
-            ctx.basic_blocks.drain(0..).collect(),
-        ));
+    for ast in asts {
+        let mut insts = compile_ast(ast, ctx)?;
+        body.append(&mut insts);
     }
 
-    let fun_vars = ctx.func_env.current_local().variables.clone();
-    for (_, (_, fun)) in fun_vars {
-        let last_bb = fun.basic_blocks.iter().rev().find_map(|bb| {
-            let bb = ctx.arena.get(*bb).unwrap();
-            if !bb.insts.is_empty() {
-                Some(bb)
-            } else {
-                None
-            }
-        });
+    let res = get_last_instr(&body);
+    add_instr(
+        &mut body,
+        ctx,
+        Instruction::Ret(Operand::Variable(res.result)),
+        Type::None,
+    );
 
-        if let Some(last_bb) = last_bb {
-            let res = last_bb.insts.last().unwrap().clone();
+    result.push(Function::new(
+        "main".to_string(),
+        Vec::new(),
+        Type::None,
+        ctx.basic_blocks.drain(0..).collect(),
+    ));
 
-            let inst = AnnotatedInstr::new(
-                ctx.gen_var(),
-                Instruction::Ret(Operand::Variable(res.result)),
-                Type::None,
-            );
-            ctx.arena
-                .get_mut(*fun.basic_blocks.last().unwrap())
-                .unwrap()
-                .push_inst(inst);
-            result.push(fun);
-        }
-    }
+    Ok(())
+}
 
-    //
-    // Insert phi nodes beginning of the loops
-    //
-
+/// Insert phi nodes beginning of the loops
+fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions {
     // Moving is necessary because ctx is used in the following closure.
     let loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, String)>> =
         ctx.loop_updates_map.drain().collect();
-    let result = result
+
+    funcs
         .into_iter()
         .map(
             |Function {
@@ -640,7 +606,7 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
                  basic_blocks,
              }| {
                 for bb in &basic_blocks {
-                    let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
+                    let bb = ctx.arena.get_mut(*bb).unwrap();
 
                     let mut result = Vec::new();
 
@@ -705,7 +671,51 @@ pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) ->
                 }
             },
         )
-        .collect();
+        .collect()
+}
+
+pub fn compile(asts: Program, sym_table: SymbolTable, ir_ctx: &mut IrContext) -> Result<Functions> {
+    let mut result = Vec::new();
+
+    let main_bb = ir_ctx.bb_arena.alloc(BasicBlock::new("main".to_string()));
+
+    let mut ctx = Context::new(sym_table, &mut ir_ctx.bb_arena);
+
+    let asts = asts
+        .into_iter()
+        .map(|ast| compile_lambdas_ast(ast, &mut ctx))
+        .collect::<Result<Vec<_>>>()?;
+
+    compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
+
+    let fun_vars = ctx.func_env.current_local().variables.clone();
+    for (_, (_, fun)) in fun_vars {
+        let last_bb = fun.basic_blocks.iter().rev().find_map(|bb| {
+            let bb = ctx.arena.get(*bb).unwrap();
+            if !bb.insts.is_empty() {
+                Some(bb)
+            } else {
+                None
+            }
+        });
+
+        if let Some(last_bb) = last_bb {
+            let res = last_bb.insts.last().unwrap().clone();
+
+            let inst = AnnotatedInstr::new(
+                ctx.gen_var(),
+                Instruction::Ret(Operand::Variable(res.result)),
+                Type::None,
+            );
+            ctx.arena
+                .get_mut(*fun.basic_blocks.last().unwrap())
+                .unwrap()
+                .push_inst(inst);
+            result.push(fun);
+        }
+    }
+
+    let result = insert_phi_nodes_for_loops(result, &mut ctx);
 
     Ok(result)
 }
