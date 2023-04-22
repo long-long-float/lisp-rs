@@ -1,5 +1,6 @@
 use anyhow::Result;
 use colored::*;
+use rustc_hash::FxHashSet;
 use std::fmt::Display;
 
 use super::{
@@ -139,6 +140,8 @@ pub struct Lambda {
     pub arg_types: Vec<Option<SymbolValue>>,
     pub body: Vec<AnnotatedAst>,
 }
+
+impl Lambda {}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Assign {
@@ -375,6 +378,95 @@ impl AnnotatedAst {
 
         Ok(AnnotatedAst { ast, location, ty })
     }
+
+    pub fn traverse_ref<F, A>(&self, ctx: &mut A, func: F) -> Result<()>
+    where
+        F: Fn(&Self, &mut A) -> Result<()>,
+    {
+        let AnnotatedAst { ast, .. } = self;
+        match ast {
+            Ast::Integer(_)
+            | Ast::Float(_)
+            | Ast::Symbol(_)
+            | Ast::SymbolWithType(_, _)
+            | Ast::Boolean(_)
+            | Ast::Char(_)
+            | Ast::String(_)
+            | Ast::Nil
+            | Ast::Continue(_) => {}
+            Ast::List(vs) => {
+                for v in vs {
+                    func(v, ctx)?;
+                }
+            }
+            Ast::Quoted(v) => {
+                func(v, ctx)?;
+            }
+            Ast::DefineMacro(DefineMacro { body, .. }) => {
+                for v in body {
+                    func(v, ctx)?;
+                }
+            }
+            Ast::Define(Define { init, .. }) => {
+                func(init, ctx)?;
+            }
+            Ast::Lambda(Lambda { body, .. }) => {
+                for v in body {
+                    func(v, ctx)?;
+                }
+            }
+            Ast::Assign(Assign { value, .. }) => {
+                func(value, ctx)?;
+            }
+            Ast::IfExpr(IfExpr {
+                cond,
+                then_ast,
+                else_ast,
+            }) => {
+                func(cond, ctx)?;
+                func(then_ast, ctx)?;
+                if let Some(else_ast) = else_ast {
+                    func(else_ast, ctx)?;
+                }
+            }
+            Ast::Cond(Cond { clauses }) => {
+                for CondClause { cond, body } in clauses {
+                    func(cond, ctx)?;
+                    for v in body {
+                        func(v, ctx)?;
+                    }
+                }
+            }
+            Ast::Let(Let { inits, body, .. }) => {
+                for (_, val) in inits {
+                    func(val, ctx)?;
+                }
+                for v in body {
+                    func(v, ctx)?;
+                }
+            }
+            Ast::Begin(Begin { body }) => {
+                for v in body {
+                    func(v, ctx)?;
+                }
+            }
+            Ast::Loop(Loop { inits, body, .. }) => {
+                for (_, val) in inits {
+                    func(val, ctx)?;
+                }
+                for v in body {
+                    func(v, ctx)?;
+                }
+            }
+            Ast::BuildList(vs) => {
+                for v in vs {
+                    func(v, ctx)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 fn write_values<T: Display>(f: &mut std::fmt::Formatter<'_>, vs: &[T]) -> std::fmt::Result {
@@ -537,4 +629,36 @@ pub fn dump_asts(asts: &Vec<AnnotatedAst>) {
     for ast in asts {
         printlnuw(&format!("{}", ast));
     }
+}
+
+/// Collect free variables from asts with binds
+pub fn collect_free_vars(asts: &[AnnotatedAst], binds: Vec<SymbolValue>) -> FxHashSet<SymbolValue> {
+    struct Context {
+        binds: Vec<SymbolValue>,
+        frees: FxHashSet<SymbolValue>,
+    }
+
+    fn collect_free_vars_inner(ast: &AnnotatedAst, ctx: &mut Context) -> Result<()> {
+        match &ast.ast {
+            Ast::Symbol(sym) | Ast::SymbolWithType(sym, _) => {
+                if ctx.binds.iter().find(|var| var == &sym).is_none() {
+                    ctx.frees.insert(sym.clone());
+                }
+            }
+            _ => ast.traverse_ref(ctx, collect_free_vars_inner)?,
+        }
+
+        Ok(())
+    }
+
+    let mut ctx = Context {
+        binds,
+        frees: FxHashSet::default(),
+    };
+
+    for ast in asts {
+        let _ = ast.traverse_ref(&mut ctx, collect_free_vars_inner);
+    }
+
+    ctx.frees
 }

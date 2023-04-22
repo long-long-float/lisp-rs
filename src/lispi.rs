@@ -41,7 +41,7 @@ use self::{
     parser::{Program, SymbolTable},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash)]
 pub struct SymbolValue {
     pub value: String,
     pub id: u32,

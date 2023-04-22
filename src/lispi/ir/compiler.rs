@@ -441,6 +441,9 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 name: name.value.clone(),
             };
 
+            println!("Compiling {}", name.value);
+            println!("{:#?}", collect_free_vars(&body, args.clone()));
+
             let args = args
                 .into_iter()
                 .map(|arg| {
