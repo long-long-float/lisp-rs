@@ -293,7 +293,7 @@ impl Display for Operand {
 
         match self {
             Variable(v) => write!(f, "{}", v),
-            Immediate(v) => write!(f, "{:?}", v),
+            Immediate(v) => write!(f, "{}", v),
             // Label(v) => write!(f, "{}", v),
         }
     }

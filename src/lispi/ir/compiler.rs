@@ -452,13 +452,11 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             let bb = ctx.new_bb(label.name.clone());
 
+            let mut old_bbs = ctx.basic_blocks.drain(0..).collect();
+
             ctx.env.push_local();
-
-            ctx.basic_blocks.clear();
             ctx.add_bb(bb);
-
             compile_asts(body, ctx)?;
-
             ctx.env.pop_local();
 
             let fun = Function::new(
@@ -467,6 +465,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 ast_ty.clone(),
                 ctx.basic_blocks.drain(0..).collect(),
             );
+
+            ctx.basic_blocks.append(&mut old_bbs);
 
             //ctx.func_labels.insert_var(name.clone(), label);
             ctx.funcs.insert_var(name.clone(), fun);
