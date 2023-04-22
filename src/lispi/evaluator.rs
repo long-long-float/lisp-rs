@@ -188,7 +188,7 @@ impl std::fmt::Display for Value {
         match self {
             Value::Integer(v) => write!(f, "{}", v),
             Value::Float(v) => write!(f, "{}", v),
-            Value::Symbol(v) => write!(f, "{}", v.value),
+            Value::Symbol(v) => write!(f, "{}", v),
             Value::Boolean(v) => write!(f, "{}", v),
             Value::Char(v) => write!(f, "{}", v),
             Value::String(v) => write!(f, "{}", v),
@@ -214,9 +214,9 @@ impl std::fmt::Display for Value {
                 ..
             } => {
                 if *is_macro {
-                    write!(f, "MACRO {}", name.value)
+                    write!(f, "MACRO {}", name)
                 } else {
-                    writeln!(f, "FUNCTION {}", name.value)?;
+                    writeln!(f, "FUNCTION {}", name)?;
                     for ast in body {
                         writeln!(f, "  {}", ast)?;
                     }
@@ -224,7 +224,7 @@ impl std::fmt::Display for Value {
                 }
             }
             Value::NativeFunction { name, func: _ } => {
-                write!(f, "FUNCTION {}", name.value)
+                write!(f, "FUNCTION {}", name)
             }
             Value::RawAst(ast) => write!(f, "AST {:?}", ast),
             Value::Continue(name) => write!(f, "CONINUE {:?}", name),
@@ -334,7 +334,7 @@ fn eval_special_form(
     env: &mut Env,
 ) -> EvalResult {
     if let Ast::Symbol(name) = &name_ast.ast {
-        let name = name.value.as_str();
+        let name = name.as_str();
         match name {
             "function" => {
                 if let Some(func) = raw_args.first() {
@@ -404,7 +404,7 @@ fn apply_function(
     match &func {
         // Embedded functions
         Value::Symbol(func_name) => {
-            let func_name = func_name.value.as_str();
+            let func_name = func_name.as_str();
 
             match func_name {
                 // Functions
@@ -625,7 +625,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             body,
         }) => {
             let func = Value::Function {
-                name: SymbolValue::empty(),
+                name: SymbolValue::new(),
                 args: args.to_vec(),
                 body: body.to_vec(),
                 is_macro: false,
@@ -644,7 +644,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             }
 
             if let Some(local) = env.lambda_local.clone() {
-                if local.borrow_mut().update_var(var.id, &value) {
+                if local.borrow_mut().update_var(var.to_owned(), &value) {
                     return Ok(Value::nil());
                 }
             }
@@ -796,12 +796,12 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
             }
 
             if let Some(local) = env.lambda_local.clone() {
-                if let Some(var) = local.borrow_mut().find_var(value.id) {
+                if let Some(var) = local.borrow_mut().find_var(value.to_owned()) {
                     return Ok(var);
                 }
             }
 
-            Err(Error::UndefinedVariable(value.value.clone(), "evaluation")
+            Err(Error::UndefinedVariable(value.clone(), "evaluation")
                 .with_location(ast.location)
                 .into())
         }
@@ -810,12 +810,8 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
 }
 
 /// Define embedded functions to insert to the root of environment.
-pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>, sym_table: &mut SymbolTable) {
-    let mut s = |value: &str| {
-        let value = value.to_string();
-        let id = sym_table.find_id_or_insert(&value);
-        SymbolValue { value, id }
-    };
+pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
+    let mut s = |value: &str| value.to_owned();
 
     fn insert_function(
         env: &mut Env,

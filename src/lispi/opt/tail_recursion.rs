@@ -43,7 +43,7 @@ fn optimize_tail_recursion(
             Ast::List(vs) => {
                 if let Some((name_ast, args)) = vs.split_first() {
                     if let Ast::Symbol(name) = &name_ast.ast {
-                        let name = name.value.as_str();
+                        let name = name.as_str();
                         let mut args = {
                             let not_in_args =
                                 args.iter().all(|arg| !includes_symbol(func_name, &arg.ast));
@@ -209,11 +209,9 @@ fn optimize_tail_recursion(
         match ast {
             Ast::List(vs) => vs.iter().any(|v| includes_symbol(sym, &v.ast)),
             Ast::Quoted(v) => includes_symbol(sym, &v.ast),
-            Ast::Symbol(v) => &v.value == sym,
-            Ast::SymbolWithType(v, _) => &v.value == sym,
-            Ast::Assign(assign) => {
-                &assign.var.value == sym || includes_symbol(sym, &assign.value.ast)
-            }
+            Ast::Symbol(v) => v == sym,
+            Ast::SymbolWithType(v, _) => v == sym,
+            Ast::Assign(assign) => &assign.var == sym || includes_symbol(sym, &assign.value.ast),
             Ast::IfExpr(IfExpr {
                 cond,
                 then_ast,
@@ -295,11 +293,11 @@ fn opt_tail_recursion_ast(ast: AnnotatedAst, ctx: &mut ()) -> Result<AnnotatedAs
                 // named let
 
                 let args = inits.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
-                if let Some(optimized) = optimize_tail_recursion(&proc_id.value, &args, &body) {
+                if let Some(optimized) = optimize_tail_recursion(&proc_id, &args, &body) {
                     return Ok(AnnotatedAst {
                         ast: Ast::Loop(Loop {
                             inits,
-                            label: proc_id.value.clone(),
+                            label: proc_id.clone(),
                             body: optimized,
                         }),
                         location,

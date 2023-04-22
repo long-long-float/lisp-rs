@@ -19,12 +19,12 @@ where
 {
     pub fn update_var(&mut self, name: SymbolValue, value: &T) -> Result<(), Error> {
         let mut local = self.head_local.as_mut().unwrap().borrow_mut();
-        if local.update_var(name.id, value) {
+        if local.update_var(name.clone(), value) {
             Ok(())
         } else {
             Err(Error::Eval(format!(
                 "A variable `{}` is not defined.",
-                name.value
+                name
             )))
         }
     }
@@ -32,7 +32,7 @@ where
     pub fn insert_var(&mut self, name: SymbolValue, value: T) {
         // local_stack must have least one local
         let mut local = self.head_local.as_ref().unwrap().borrow_mut();
-        local.variables.insert(name.id, value);
+        local.variables.insert(name, value);
     }
 
     pub fn current_local(&self) -> Ref<Local<T>> {
@@ -44,7 +44,7 @@ where
             .as_mut()
             .unwrap()
             .borrow_mut()
-            .find_var(name.id)
+            .find_var(name.to_owned())
     }
 
     pub fn push_local(&mut self) {
@@ -102,9 +102,10 @@ pub type LocalRef<T> = Option<Rc<RefCell<Local<T>>>>;
 /// ```
 #[derive(PartialEq, Debug)]
 pub struct Local<T> {
-    pub variables: FxHashMap<u32, T>,
+    pub variables: FxHashMap<LocalKey, T>,
     parent: LocalRef<T>,
 }
+type LocalKey = String;
 
 impl<T> Local<T>
 where
@@ -117,7 +118,7 @@ where
         }
     }
 
-    pub fn find_var(&mut self, id: u32) -> Option<T> {
+    pub fn find_var(&mut self, id: LocalKey) -> Option<T> {
         if let Some(value) = self.variables.get(&id) {
             Some(value.clone())
         } else if let Some(parent) = &self.parent {
@@ -127,7 +128,7 @@ where
         }
     }
 
-    pub fn update_var(&mut self, id: u32, value: &T) -> bool {
+    pub fn update_var(&mut self, id: LocalKey, value: &T) -> bool {
         if self.variables.get(&id).is_some() {
             self.variables.insert(id, value.clone());
             true

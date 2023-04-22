@@ -35,36 +35,9 @@ use crate::lispi::{
 };
 
 use self::console::printlnuw;
-use self::{
-    environment::Environment,
-    evaluator::Value,
-    parser::{Program, SymbolTable},
-};
+use self::{environment::Environment, evaluator::Value, parser::Program};
 
-#[derive(Clone, Debug, Eq, Hash)]
-pub struct SymbolValue {
-    pub value: String,
-    pub id: u32,
-}
-
-impl PartialEq for SymbolValue {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-}
-
-impl SymbolValue {
-    pub fn empty() -> SymbolValue {
-        SymbolValue {
-            value: "".to_string(),
-            id: 0,
-        }
-    }
-
-    pub fn without_id(value: String) -> SymbolValue {
-        SymbolValue { value, id: 0 }
-    }
-}
+pub type SymbolValue = String;
 
 /// A location in file
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -146,10 +119,7 @@ impl std::fmt::Display for LocationRange {
     }
 }
 
-pub fn frontend(
-    program: Vec<String>,
-    opt: &CliOption,
-) -> Result<(Program, Environment<Value>, SymbolTable)> {
+pub fn frontend(program: Vec<String>, opt: &CliOption) -> Result<(Program, Environment<Value>)> {
     let tokens = t::tokenize(program)?;
 
     if opt.dump {
@@ -160,7 +130,7 @@ pub fn frontend(
         println!();
     }
 
-    let (program, mut sym_table) = p::parse(tokens)?;
+    let program = p::parse(tokens)?;
 
     if opt.dump {
         println!("{}", "Parsed AST:".red());
@@ -168,15 +138,15 @@ pub fn frontend(
         println!();
     }
 
-    let program = m::expand_macros(program, &mut sym_table)?;
+    let program = m::expand_macros(program)?;
 
     let mut env = env::Environment::default();
     let mut ty_env = env::Environment::default();
 
-    e::init_env(&mut env, &mut ty_env, &mut sym_table);
+    e::init_env(&mut env, &mut ty_env);
     // sym_table.dump();
 
-    let program = ty::check_and_inference_type(program, &ty_env, &mut sym_table)?;
+    let program = ty::check_and_inference_type(program, &ty_env)?;
     // for ast in &program {
     //     println!("{}", ast);
     // }
@@ -188,7 +158,7 @@ pub fn frontend(
         dump_asts(&program);
         println!();
     }
-    Ok((program, env, sym_table))
+    Ok((program, env))
 }
 
 /// Run the program as following steps.
@@ -201,16 +171,16 @@ pub fn frontend(
 ///
 /// Functions of each steps return Result to express errors.
 pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value, ty::Type)>> {
-    let (program, mut env, _) = frontend(program, opt)?;
+    let (program, mut env) = frontend(program, opt)?;
     e::eval_program(&program, &mut env)
 }
 
 pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
-    let (program, mut _env, sym_table) = frontend(program, opt)?;
+    let (program, mut _env) = frontend(program, opt)?;
 
     let mut ir_ctx = ir::IrContext::new();
 
-    let funcs = ir::compiler::compile(program, sym_table, &mut ir_ctx)?;
+    let funcs = ir::compiler::compile(program, &mut ir_ctx)?;
 
     if opt.dump {
         printlnuw(&"Raw IR instructions:".red());
@@ -356,12 +326,11 @@ pub fn interpret_with_env(
     program: Vec<String>,
     env: &mut env::Environment<e::Value>,
     ty_env: &mut env::Environment<ty::Type>,
-    sym_table: &mut SymbolTable,
 ) -> Result<Vec<(e::Value, ty::Type)>> {
     let tokens = t::tokenize(program)?;
-    let program = p::parse_with_env(tokens, sym_table)?;
-    let program = m::expand_macros(program, sym_table)?;
-    let program = ty::check_and_inference_type(program, ty_env, sym_table)?;
+    let program = p::parse_with_env(tokens)?;
+    let program = m::expand_macros(program)?;
+    let program = ty::check_and_inference_type(program, ty_env)?;
     let program = opt::tail_recursion::optimize(program)?;
     e::eval_program(&program, env)
 }

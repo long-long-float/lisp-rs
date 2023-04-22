@@ -1,57 +1,10 @@
 use anyhow::{anyhow, Result};
-use std::collections::HashMap;
 
 use crate::{ast_pat, match_special_args, match_special_args_with_rest};
 
 use super::{
     ast::*, error::*, evaluator as e, tokenizer::*, LocationRange, SymbolValue, TokenLocation,
 };
-
-#[derive(Clone, PartialEq, Debug)]
-/// Maps symbols such as 'x' to unique integer.
-/// It contributes reduction of searching HashMap a little to use an integer instead of a string to manage variables.
-pub struct SymbolTable {
-    table: HashMap<String, u32>,
-}
-
-impl SymbolTable {
-    pub fn new() -> SymbolTable {
-        let mut table = HashMap::new();
-        // ID 0 means undefined
-        table.insert("".to_string(), 0);
-        SymbolTable { table }
-    }
-
-    pub fn find_id_or_insert(&mut self, value: &String) -> u32 {
-        if let Some(id) = self.table.get(value) {
-            *id
-        } else {
-            let id = self.table.len() as u32;
-            self.table.insert(value.clone(), id);
-            id
-        }
-    }
-
-    pub fn find_name_by_id(&self, id: u32) -> Option<String> {
-        self.table
-            .iter()
-            .find(|&(_, iid)| iid == &id)
-            .map(|(name, _)| name.to_owned())
-    }
-
-    pub fn create_symbol_value(&mut self, value: String) -> SymbolValue {
-        let id = self.find_id_or_insert(&value);
-        SymbolValue { value, id }
-    }
-
-    pub fn dump(&self) {
-        let mut kvs = self.table.iter().collect::<Vec<_>>();
-        kvs.sort_by_key(|(_, v)| **v);
-        for (name, id) in kvs {
-            println!("{}: '{}'", id, name);
-        }
-    }
-}
 
 pub type Program = Vec<AnnotatedAst>;
 
@@ -115,7 +68,7 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
         args,
     )) = asts.split_first()
     {
-        let name = name.value.as_str();
+        let name = name.as_str();
         match name {
             "define-macro" => {
                 match_special_args_with_rest!(
@@ -284,10 +237,7 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
     }
 }
 
-fn parse_list<'a>(
-    tokens: &'a [TokenWithLocation],
-    sym_table: &mut SymbolTable,
-) -> ParseResult<'a, AnnotatedAst> {
+fn parse_list<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, AnnotatedAst> {
     let (left_token, right_token) = if let Some(&TokenWithLocation {
         token: Token::LeftSquareBracket,
         location: _,
@@ -298,11 +248,7 @@ fn parse_list<'a>(
         (&Token::LeftParen, &Token::RightParen)
     };
     let (head_loc, tokens) = consume(tokens, left_token)?;
-    let (items, tokens) = consume_while(
-        tokens,
-        |token| token != right_token,
-        |t| parse_value(t, sym_table),
-    )?;
+    let (items, tokens) = consume_while(tokens, |token| token != right_token, |t| parse_value(t))?;
     let (tail_loc, tokens) = consume(tokens, right_token)?;
 
     let location = LocationRange::new(head_loc.begin, tail_loc.end);
@@ -313,10 +259,7 @@ fn parse_list<'a>(
     ))
 }
 
-fn parse_value<'a>(
-    tokens: &'a [TokenWithLocation],
-    sym_table: &mut SymbolTable,
-) -> ParseResult<'a, AnnotatedAst> {
+fn parse_value<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, AnnotatedAst> {
     if let Some((
         TokenWithLocation {
             token: first,
@@ -331,11 +274,7 @@ fn parse_value<'a>(
                 if value.to_lowercase() == "nil" {
                     Ok((Ast::Nil.with_location(loc), rest))
                 } else {
-                    let id = sym_table.find_id_or_insert(value);
-                    let sym = SymbolValue {
-                        value: value.clone(),
-                        id,
-                    };
+                    let sym = value.clone();
                     if let Some((
                         TokenWithLocation {
                             token: Token::Colon,
@@ -354,13 +293,9 @@ fn parse_value<'a>(
                         {
                             // TODO: Restrict type annotation in specific location
 
-                            let id = sym_table.find_id_or_insert(ty);
-                            let ty = SymbolValue {
-                                value: ty.clone(),
-                                id,
-                            };
                             Ok((
-                                Ast::SymbolWithType(sym, ty).with_location(loc.merge(tyloc)),
+                                Ast::SymbolWithType(sym, ty.clone())
+                                    .with_location(loc.merge(tyloc)),
                                 rest,
                             ))
                         } else {
@@ -373,9 +308,9 @@ fn parse_value<'a>(
             }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value).with_location(loc), rest)),
             Token::FloatLiteral(value) => Ok((Ast::Float(*value).with_location(loc), rest)),
-            Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens, sym_table),
+            Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens),
             Token::Quote => {
-                let (value, rest) = parse_value(rest, sym_table)?;
+                let (value, rest) = parse_value(rest)?;
                 Ok((Ast::Quoted(Box::new(value)).with_location(loc), rest))
             }
             Token::BooleanLiteral(value) => Ok((Ast::Boolean(*value).with_location(loc), rest)),
@@ -394,16 +329,13 @@ fn parse_value<'a>(
     }
 }
 
-fn parse_program<'a>(
-    tokens: &'a [TokenWithLocation],
-    sym_table: &mut SymbolTable,
-) -> ParseResult<'a, Program> {
+fn parse_program<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, Program> {
     if tokens.is_empty() {
         Ok((Vec::new(), tokens))
     } else {
-        let (value, rest) = parse_value(tokens, sym_table)?;
+        let (value, rest) = parse_value(tokens)?;
         let mut result = vec![value];
-        let (mut values, rest) = parse_program(rest, sym_table)?;
+        let (mut values, rest) = parse_program(rest)?;
         result.append(&mut values);
         Ok((result, rest))
     }
@@ -411,17 +343,13 @@ fn parse_program<'a>(
 
 /// Get AST from tokens.
 /// This uses recursive descent parsing and is simple implementation thanks to the syntax of LISP.
-pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<(Program, SymbolTable)> {
-    let mut sym_table = SymbolTable::new();
-    let ast = parse_with_env(tokens, &mut sym_table)?;
-    Ok((ast, sym_table))
+pub fn parse(tokens: Vec<TokenWithLocation>) -> Result<Program> {
+    let ast = parse_with_env(tokens)?;
+    Ok(ast)
 }
 
-pub fn parse_with_env(
-    tokens: Vec<TokenWithLocation>,
-    sym_table: &mut SymbolTable,
-) -> Result<Program> {
-    parse_program(&tokens, sym_table).and_then(|(ast, tokens)| {
+pub fn parse_with_env(tokens: Vec<TokenWithLocation>) -> Result<Program> {
+    parse_program(&tokens).and_then(|(ast, tokens)| {
         if !tokens.is_empty() {
             let token = &tokens[0];
             Err(Error::Parse(format!("Unexpeced {:?}", token.token))

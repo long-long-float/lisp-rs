@@ -6,7 +6,7 @@ use lisp_rs::lispi::{
     cli_option::CliOption,
     error::{Error, ErrorWithLocation},
     evaluator::*,
-    interpret, SymbolValue,
+    interpret,
 };
 
 fn interp(program: &str) -> Result<Value, Error> {
@@ -50,13 +50,7 @@ fn literal_test() {
         interp("\"Hello World! こんにちは\"")
     );
 
-    assert_eq!(
-        Ok(Value::Symbol(SymbolValue {
-            value: "hello".to_string(),
-            id: 0
-        })),
-        interp("'hello")
-    );
+    assert_eq!(Ok(Value::Symbol("hello".to_string())), interp("'hello"));
 
     assert_error!(interp("'(1 2 3)"), Error::Type(_));
 }

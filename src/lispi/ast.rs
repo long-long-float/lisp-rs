@@ -57,14 +57,10 @@ impl Ast {
             Value::Function {
                 name, args, body, ..
             } => {
-                if name.value.is_empty() {
+                if name.is_empty() {
                     // Function created by lambda
                     let mut elem = vec![
-                        Ast::Symbol(SymbolValue {
-                            value: "lambda".to_string(),
-                            id: 0,
-                        })
-                        .with_null_location(),
+                        Ast::Symbol("lambda".to_string()).with_null_location(),
                         Ast::List(
                             args.into_iter()
                                 .map(|a| Ast::Symbol(a).with_null_location())
@@ -113,10 +109,7 @@ impl Ast {
 
 impl From<&str> for Ast {
     fn from(value: &str) -> Self {
-        Ast::Symbol(SymbolValue {
-            value: value.to_string(),
-            id: 0,
-        })
+        Ast::Symbol(value.to_string())
     }
 }
 
@@ -492,8 +485,8 @@ impl Display for AnnotatedAst {
             Ast::Quoted(v) => write!(f, "'{}", v),
             Ast::Integer(v) => write!(f, "{}", v),
             Ast::Float(v) => write!(f, "{}", v),
-            Ast::Symbol(v) => write!(f, "{}", v.value),
-            Ast::SymbolWithType(v, t) => write!(f, "{}:{}", v.value, t.value),
+            Ast::Symbol(v) => write!(f, "{}", v),
+            Ast::SymbolWithType(v, t) => write!(f, "{}:{}", v, t),
             Ast::Boolean(v) => {
                 if *v {
                     write!(f, "#t")
@@ -505,14 +498,14 @@ impl Display for AnnotatedAst {
             Ast::String(v) => write!(f, "\"{}\"", v),
             Ast::Nil => write!(f, "()"),
             Ast::DefineMacro(DefineMacro { id, args, body }) => {
-                write!(f, "(define-macro {} (", id.value)?;
-                write_values(f, &args.iter().map(|arg| &arg.value).collect::<Vec<_>>())?;
+                write!(f, "(define-macro {} (", id)?;
+                write_values(f, &args)?;
                 write!(f, ") ")?;
                 write_values(f, body)?;
                 write!(f, ")")
             }
             Ast::Define(Define { id, init }) => {
-                write!(f, "(define {} {})", id.value, *init)
+                write!(f, "(define {} {})", id, *init)
             }
             Ast::Lambda(Lambda {
                 args,
@@ -527,9 +520,9 @@ impl Display for AnnotatedAst {
                         .zip(arg_types)
                         .map(|(arg, ty)| {
                             if let Some(ty) = ty {
-                                format!("{}: {}", arg.value, ty.value)
+                                format!("{}: {}", arg, ty)
                             } else {
-                                arg.value.to_owned()
+                                arg.to_owned()
                             }
                         })
                         .collect::<Vec<_>>(),
@@ -543,7 +536,7 @@ impl Display for AnnotatedAst {
                 var_loc: _,
                 value,
             }) => {
-                write!(f, "(set! {} {})", var.value, value)
+                write!(f, "(set! {} {})", var, value)
             }
             Ast::IfExpr(IfExpr {
                 cond,
@@ -574,12 +567,12 @@ impl Display for AnnotatedAst {
                 let star = if *sequential { "*" } else { "" };
                 write!(f, "(let{} ", star)?;
                 if let Some(proc_id) = proc_id {
-                    write!(f, "{} ", proc_id.value)?;
+                    write!(f, "{} ", proc_id)?;
                 }
                 write!(f, "(")?;
                 let inits = inits
                     .iter()
-                    .map(|(k, v)| format!("[{} {}]", k.value, v))
+                    .map(|(k, v)| format!("[{} {}]", k, v))
                     .collect::<Vec<_>>();
                 write_values(f, &inits)?;
                 write!(f, ") ")?;
@@ -595,7 +588,7 @@ impl Display for AnnotatedAst {
             Ast::Loop(Loop { inits, label, body }) => {
                 write!(f, "(loop:{} ", label)?;
                 for (id, expr) in inits {
-                    write!(f, "(define {} {}) ", id.value, expr)?;
+                    write!(f, "(define {} {}) ", id, expr)?;
                 }
                 write_values(f, body)?;
                 write!(f, ")")

@@ -74,8 +74,7 @@ fn main() -> Result<()> {
 
         let mut env = env::Environment::default();
         let mut ty_env = env::Environment::default();
-        let mut sym_table = p::SymbolTable::new();
-        e::init_env(&mut env, &mut ty_env, &mut sym_table);
+        e::init_env(&mut env, &mut ty_env);
 
         loop {
             let buffer = &mut history[history_pos];
@@ -133,12 +132,7 @@ fn main() -> Result<()> {
                         if !buffer.is_empty() {
                             let lines = vec![buffer.join("")];
 
-                            let results = interpret_with_env(
-                                lines.clone(),
-                                &mut env,
-                                &mut ty_env,
-                                &mut sym_table,
-                            );
+                            let results = interpret_with_env(lines.clone(), &mut env, &mut ty_env);
                             match results {
                                 Ok(results) => {
                                     if let Some((result, ty)) = results.iter().last() {

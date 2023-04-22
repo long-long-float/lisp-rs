@@ -306,7 +306,7 @@ fn find_var(id: &SymbolValue, loc: &TokenLocation, ctx: &mut Context) -> Result<
         Ok(ty)
     } else {
         // ctx.env.dump_local();
-        Err(Error::UndefinedVariable(id.value.clone(), "typing")
+        Err(Error::UndefinedVariable(id.clone(), "typing")
             .with_location(*loc)
             .into())
     }
@@ -451,7 +451,7 @@ fn collect_constraints_from_ast(
                 .map(|ty| {
                     if let Some(ty) = ty {
                         ctx.env.find_var(ty).map(Box::new).ok_or_else(|| {
-                            Error::Type(format!("The type {} is not defined.", ty.value))
+                            Error::Type(format!("The type {} is not defined.", ty))
                                 .with_null_location()
                                 .into()
                         })
@@ -971,37 +971,21 @@ fn replace_asts(asts: Program, assign: &TypeAssignment) -> Program {
         .collect()
 }
 
-pub fn check_and_inference_type(
-    asts: Program,
-    env: &Environment<Type>,
-    sym_table: &mut SymbolTable,
-) -> Result<Program> {
-    fn register_type(
-        env: &mut Environment<Type>,
-        sym_table: &mut SymbolTable,
-        name: &str,
-        ty: Type,
-    ) {
-        let sym = sym_table.create_symbol_value(name.to_string());
-        env.insert_var(sym, ty);
+pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Result<Program> {
+    fn register_type(env: &mut Environment<Type>, name: &str, ty: Type) {
+        env.insert_var(name.to_owned(), ty);
     }
 
     let mut ty_env = TypeEnv::default();
 
-    register_type(&mut ty_env, sym_table, "int", Type::Int);
-    register_type(&mut ty_env, sym_table, "float", Type::Float);
-    register_type(&mut ty_env, sym_table, "bool", Type::Boolean);
-    register_type(&mut ty_env, sym_table, "char", Type::Char);
-    register_type(&mut ty_env, sym_table, "string", Type::String);
+    register_type(&mut ty_env, "int", Type::Int);
+    register_type(&mut ty_env, "float", Type::Float);
+    register_type(&mut ty_env, "bool", Type::Boolean);
+    register_type(&mut ty_env, "char", Type::Char);
+    register_type(&mut ty_env, "string", Type::String);
 
     for (id, ty) in &env.current_local().variables {
-        ty_env.insert_var(
-            SymbolValue {
-                id: *id,
-                value: "".to_string(),
-            },
-            ty.clone(),
-        );
+        ty_env.insert_var(id.clone(), ty.clone());
     }
 
     let mut ctx = Context {
