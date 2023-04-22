@@ -32,6 +32,13 @@ impl SymbolTable {
         }
     }
 
+    pub fn find_name_by_id(&self, id: u32) -> Option<String> {
+        self.table
+            .iter()
+            .find(|&(_, iid)| iid == &id)
+            .map(|(name, _)| name.to_owned())
+    }
+
     pub fn create_symbol_value(&mut self, value: String) -> SymbolValue {
         let id = self.find_id_or_insert(&value);
         SymbolValue { value, id }

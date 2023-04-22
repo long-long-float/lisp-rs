@@ -58,7 +58,7 @@ macro_rules! match_call_args {
     };
 }
 
-type Env = Environment<Value>;
+pub type Env = Environment<Value>;
 
 pub fn get_location(ast: Option<&AnnotatedAst>) -> TokenLocation {
     ast.map(|arg| arg.location).unwrap_or(TokenLocation::Null)

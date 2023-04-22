@@ -2,7 +2,7 @@ use colored::Colorize;
 use id_arena::{Arena, Id};
 use std::fmt::Display;
 
-use crate::lispi::ty::Type;
+use crate::lispi::{ty::Type, SymbolValue};
 
 use super::{basic_block::BasicBlock, tag::Tag};
 
@@ -218,7 +218,7 @@ pub type BasicBlocks = Vec<Id<BasicBlock>>;
 pub struct Function {
     pub name: String,
     pub args: Vec<(String, Type)>,
-    // pub body: Instructions,
+    pub free_vars: Vec<SymbolValue>,
     pub ty: Type,
 
     pub basic_blocks: BasicBlocks,
@@ -228,12 +228,14 @@ impl Function {
     pub fn new(
         name: String,
         args: Vec<(String, Type)>,
+        free_vars: Vec<SymbolValue>,
         ty: Type,
         basic_blocks: BasicBlocks,
     ) -> Self {
         Self {
             name,
             args,
+            free_vars,
             ty,
             basic_blocks,
         }

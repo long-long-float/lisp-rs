@@ -6,14 +6,18 @@ use rustc_hash::FxHashMap;
 
 use super::{
     super::{
-        ast::*, environment::Environment, error::Error, parser::*, typer::Type,
+        ast::*, environment::Environment, error::Error, evaluator as e, parser::*, typer::Type,
         unique_generator::UniqueGenerator,
     },
     basic_block::BasicBlock,
     tag::LoopPhiFunctionSite,
     IrContext,
 };
-use crate::{bug, lispi::ir::tag::Tag, unimplemented};
+use crate::{
+    bug,
+    lispi::{ir::tag::Tag, SymbolValue},
+    unimplemented,
+};
 
 use super::instruction::*;
 
@@ -21,10 +25,17 @@ struct Context<'a> {
     env: Environment<Variable>,
     sym_table: SymbolTable,
 
+    /// Pre-defined global functions
+    preludes: Environment<e::Value>,
+
     /// Used to reference functions
+    /// TODO: This can be removed.
     func_labels: Environment<Label>,
     /// Used to list functions
     funcs: Environment<Function>,
+
+    /// Free variables of a function
+    func_fvs: Environment<Vec<SymbolValue>>,
 
     var_gen: UniqueGenerator,
 
@@ -42,12 +53,20 @@ struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-    fn new(sym_table: SymbolTable, arena: &'a mut Arena<BasicBlock>) -> Self {
+    fn new(mut sym_table: SymbolTable, arena: &'a mut Arena<BasicBlock>) -> Self {
+        let mut preludes = e::Env::default();
+        e::init_env(&mut preludes, &mut Environment::default(), &mut sym_table);
+
+        let mut func_fvs = Environment::default();
+        func_fvs.push_local();
+
         Self {
             env: Environment::default(),
             sym_table,
+            preludes,
             func_labels: Environment::default(),
             funcs: Environment::default(),
+            func_fvs,
             var_gen: UniqueGenerator::new(),
             arena,
             basic_blocks: Vec::new(),
@@ -150,11 +169,11 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 // result.append(&mut args.clone().into_iter().flatten().collect::<Vec<_>>());
 
                 if let AnnotatedAst {
-                    ast: Ast::Symbol(fun),
+                    ast: Ast::Symbol(fun_sym),
                     ..
                 } = fun_ast
                 {
-                    let name = fun.value.as_str();
+                    let name = fun_sym.value.as_str();
                     match name {
                         "+" | "-" | "*" | "<=" | "<" | ">" | "or" | "<<" | ">>" => {
                             let left = args[0].result.clone();
@@ -194,11 +213,24 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                         }
                         _ => {
                             let fun = compile_and_add(&mut result, fun_ast.clone(), ctx)?;
-                            // let fun_label = ctx.func_env.find_var(fun).unwrap();
-                            let args = args
+
+                            let mut args = args
                                 .into_iter()
                                 .map(|arg| Operand::Variable(arg.result))
-                                .collect();
+                                .collect::<Vec<_>>();
+
+                            ctx.func_fvs.dump_local();
+                            println!("{:?}", fun_sym);
+                            if let Some(func_fv) = ctx.func_fvs.find_var(fun_sym) {
+                                for fv in func_fv {
+                                    // TODO: We should find the variable fv from the context which called function is 'defined'.
+                                    // However we find it from the context which the function is 'called'.
+                                    if let Some(fv) = ctx.env.find_var(&fv) {
+                                        args.push(Operand::Variable(fv));
+                                    }
+                                }
+                            }
+
                             add_instr(
                                 &mut result,
                                 ctx,
@@ -256,7 +288,29 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::DefineMacro(_) => todo!(),
         Ast::Define(Define { id, init }) => {
             let inst = compile_and_add(&mut result, *init, ctx)?;
-            println!("define {}", id.value);
+
+            println!("Define {}", id.value);
+
+            // ここでinstがFunctionだった場合、idとFVをペアで登録する(fun_fvs)
+            // Call時にfun_fvsから必要なFVを得て、引数に加えてFVを渡すようにする
+            if let AnnotatedInstr {
+                inst: I::Operand(Operand::Immediate(Immediate::Label(fname))),
+                ty: Type::Function { .. },
+                ..
+            } = inst
+            {
+                let id = ctx.sym_table.find_id_or_insert(&fname.name);
+                let fname = SymbolValue {
+                    value: fname.name,
+                    id,
+                };
+                let fun = ctx.funcs.find_var(&fname);
+                if let Some(fun) = fun {
+                    println!("{:#?}", fun);
+                    ctx.func_fvs.insert_var(fname, fun.free_vars);
+                }
+            }
+
             ctx.env.insert_var(id, inst.result);
         }
         Ast::Assign(Assign {
@@ -426,8 +480,13 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 name: name.value.clone(),
             };
 
-            println!("Compiling {}", name.value);
-            println!("{:#?}", collect_free_vars(&body, args.clone()));
+            let mut free_vars = collect_free_vars(&body, args.clone());
+            for (&id, _) in &ctx.preludes.current_local().variables {
+                if let Some(value) = ctx.sym_table.find_name_by_id(id) {
+                    free_vars.remove(&SymbolValue { id, value });
+                }
+            }
+            let free_vars = free_vars.into_iter().collect::<Vec<_>>();
 
             let args = args
                 .into_iter()
@@ -450,6 +509,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let fun = Function::new(
                 name.value.clone(),
                 args,
+                free_vars,
                 ast_ty.clone(),
                 ctx.basic_blocks.drain(0..).collect(),
             );
@@ -464,7 +524,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 I::Operand(Operand::Immediate(Immediate::Label(Label {
                     name: name.value,
                 }))),
-                Type::None,
+                ast_ty,
             );
         }
     }
@@ -584,6 +644,7 @@ fn compile_main_function(
     result.push(Function::new(
         "main".to_string(),
         Vec::new(),
+        Vec::new(),
         Type::None,
         ctx.basic_blocks.drain(0..).collect(),
     ));
@@ -603,6 +664,7 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
             |Function {
                  name,
                  args,
+                 free_vars,
                  ty,
                  basic_blocks,
              }| {
@@ -667,6 +729,7 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                 Function {
                     name,
                     args,
+                    free_vars,
                     ty,
                     basic_blocks,
                 }

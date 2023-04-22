@@ -808,6 +808,7 @@ pub fn generate_code(
         let i::Function {
             name: _,
             args: _,
+            free_vars: _,
             ty: _,
             basic_blocks,
         } = fun;
