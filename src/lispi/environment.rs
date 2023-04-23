@@ -80,10 +80,10 @@ where
     T: Clone + std::fmt::Debug,
 {
     #[allow(dead_code)]
-    pub fn dump_local(&self) {
+    pub fn dump_local(&self, dump_root: bool) {
         let local = self.head_local.as_ref().unwrap().borrow();
         printlnuw("--- Locals ---");
-        local.dump();
+        local.dump(dump_root);
     }
 }
 
@@ -144,11 +144,13 @@ impl<T> Local<T>
 where
     T: Clone + std::fmt::Debug,
 {
-    fn dump(&self) {
+    fn dump(&self, dump_root: bool) {
         if let Some(parent) = &self.parent {
             // Don't print root local.
             printlnuw(&format!("{:#?}", self.variables));
-            parent.borrow_mut().dump()
+            parent.borrow_mut().dump(dump_root)
+        } else if dump_root {
+            printlnuw(&format!("{:#?}", self.variables));
         }
     }
 }

@@ -217,8 +217,9 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                                 .map(|arg| Operand::Variable(arg.result))
                                 .collect::<Vec<_>>();
 
-                            ctx.func_fvs.dump_local();
-                            println!("{:?}", fun_sym);
+                            //ctx.func_fvs.dump_local(true);
+                            println!("Calling {:?}", fun_sym);
+                            ctx.env.dump_local(true);
                             if let Some(func_fv) = ctx.func_fvs.find_var(fun_sym) {
                                 for fv in func_fv {
                                     // TODO: We should find the variable fv from the context which called function is 'defined'.
@@ -301,7 +302,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 let fun = ctx.funcs.find_var(&fname);
                 if let Some(fun) = fun {
                     println!("{:#?}", fun);
-                    ctx.func_fvs.insert_var(fname, fun.free_vars);
+                    ctx.func_fvs.insert_var(id.clone(), fun.free_vars);
                 }
             }
 
@@ -478,10 +479,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             let args = args
                 .into_iter()
-                .map(|arg| {
-                    ctx.env.insert_var(arg, Variable { name: name.clone() });
-                    (name.clone(), Type::None)
-                })
+                .map(|arg| (arg.clone(), Type::None))
                 .collect::<Vec<_>>();
 
             let bb = ctx.new_bb(label.name.clone());
@@ -489,6 +487,17 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let mut old_bbs = ctx.basic_blocks.drain(0..).collect();
 
             ctx.env.push_local();
+
+            for (arg, _) in &args {
+                ctx.env
+                    .insert_var(arg.clone(), Variable { name: arg.clone() });
+            }
+
+            for fv in &free_vars {
+                ctx.env
+                    .insert_var(fv.clone(), Variable { name: fv.clone() });
+            }
+
             ctx.add_bb(bb);
             compile_asts(body, ctx)?;
             ctx.env.pop_local();
