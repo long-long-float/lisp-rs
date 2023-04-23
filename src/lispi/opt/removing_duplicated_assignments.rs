@@ -86,53 +86,7 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
                 continue;
             }
 
-            let inst = match inst {
-                I::Operand(op) => I::Operand(replace_var(&ctx, op)),
-
-                I::Branch {
-                    cond,
-                    then_label,
-                    else_label,
-                    then_bb,
-                    else_bb,
-                } => {
-                    let cond = replace_var(&ctx, cond);
-                    I::Branch {
-                        cond,
-                        then_label,
-                        else_label,
-                        then_bb,
-                        else_bb,
-                    }
-                }
-
-                I::Add(left, right) => I::Add(replace_var(&ctx, left), replace_var(&ctx, right)),
-                I::Sub(left, right) => I::Sub(replace_var(&ctx, left), replace_var(&ctx, right)),
-                I::Mul(left, right) => I::Mul(replace_var(&ctx, left), replace_var(&ctx, right)),
-                I::Or(left, right) => I::Or(replace_var(&ctx, left), replace_var(&ctx, right)),
-                I::Not(op) => I::Not(replace_var(&ctx, op)),
-                I::Shift(op, left, right) => {
-                    I::Shift(op, replace_var(&ctx, left), replace_var(&ctx, right))
-                }
-                I::Store(addr, value) => {
-                    I::Store(replace_var(&ctx, addr), replace_var(&ctx, value))
-                }
-
-                I::Cmp(op, left, right) => {
-                    I::Cmp(op, replace_var(&ctx, left), replace_var(&ctx, right))
-                }
-                I::Call { fun, args } => {
-                    let fun = replace_var(&ctx, fun);
-                    let args = args.into_iter().map(|arg| replace_var(&ctx, arg)).collect();
-
-                    I::Call { fun, args }
-                }
-
-                I::Ret(op) => I::Ret(replace_var(&ctx, op)),
-
-                I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => inst,
-            };
-
+            let inst = inst.replace_var(&ctx.replace_var_map);
             result.push(AnnotatedInstr::new(result_var, inst, ty));
         }
 

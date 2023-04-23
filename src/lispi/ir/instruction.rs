@@ -1,5 +1,6 @@
 use colored::Colorize;
 use id_arena::{Arena, Id};
+use rustc_hash::FxHashMap;
 use std::fmt::Display;
 
 use crate::lispi::{ty::Type, SymbolValue};
@@ -72,6 +73,90 @@ impl Instruction {
 
     pub fn is_label(&self) -> bool {
         matches!(self, Instruction::Label(_))
+    }
+
+    pub fn replace_var(self, replace_var_map: &FxHashMap<Variable, Variable>) -> Self {
+        fn replace_var(replace_var_map: &FxHashMap<Variable, Variable>, op: Operand) -> Operand {
+            match op {
+                Operand::Variable(ref var) => {
+                    if let Some(replaced_op) = replace_var_map.get(var) {
+                        Operand::Variable(replaced_op.clone())
+                    } else {
+                        op
+                    }
+                }
+                _ => op,
+            }
+        }
+
+        use Instruction as I;
+
+        match self {
+            I::Operand(op) => I::Operand(replace_var(replace_var_map, op)),
+
+            I::Branch {
+                cond,
+                then_label,
+                else_label,
+                then_bb,
+                else_bb,
+            } => {
+                let cond = replace_var(replace_var_map, cond);
+                I::Branch {
+                    cond,
+                    then_label,
+                    else_label,
+                    then_bb,
+                    else_bb,
+                }
+            }
+
+            I::Add(left, right) => I::Add(
+                replace_var(replace_var_map, left),
+                replace_var(replace_var_map, right),
+            ),
+            I::Sub(left, right) => I::Sub(
+                replace_var(replace_var_map, left),
+                replace_var(replace_var_map, right),
+            ),
+            I::Mul(left, right) => I::Mul(
+                replace_var(replace_var_map, left),
+                replace_var(replace_var_map, right),
+            ),
+            I::Or(left, right) => I::Or(
+                replace_var(replace_var_map, left),
+                replace_var(replace_var_map, right),
+            ),
+            I::Not(op) => I::Not(replace_var(replace_var_map, op)),
+            I::Shift(op, left, right) => I::Shift(
+                op,
+                replace_var(replace_var_map, left),
+                replace_var(replace_var_map, right),
+            ),
+            I::Store(addr, value) => I::Store(
+                replace_var(replace_var_map, addr),
+                replace_var(replace_var_map, value),
+            ),
+
+            I::Cmp(op, left, right) => I::Cmp(
+                op,
+                replace_var(replace_var_map, left),
+                replace_var(replace_var_map, right),
+            ),
+            I::Call { fun, args } => {
+                let fun = replace_var(replace_var_map, fun);
+                let args = args
+                    .into_iter()
+                    .map(|arg| replace_var(replace_var_map, arg))
+                    .collect();
+
+                I::Call { fun, args }
+            }
+
+            I::Ret(op) => I::Ret(replace_var(replace_var_map, op)),
+
+            I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => self,
+        }
     }
 }
 
@@ -241,29 +326,14 @@ impl Function {
         }
     }
 
-    // pub fn replace_bbs_with<F>(self, replacer: F) -> Result<Self>
-    // where
-    //     F: Fn(BasicBlocks) -> Result<BasicBlocks>,
-    // {
-    //     let Function {
-    //         name,
-    //         args,
-    //         ty,
-    //         basic_blocks,
-    //     } = self;
-    //     let body = replacer(basic_blocks)?;
-    //     Ok(Function {
-    //         name,
-    //         args,
-    //         ty,
-    //         basic_blocks,
-    //     })
-    // }
-
     pub fn dump(&self, arena: &Arena<BasicBlock>) {
         print!("function {} (", self.name);
         for (id, ty) in &self.args {
             print!("%{}: {}, ", id, ty);
+        }
+        print!(") (");
+        for id in &self.free_vars {
+            print!("%{}, ", id);
         }
         println!("): {} {{", self.ty);
 
