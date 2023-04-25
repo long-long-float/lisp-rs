@@ -15,19 +15,6 @@ struct Context {
 }
 
 fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
-    fn replace_var(ctx: &Context, op: Operand) -> Operand {
-        match op {
-            Operand::Variable(ref var) => {
-                if let Some(replaced_op) = ctx.replace_var_map.get(var) {
-                    Operand::Variable(replaced_op.clone())
-                } else {
-                    op
-                }
-            }
-            _ => op,
-        }
-    }
-
     let mut ctx = Context {
         assign_imm_map: FxHashMap::default(),
         assign_var_map: FxHashMap::default(),

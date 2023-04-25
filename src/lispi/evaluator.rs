@@ -811,7 +811,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
 
 /// Define embedded functions to insert to the root of environment.
 pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
-    let mut s = |value: &str| value.to_owned();
+    let s = |value: &str| value.to_owned();
 
     fn insert_function(
         env: &mut Env,

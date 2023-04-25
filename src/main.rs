@@ -14,7 +14,7 @@ use std::path::Path;
 use lisp_rs::lispi::cli_option::CliOption;
 use lisp_rs::lispi::error::ErrorWithLocation;
 use lisp_rs::lispi::*;
-use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e, parser as p};
+use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e};
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
 fn main() -> Result<()> {

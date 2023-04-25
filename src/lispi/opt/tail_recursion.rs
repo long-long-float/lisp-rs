@@ -1,33 +1,34 @@
+//! Try to optimize tail recursion for body.
+//!
+//! This removes tail recursion such as following forms.
+//!
+//! ```lisp
+//! (let loop ((i 0)) (if (< i 1000
+//!  (begin
+//!   (loop (+ i 1)))))
+//! ```
+//!
+//! This is converted to like following expressions.
+//!
+//! ```lisp
+//! (define i 0)
+//! (internal-loop (if (< i 1000
+//!  (begin
+//!   (set! i (+ i 1))
+//!   continue))))
+//! ```
+//!
+//! A `internal-loop` behaves like `while(true)`. However it breaks without continue.
+//! A `continue` is special value used only in this interpreter.
+//! If the evaluator meets `continue`, the process goes a head of `internal-loop`.
+//!
+//! This optimization is followed by <https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html>.
+//!
+
 use anyhow::Result;
 
 use super::super::{ast::*, parser::*, SymbolValue, TokenLocation};
 
-/// Try to optimize tail recursion for body.
-///
-/// This removes tail recursion such as following forms.
-///
-/// ```lisp
-/// (let loop ((i 0)) (if (< i 1000
-///  (begin
-///   (loop (+ i 1)))))
-/// ```
-///
-/// This is converted to like following expressions.
-///
-/// ```lisp
-/// (define i 0)
-/// (internal-loop (if (< i 1000
-///  (begin
-///   (set! i (+ i 1))
-///   continue))))
-/// ```
-///
-/// A `internal-loop` behaves like `while(true)`. However it breaks without continue.
-/// A `continue` is special value used only in this interpreter.
-/// If the evaluator meets `continue`, the process goes a head of `internal-loop`.
-///
-/// This optimization is followed by https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html .
-///
 // TOOD: Support body what the function is assigned other variable
 fn optimize_tail_recursion(
     func_name: &String,
