@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use anyhow::Result;
 use colored::*;
+use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -70,6 +71,7 @@ impl Instruction {
 
     // Frequently used instructions
 
+    /// Store `rs2` to `mem[rs1 + imm]`
     fn sw(rs2: Register, rs1: Register, imm: Immediate) -> Instruction {
         Instruction::S(SInstruction {
             op: SInstructionOp::Sw,
@@ -79,6 +81,7 @@ impl Instruction {
         })
     }
 
+    /// Load `mem[rs1 + imm]` to `rd`
     fn lw(rd: Register, rs1: Register, imm: Immediate) -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Lw,
@@ -603,7 +606,7 @@ impl Context {
     }
 
     fn allocate_arg_reg(&mut self) -> Register {
-        let reg = Register::Integer(10 + self.arg_count);
+        let reg = Register::a(self.arg_count);
         self.arg_count += 1;
         reg
     }
@@ -757,11 +760,13 @@ pub fn generate_code(
         ctx.label_addrs.insert(label, insts.len() as i32);
     }
 
-    fn add_fun_header(insts: &mut Vec<Instruction>) {
+    fn add_fun_header(insts: &mut Vec<Instruction>, register_map: &RegisterMap) {
+        let frame_size = 4 * (2 + register_map.values().unique().count() as i32);
+
         insts.push(Instruction::addi(
             Register::sp(),
             Register::sp(),
-            Immediate::new(-8 & 0xfff, XLEN),
+            Immediate::new(-frame_size & 0xfff, XLEN),
         ));
         insts.push(Instruction::sw(
             Register::ra(),
@@ -773,6 +778,7 @@ pub fn generate_code(
             Register::sp(),
             Immediate::new(4, XLEN),
         ));
+
         insts.push(Instruction::addi(
             Register::s(0),
             Register::sp(),
@@ -903,7 +909,7 @@ pub fn generate_code(
             add_label(&mut ctx, &mut insts, bb.label.clone());
 
             if bbi == 0 {
-                add_fun_header(&mut insts);
+                add_fun_header(&mut insts, &register_map);
             }
 
             for i::AnnotatedInstr {
@@ -1054,9 +1060,27 @@ pub fn generate_code(
                         )?;
                     }
                     Call { fun, args } => {
+                        ctx.arg_count = 0;
                         for arg in args {
                             load_argument(&mut ctx, &mut insts, &register_map, arg);
                         }
+
+                        // Save caller-saved registers
+                        // Now only for temporary registers
+                        let used_regs = register_map
+                            .values()
+                            .unique()
+                            .map(|id| Register::t(*id as u32))
+                            .collect_vec();
+
+                        for (i, reg) in used_regs.iter().enumerate() {
+                            insts.push(Instruction::sw(
+                                reg.clone(),
+                                Register::sp(),
+                                Immediate::new((i as i32 + 2) * 4, XLEN),
+                            ));
+                        }
+
                         if let i::Operand::Immediate(i::Immediate::Label(label)) = fun {
                             insts.push(J(JInstruction {
                                 op: JInstructionOp::Jal,
@@ -1066,6 +1090,15 @@ pub fn generate_code(
                             insts.push(Instruction::mv(result_reg, Register::a(0)));
                         } else {
                             todo!()
+                        }
+
+                        // Load caller-saved registers
+                        for (i, reg) in used_regs.iter().enumerate() {
+                            insts.push(Instruction::lw(
+                                reg.clone(),
+                                Register::sp(),
+                                Immediate::new((i as i32 + 2) * 4, XLEN),
+                            ));
                         }
                     }
                     Phi(_nodes) => {}
