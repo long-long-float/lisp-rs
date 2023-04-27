@@ -626,7 +626,8 @@ fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
             }
         });
         if let Some(label) = label {
-            println!("{}:", label);
+            let addr = format!("; 0x{:x}", addr * 4);
+            println!("{}: {}", label, addr.dimmed());
         }
         println!("  {}", inst);
     }
