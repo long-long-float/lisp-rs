@@ -350,12 +350,14 @@ impl GenerateCode for JInstruction {
         use JInstructionOp::*;
 
         let imm = self.imm.value();
+
         assert!(imm & 1 == 0);
         let imm = imm >> 1;
+
         let imm = (imm & (0b1 << 19))
-            | (imm & 0b1111_1111_11) << 9
-            | (imm & (0b1 << 8))
-            | (imm & 0b1111_1111) >> 9;
+            | ((imm & 0b1111_1111_11) << 9)
+            | (imm & (0b1 << 10) >> 2)
+            | ((imm & (0b1111_1111 << 11)) >> 11);
 
         let rd = self.rd.as_int();
 
