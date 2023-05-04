@@ -787,7 +787,9 @@ pub fn generate_code(
         ));
     }
 
-    fn add_fun_footer(insts: &mut Vec<Instruction>) {
+    fn add_fun_footer(insts: &mut Vec<Instruction>, register_map: &RegisterMap) {
+        let frame_size = 4 * (2 + register_map.values().unique().count() as i32);
+
         insts.push(Instruction::lw(
             Register::ra(),
             Register::sp(),
@@ -801,7 +803,7 @@ pub fn generate_code(
         insts.push(Instruction::addi(
             Register::sp(),
             Register::sp(),
-            Immediate::new(8, XLEN),
+            Immediate::new(frame_size, XLEN),
         ));
     }
 
@@ -895,7 +897,11 @@ pub fn generate_code(
     let mut insts = Vec::new();
 
     // Initialize specific registers
-    load_immediate(&mut insts, Immediate::new(0x1000, XLEN), Register::sp());
+    load_immediate(
+        &mut insts,
+        Immediate::new(0x80000000u32 as i32, XLEN),
+        Register::sp(),
+    );
 
     for (fun, register_map) in funcs {
         ctx.reset_on_fun();
@@ -974,7 +980,7 @@ pub fn generate_code(
                                 rd: Register::zero(),
                             }));
                         } else {
-                            add_fun_footer(&mut insts);
+                            add_fun_footer(&mut insts, &register_map);
 
                             insts.push(Instruction::ret());
                         }
@@ -1088,7 +1094,6 @@ pub fn generate_code(
                                 imm: RelAddress::Label(label),
                                 rd: Register::ra(),
                             }));
-                            insts.push(Instruction::mv(result_reg, Register::a(0)));
                         } else {
                             todo!()
                         }
@@ -1101,6 +1106,8 @@ pub fn generate_code(
                                 Immediate::new((i as i32 + 2) * 4, XLEN),
                             ));
                         }
+
+                        insts.push(Instruction::mv(result_reg, Register::a(0)));
                     }
                     Phi(_nodes) => {}
                     Operand(op) => {
