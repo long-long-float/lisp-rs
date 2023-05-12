@@ -366,6 +366,13 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                     ]),
                     ast_ty,
                 );
+            } else {
+                add_instr(
+                    &mut result,
+                    ctx,
+                    I::Operand(Operand::Variable(then_res.result)),
+                    ast_ty,
+                );
             }
         }
         Ast::Cond(_) => todo!(),
