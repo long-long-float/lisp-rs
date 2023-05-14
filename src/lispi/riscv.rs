@@ -637,13 +637,24 @@ fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
 }
 
 fn load_operand(
-    _ctx: &mut Context,
+    ctx: &mut Context,
     _insts: &mut [Instruction],
     register_map: &RegisterMap,
     op: i::Operand,
 ) -> Result<Register> {
     match op {
-        i::Operand::Variable(var) => Ok(Register::t(*register_map.get(&var).unwrap() as u32)),
+        i::Operand::Variable(var) => {
+            if let Some(reg) = register_map.get(&var) {
+                Ok(Register::t(*reg as u32))
+            } else if let Some(reg) = ctx.arg_reg_map.get(&var.name) {
+                Ok(reg.clone())
+            } else {
+                Err(bug!(format!(
+                    "A register corresponded to a variable {} is not defined.",
+                    var.name
+                )))
+            }
+        }
         i::Operand::Immediate(imm) => Err(bug!(format!(
             "Cannot load immediate operand. This should be formed as `%var = {}.`",
             imm
