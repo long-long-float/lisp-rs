@@ -191,6 +191,15 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     }
 
     if !opt.without_opts {
+        opt::removing_redundant_assignments::optimize(&funcs, &mut ir_ctx)?;
+        if opt.dump {
+            printlnuw(&"Remove redundant assignments:".red());
+            for fun in &funcs {
+                fun.dump(&ir_ctx.bb_arena);
+            }
+            printlnuw("");
+        }
+
         opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
         if opt.dump {
             printlnuw(&"Remove duplicated assignments:".red());
