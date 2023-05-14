@@ -45,8 +45,16 @@ fn remove_redundant_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resul
                  }| {
                     match &inst {
                         I::Operand(Operand::Variable(var)) => {
-                            ctx.replace_var_map.insert(result_var.clone(), var.clone());
-                            return None;
+                            // Don't remove loading arguments.
+                            let in_args = fun
+                                .args
+                                .iter()
+                                .find(|(name, _)| name == &var.name)
+                                .is_some();
+                            if !in_args {
+                                ctx.replace_var_map.insert(result_var.clone(), var.clone());
+                                return None;
+                            }
                         }
                         _ => {}
                     }
