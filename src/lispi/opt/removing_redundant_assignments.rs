@@ -14,17 +14,11 @@ use super::super::ir::instruction::*;
 use Instruction as I;
 
 struct Context {
-    assign_var_map: FxHashMap<Variable, Variable>,
-    assign_imm_map: FxHashMap<Immediate, Variable>,
-
     replace_var_map: FxHashMap<Variable, Variable>,
 }
 
 fn remove_redundant_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
     let mut ctx = Context {
-        assign_imm_map: FxHashMap::default(),
-        assign_var_map: FxHashMap::default(),
-
         replace_var_map: FxHashMap::default(),
     };
 
@@ -43,20 +37,13 @@ fn remove_redundant_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resul
                      ty,
                      tags,
                  }| {
-                    match &inst {
-                        I::Operand(Operand::Variable(var)) => {
-                            // Don't remove loading arguments.
-                            let in_args = fun
-                                .args
-                                .iter()
-                                .find(|(name, _)| name == &var.name)
-                                .is_some();
-                            if !in_args {
-                                ctx.replace_var_map.insert(result_var.clone(), var.clone());
-                                return None;
-                            }
+                    if let I::Operand(Operand::Variable(var)) = &inst {
+                        // Don't remove loading arguments.
+                        let in_args = fun.args.iter().any(|(name, _)| name == &var.name);
+                        if !in_args {
+                            ctx.replace_var_map.insert(result_var, var.clone());
+                            return None;
                         }
-                        _ => {}
                     }
                     Some(AnnotatedInstr {
                         result: result_var,

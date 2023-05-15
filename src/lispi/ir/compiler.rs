@@ -2,7 +2,8 @@ use std::vec;
 
 use anyhow::Result;
 use id_arena::{Arena, Id};
-use rustc_hash::FxHashMap;
+use itertools::Itertools;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{
     super::{
@@ -145,6 +146,26 @@ fn add_instr_with_tags(
     inst
 }
 
+fn collect_updated_vars(asts: &[AnnotatedAst]) -> Vec<SymbolValue> {
+    fn collect_updated_vars_inner(ast: &AnnotatedAst, ctx: &mut Vec<SymbolValue>) -> Result<()> {
+        match &ast.ast {
+            Ast::Assign(Assign { var, value, .. }) => {
+                ctx.push(var.clone());
+                let _ = value.traverse_ref(ctx, collect_updated_vars_inner);
+            }
+            _ => ast.traverse_ref(ctx, collect_updated_vars_inner)?,
+        }
+
+        Ok(())
+    }
+
+    let mut fvs = Vec::new();
+    for ast in asts {
+        let _ = collect_updated_vars_inner(ast, &mut fvs);
+    }
+    fvs
+}
+
 fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
     use Instruction as I;
 
@@ -212,7 +233,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                         _ => {
                             let fun = compile_and_add(&mut result, fun_ast.clone(), ctx)?;
 
-                            let mut args = args
+                            let args = args
                                 .into_iter()
                                 .map(|arg| Operand::Variable(arg.result))
                                 .collect::<Vec<_>>();
@@ -399,6 +420,15 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::Loop(Loop { inits, label, body }) => {
             ctx.loop_inits_map.insert(label.clone(), Vec::new());
             ctx.loop_updates_map.insert(label.clone(), Vec::new());
+
+            let updated_vars = FxHashSet::from_iter(collect_updated_vars(&body));
+
+            let binds = inits.iter().map(|(id, _)| id.clone()).collect_vec();
+            let free_vars = FxHashSet::from_iter(collect_free_vars(&body, binds));
+
+            let updated_free_vars = updated_vars.intersection(&free_vars);
+            println!("{:#?}", updated_free_vars);
+            // TODO: Insert phi instructions for each updated_free_vars
 
             let header_label = ctx.gen_label();
             let header_bb = ctx.new_bb(header_label.name.clone());

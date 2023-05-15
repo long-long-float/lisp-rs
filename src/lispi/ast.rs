@@ -385,8 +385,7 @@ impl AnnotatedAst {
             | Ast::Boolean(_)
             | Ast::Char(_)
             | Ast::String(_)
-            | Ast::Nil
-            | Ast::Continue(_) => {}
+            | Ast::Nil => {}
             Ast::List(vs) => {
                 for v in vs {
                     func(v, ctx)?;
@@ -449,6 +448,11 @@ impl AnnotatedAst {
                 }
                 for v in body {
                     func(v, ctx)?;
+                }
+            }
+            Ast::Continue(Continue { updates, .. }) => {
+                for ast in updates {
+                    func(ast, ctx)?;
                 }
             }
             Ast::BuildList(vs) => {
