@@ -1,4 +1,4 @@
-use super::instruction::Label;
+use super::instruction::{Label, Variable};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Tag {
@@ -13,7 +13,13 @@ pub enum Tag {
 #[derive(Clone, PartialEq, Debug)]
 pub struct LoopPhiFunctionSite {
     pub label: String,
-    pub index: usize,
+    pub index: LoopPhiFunctionSiteIndex,
     pub header_label: Label,
     pub loop_label: Label,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum LoopPhiFunctionSiteIndex {
+    Loop(usize),
+    FreeVar(Variable),
 }

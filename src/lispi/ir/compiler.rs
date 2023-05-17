@@ -16,7 +16,10 @@ use super::{
 };
 use crate::{
     bug,
-    lispi::{ir::tag::Tag, SymbolValue},
+    lispi::{
+        ir::tag::{LoopPhiFunctionSiteIndex, Tag},
+        SymbolValue,
+    },
     unimplemented,
 };
 
@@ -39,12 +42,14 @@ struct Context<'a> {
 
     var_gen: UniqueGenerator,
 
-    /// Map loop label to loop label and basic block
+    /// Map loop label to loop label and basic block.
+    /// This is for calcurate back labels of Continue.
     loop_label_map: FxHashMap<String, (Label, Id<BasicBlock>)>,
 
-    /// TODO: Remove this
-    loop_inits_map: FxHashMap<String, Vec<AnnotatedInstr>>,
+    /// Map loop label to updated loop variables.
     loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, String)>>,
+    /// Map variable to assigned variables.
+    assigned_map: FxHashMap<String, (AnnotatedInstr, String)>,
 
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
@@ -70,8 +75,8 @@ impl<'a> Context<'a> {
             arena,
             basic_blocks: Vec::new(),
             loop_label_map: FxHashMap::default(),
-            loop_inits_map: FxHashMap::default(),
             loop_updates_map: FxHashMap::default(),
+            assigned_map: FxHashMap::default(),
         }
     }
 
@@ -329,7 +334,10 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             value,
         }) => {
             let value = compile_and_add(&mut result, *value, ctx)?;
-            ctx.env.update_var(var, &value.result)?;
+            ctx.env.update_var(var.clone(), &value.result)?;
+
+            let label = ctx.current_bb().label.clone();
+            ctx.assigned_map.insert(var, (value, label));
         }
         Ast::IfExpr(IfExpr {
             cond,
@@ -418,17 +426,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         }
         Ast::BuildList(_) => todo!(),
         Ast::Loop(Loop { inits, label, body }) => {
-            ctx.loop_inits_map.insert(label.clone(), Vec::new());
             ctx.loop_updates_map.insert(label.clone(), Vec::new());
-
-            let updated_vars = FxHashSet::from_iter(collect_updated_vars(&body));
-
-            let binds = inits.iter().map(|(id, _)| id.clone()).collect_vec();
-            let free_vars = FxHashSet::from_iter(collect_free_vars(&body, binds));
-
-            let updated_free_vars = updated_vars.intersection(&free_vars);
-            println!("{:#?}", updated_free_vars);
-            // TODO: Insert phi instructions for each updated_free_vars
 
             let header_label = ctx.gen_label();
             let header_bb = ctx.new_bb(header_label.name.clone());
@@ -437,10 +435,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let mut init_vars = Vec::new();
             for (_id, value) in &inits {
                 let inst = compile_and_add(&mut result, value.clone(), ctx)?;
-                ctx.loop_inits_map
-                    .get_mut(&label)
-                    .unwrap()
-                    .push(inst.clone());
                 init_vars.push(inst.clone());
             }
 
@@ -452,6 +446,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             ctx.add_bb(loop_bb);
 
+            let binds = inits.iter().map(|(id, _)| id.clone()).collect_vec();
+
             for (index, ((id, _value), init)) in inits.into_iter().zip(init_vars).enumerate() {
                 let inst = add_instr_with_tags(
                     &mut result,
@@ -460,7 +456,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                     init.ty,
                     vec![Tag::LoopPhiFunctionSite(LoopPhiFunctionSite {
                         label: label.clone(),
-                        index,
+                        index: LoopPhiFunctionSiteIndex::Loop(index),
                         header_label: header_label.clone(),
                         loop_label: loop_label.clone(), // TODO: Use the label updating vars instead of loop_label
                     })],
@@ -468,8 +464,26 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 ctx.env.insert_var(id, inst.result);
             }
 
-            ctx.loop_label_map
-                .insert(label.clone(), (loop_label, loop_bb));
+            let updated_vars = FxHashSet::from_iter(collect_updated_vars(&body));
+            let free_vars = FxHashSet::from_iter(collect_free_vars(&body, binds));
+            let updated_free_vars = updated_vars.intersection(&free_vars);
+            println!("{:#?}", updated_free_vars);
+            for fv in updated_free_vars {
+                add_instr_with_tags(
+                    &mut result,
+                    ctx,
+                    Instruction::Operand(Operand::Variable(Variable { name: fv.clone() })),
+                    Type::None,
+                    vec![Tag::LoopPhiFunctionSite(LoopPhiFunctionSite {
+                        label: label.clone(),
+                        index: LoopPhiFunctionSiteIndex::FreeVar(Variable { name: fv.clone() }),
+                        header_label: header_label.clone(),
+                        loop_label: loop_label.clone(), // TODO: Use the label updating vars instead of loop_label
+                    })],
+                );
+            }
+
+            ctx.loop_label_map.insert(label, (loop_label, loop_bb));
 
             for inst in body {
                 compile_and_add(&mut result, inst, ctx)?;
@@ -682,6 +696,8 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
     // Moving is necessary because ctx is used in the following closure.
     let loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, String)>> =
         ctx.loop_updates_map.drain().collect();
+    let assigned_map: FxHashMap<String, (AnnotatedInstr, String)> =
+        ctx.assigned_map.drain().collect();
 
     funcs
         .into_iter()
@@ -722,8 +738,15 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                                     // %var = phi [%init, header_label], [%update, loop_label]
                                     // Variable %update is taken from ctx.loop_updates_map
 
-                                    let (update, loop_label) =
-                                        loop_updates_map[&tag.label][tag.index].clone();
+                                    let (update, loop_label) = match &tag.index {
+                                        LoopPhiFunctionSiteIndex::Loop(index) => {
+                                            loop_updates_map[&tag.label][*index].clone()
+                                        }
+                                        LoopPhiFunctionSiteIndex::FreeVar(var) => {
+                                            assigned_map[&var.name].clone()
+                                        }
+                                    };
+
                                     Instruction::Phi(vec![
                                         (Operand::Variable(init), tag.header_label.to_owned()),
                                         (
