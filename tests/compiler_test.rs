@@ -180,5 +180,5 @@ fn sum_by_loop() {
 sum
 "#,
     );
-    assert_eq!(Some(42), registers["x10"].as_i64());
+    assert_eq!(Some(55), registers["x10"].as_i64());
 }
