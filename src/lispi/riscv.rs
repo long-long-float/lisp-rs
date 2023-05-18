@@ -849,10 +849,13 @@ pub fn generate_code(
             {
                 if let i::Instruction::Phi(nodes) = &inst {
                     for (node, label) in nodes {
-                        assign_map.insert(
-                            label.name.clone(),
-                            (result.clone(), ty.clone(), node.clone()),
-                        );
+                        if !assign_map.contains_key(&label.name) {
+                            assign_map.insert(label.name.clone(), Vec::new());
+                        }
+
+                        assign_map.get_mut(&label.name).map(|entries| {
+                            entries.push((result.clone(), ty.clone(), node.clone()));
+                        });
                     }
                 }
             }
@@ -866,8 +869,6 @@ pub fn generate_code(
 
             let mut new_insts = Vec::new();
 
-            let mut inserted_assign = false;
-
             for i::AnnotatedInstr {
                 result,
                 inst,
@@ -878,15 +879,16 @@ pub fn generate_code(
                 match &inst {
                     i::Instruction::Phi(_) => { /* Remove phi instruction */ }
                     _ => {
-                        if !inst.is_terminal() && !inserted_assign {
-                            if let Some((result, ty, operand)) = assign_map.get(&bb.label) {
-                                new_insts.push(i::AnnotatedInstr::new(
-                                    result.clone(),
-                                    i::Instruction::Operand(operand.clone()),
-                                    ty.clone(),
-                                ));
+                        if !inst.is_terminal() {
+                            if let Some(entries) = assign_map.remove(&bb.label) {
+                                for (result, ty, operand) in entries {
+                                    new_insts.push(i::AnnotatedInstr::new(
+                                        result,
+                                        i::Instruction::Operand(operand),
+                                        ty,
+                                    ));
+                                }
                             }
-                            inserted_assign = true;
                         }
 
                         new_insts.push(i::AnnotatedInstr::new(result, inst, ty));

@@ -467,20 +467,23 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let updated_vars = FxHashSet::from_iter(collect_updated_vars(&body));
             let free_vars = FxHashSet::from_iter(collect_free_vars(&body, binds));
             let updated_free_vars = updated_vars.intersection(&free_vars);
-            println!("{:#?}", updated_free_vars);
-            for fv in updated_free_vars {
-                add_instr_with_tags(
+            for fv_id in updated_free_vars {
+                let fv = ctx.env.find_var(fv_id).unwrap();
+                let inst = add_instr_with_tags(
                     &mut result,
                     ctx,
-                    Instruction::Operand(Operand::Variable(Variable { name: fv.clone() })),
+                    Instruction::Operand(Operand::Variable(fv.clone())),
                     Type::None,
                     vec![Tag::LoopPhiFunctionSite(LoopPhiFunctionSite {
                         label: label.clone(),
-                        index: LoopPhiFunctionSiteIndex::FreeVar(Variable { name: fv.clone() }),
+                        index: LoopPhiFunctionSiteIndex::FreeVar(Variable {
+                            name: fv_id.clone(),
+                        }),
                         header_label: header_label.clone(),
                         loop_label: loop_label.clone(), // TODO: Use the label updating vars instead of loop_label
                     })],
                 );
+                ctx.env.insert_var(fv_id.clone(), inst.result);
             }
 
             ctx.loop_label_map.insert(label, (loop_label, loop_bb));
