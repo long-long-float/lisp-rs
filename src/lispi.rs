@@ -200,14 +200,14 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
             printlnuw("");
         }
 
-        opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
-        if opt.dump {
-            printlnuw(&"Remove duplicated assignments:".red());
-            for fun in &funcs {
-                fun.dump(&ir_ctx.bb_arena);
-            }
-            printlnuw("");
-        }
+        // opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
+        // if opt.dump {
+        //     printlnuw(&"Remove duplicated assignments:".red());
+        //     for fun in &funcs {
+        //         fun.dump(&ir_ctx.bb_arena);
+        //     }
+        //     printlnuw("");
+        // }
 
         opt::constant_folding::optimize(&funcs, &mut ir_ctx, true)?;
         if opt.dump {
