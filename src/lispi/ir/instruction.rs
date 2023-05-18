@@ -375,9 +375,9 @@ impl Display for Operand {
 pub enum CmpOperator {
     /// '<='
     SGE,
-    /// '<'
-    SGT,
     /// '>'
+    SGT,
+    /// '<'
     SLT,
 }
 
@@ -387,8 +387,8 @@ impl Display for CmpOperator {
 
         let str = match self {
             SGE => "<=",
-            SGT => "<",
-            SLT => ">",
+            SGT => ">",
+            SLT => "<",
         };
         write!(f, "{}", str)
     }

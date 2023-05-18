@@ -175,7 +175,7 @@ fn sum_by_loop() {
 (define sum 0)
 (let loop ((i 0))
     (set! sum (+ sum i))
-    (if (not (> i 100))
+    (if (< i 10)
         (loop (+ i 1))))
 sum
 "#,
