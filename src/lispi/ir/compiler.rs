@@ -1,4 +1,4 @@
-use std::vec;
+use std::{collections::VecDeque, vec};
 
 use anyhow::Result;
 use id_arena::{Arena, Id};
@@ -789,6 +789,46 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
         .collect()
 }
 
+fn build_connections_between_bbs(ctx: &mut Context, funcs: &[Function]) {
+    for func in funcs {
+        let mut label_bb_map = FxHashMap::default();
+
+        for bb_id in &func.basic_blocks {
+            let bb = ctx.arena.get(*bb_id).unwrap();
+            label_bb_map.insert(bb.label.clone(), bb_id);
+        }
+
+        for (forward_id, back_id) in func.basic_blocks.iter().tuple_windows() {
+            let forward_bb = ctx.arena.get_mut(*forward_id).unwrap();
+            forward_bb.destination_bbs.push(*back_id);
+
+            let back_bb = ctx.arena.get_mut(*back_id).unwrap();
+            back_bb.source_bbs.push(*forward_id);
+        }
+    }
+}
+
+fn dump_bbs(ctx: &mut Context, funcs: &[Function]) {
+    for func in funcs {
+        let mut que = VecDeque::new();
+
+        if let Some(bb) = func.basic_blocks.first() {
+            que.push_back(bb);
+        }
+
+        while let Some(bb) = que.pop_back() {
+            let bb = ctx.arena.get(*bb).unwrap();
+
+            for dbb in &bb.destination_bbs {
+                que.push_back(dbb);
+
+                let dbb = ctx.arena.get(*dbb).unwrap();
+                println!("{} -> {}", bb.label, dbb.label);
+            }
+        }
+    }
+}
+
 pub fn compile(asts: Program, ir_ctx: &mut IrContext) -> Result<Functions> {
     let mut result = Vec::new();
 
@@ -831,6 +871,10 @@ pub fn compile(asts: Program, ir_ctx: &mut IrContext) -> Result<Functions> {
     }
 
     let result = insert_phi_nodes_for_loops(result, &mut ctx);
+
+    build_connections_between_bbs(&mut ctx, &result);
+
+    dump_bbs(&mut ctx, &result);
 
     Ok(result)
 }
