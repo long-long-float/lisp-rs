@@ -180,7 +180,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
 
     let mut ir_ctx = ir::IrContext::new();
 
-    let funcs = ir::compiler::compile(program, &mut ir_ctx)?;
+    let funcs = ir::compiler::compile(program, &mut ir_ctx, opt)?;
 
     if opt.dump {
         printlnuw(&"Raw IR instructions:".red());

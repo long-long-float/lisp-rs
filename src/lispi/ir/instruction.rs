@@ -256,14 +256,35 @@ impl AnnotatedInstr {
             tags: Vec::new(),
         }
     }
+
+    pub fn display<'a>(&'a self, colored: bool) -> AnnotatedInstrDisplay {
+        AnnotatedInstrDisplay {
+            instr: self,
+            colored,
+        }
+    }
 }
 
-impl Display for AnnotatedInstr {
+#[derive(Clone, PartialEq, Debug)]
+pub struct AnnotatedInstrDisplay<'a> {
+    instr: &'a AnnotatedInstr,
+    colored: bool,
+}
+
+impl Display for AnnotatedInstrDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Instruction::*;
-        match &self.inst {
+
+        let AnnotatedInstr {
+            result,
+            inst,
+            ty,
+            tags,
+        } = &self.instr;
+
+        match inst {
             Branch { .. } | Jump(_, _) | Ret(_) | Nop => {
-                write!(f, "  {}", self.inst)?;
+                write!(f, "  {}", inst)?;
             }
 
             Add(_, _)
@@ -277,17 +298,17 @@ impl Display for AnnotatedInstr {
             | Call { .. }
             | Operand(_)
             | Phi(_) => {
-                write!(f, "  {}:{} = {}", self.result, self.ty, self.inst)?;
+                write!(f, "  {}:{} = {}", result, ty, inst)?;
             }
 
             Label(_) => {
-                write!(f, "{}:", self.inst)?;
+                write!(f, "{}:", inst)?;
             }
         }
 
-        if !self.tags.is_empty() {
+        if !tags.is_empty() && self.colored {
             write!(f, "  {}", ";".dimmed())?;
-            for tag in &self.tags {
+            for tag in tags {
                 let str = format!("{:?}, ", tag).dimmed();
                 write!(f, "  {}", str)?;
             }
@@ -341,7 +362,7 @@ impl Function {
             let bb = arena.get(*bb).unwrap();
             println!("  {}:", bb.label);
             for inst in &bb.insts {
-                println!("  {}", inst);
+                println!("  {}", inst.display(true));
             }
         }
 

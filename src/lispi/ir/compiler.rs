@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, vec};
+use std::{collections::VecDeque, fs::File, io::Write, path::Path, vec};
 
 use anyhow::Result;
 use id_arena::{Arena, Id};
@@ -17,6 +17,7 @@ use super::{
 use crate::{
     bug,
     lispi::{
+        cli_option::CliOption,
         ir::tag::{LoopPhiFunctionSiteIndex, Tag},
         SymbolValue,
     },
@@ -808,9 +809,34 @@ fn build_connections_between_bbs(ctx: &mut Context, funcs: &[Function]) {
     }
 }
 
-fn dump_bbs(ctx: &mut Context, funcs: &[Function]) {
+fn dump_bbs_as_dot<P>(ctx: &mut Context, funcs: &[Function], path: P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    let mut out = File::create(path)?;
+
+    writeln!(
+        out,
+        "digraph cfg {{
+    node [shape=box, nojustify=true]"
+    )?;
+
     for func in funcs {
         let mut que = VecDeque::new();
+
+        for bb_id in &func.basic_blocks {
+            let bb = ctx.arena.get(*bb_id).unwrap();
+            let insts = bb
+                .insts
+                .iter()
+                .map(|inst| inst.display(false).to_string())
+                .join("\\l");
+            writeln!(
+                out,
+                "    {} [label=\"{}:\\l{}\\l\"]",
+                bb.label, bb.label, insts
+            )?;
+        }
 
         if let Some(bb) = func.basic_blocks.first() {
             que.push_back(bb);
@@ -823,13 +849,18 @@ fn dump_bbs(ctx: &mut Context, funcs: &[Function]) {
                 que.push_back(dbb);
 
                 let dbb = ctx.arena.get(*dbb).unwrap();
-                println!("{} -> {}", bb.label, dbb.label);
+
+                writeln!(out, "    {} -> {};", bb.label, dbb.label)?;
             }
         }
     }
+
+    writeln!(out, "}}")?;
+
+    Ok(())
 }
 
-pub fn compile(asts: Program, ir_ctx: &mut IrContext) -> Result<Functions> {
+pub fn compile(asts: Program, ir_ctx: &mut IrContext, opt: &CliOption) -> Result<Functions> {
     let mut result = Vec::new();
 
     let main_bb = ir_ctx.bb_arena.alloc(BasicBlock::new("main".to_string()));
@@ -874,7 +905,9 @@ pub fn compile(asts: Program, ir_ctx: &mut IrContext) -> Result<Functions> {
 
     build_connections_between_bbs(&mut ctx, &result);
 
-    dump_bbs(&mut ctx, &result);
+    if opt.dump {
+        dump_bbs_as_dot(&mut ctx, &result, "cfg.gv")?;
+    }
 
     Ok(result)
 }
