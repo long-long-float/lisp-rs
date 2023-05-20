@@ -103,7 +103,8 @@ impl<'a> Context<'a> {
     }
 
     fn new_bb(&mut self, label: String) -> Id<BasicBlock> {
-        self.arena.alloc(BasicBlock::new(label))
+        self.arena
+            .alloc(BasicBlock::new(label, self.basic_blocks.last().copied()))
     }
 
     fn add_bb(&mut self, bb: Id<BasicBlock>) {
@@ -121,7 +122,14 @@ fn compile_and_add(
     ctx: &mut Context,
 ) -> Result<AnnotatedInstr> {
     let mut insts = compile_ast(ast, ctx)?;
-    let inst = ctx.current_bb().insts.last().unwrap().clone();
+    let inst = if let Some(last) = ctx.current_bb().insts.last() {
+        last.clone()
+    } else if let Some(last_bb) = ctx.current_bb().preceding_bb {
+        let last_bb = ctx.arena.get(last_bb).unwrap();
+        last_bb.insts.last().unwrap().clone()
+    } else {
+        return Err(bug!("Unmet condition"));
+    };
     result.append(&mut insts);
     Ok(inst)
 }
@@ -510,6 +518,10 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             ctx.loop_updates_map.insert(label, updated_vars);
 
             add_instr(&mut result, ctx, I::Jump(loop_label, loop_bb), Type::None);
+
+            let label = ctx.gen_label();
+            let bb = ctx.new_bb(label.name);
+            ctx.add_bb(bb);
         }
 
         Ast::Lambda(Lambda {
@@ -802,7 +814,15 @@ fn build_connections_between_bbs(ctx: &mut Context, funcs: &[Function]) {
     for func in funcs {
         // Connect consecutive basic blocks
         for (forward_id, back_id) in func.basic_blocks.iter().tuple_windows() {
-            connect_bbs(ctx, forward_id, back_id);
+            let forward_bb = ctx.arena.get(*forward_id).unwrap();
+            let is_terminal = forward_bb
+                .insts
+                .last()
+                .map_or(false, |inst| inst.inst.is_terminal());
+
+            if !is_terminal {
+                connect_bbs(ctx, forward_id, back_id);
+            }
         }
 
         // Connect non-consecutive (e.g. jump) basic blocks
@@ -889,7 +909,9 @@ where
 pub fn compile(asts: Program, ir_ctx: &mut IrContext, opt: &CliOption) -> Result<Functions> {
     let mut result = Vec::new();
 
-    let main_bb = ir_ctx.bb_arena.alloc(BasicBlock::new("main".to_string()));
+    let main_bb = ir_ctx
+        .bb_arena
+        .alloc(BasicBlock::new("main".to_string(), None));
 
     let mut ctx = Context::new(&mut ir_ctx.bb_arena);
 

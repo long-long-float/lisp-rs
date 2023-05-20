@@ -13,15 +13,18 @@ pub struct BasicBlock {
 
     /// Basic blocks where the control flow comes from
     pub source_bbs: FxHashSet<Id<BasicBlock>>,
+
+    pub preceding_bb: Option<Id<BasicBlock>>,
 }
 
 impl BasicBlock {
-    pub fn new(label: String) -> Self {
+    pub fn new(label: String, preceding_bb: Option<Id<BasicBlock>>) -> Self {
         Self {
             label,
             insts: Vec::new(),
             destination_bbs: FxHashSet::default(),
             source_bbs: FxHashSet::default(),
+            preceding_bb,
         }
     }
 
