@@ -1,4 +1,5 @@
 use id_arena::Id;
+use rustc_hash::FxHashSet;
 
 use super::instruction as i;
 
@@ -8,10 +9,10 @@ pub struct BasicBlock {
     pub insts: Vec<i::AnnotatedInstr>,
 
     /// Basic blocks where the control flow goes to
-    pub destination_bbs: Vec<Id<BasicBlock>>,
+    pub destination_bbs: FxHashSet<Id<BasicBlock>>,
 
     /// Basic blocks where the control flow comes from
-    pub source_bbs: Vec<Id<BasicBlock>>,
+    pub source_bbs: FxHashSet<Id<BasicBlock>>,
 }
 
 impl BasicBlock {
@@ -19,8 +20,8 @@ impl BasicBlock {
         Self {
             label,
             insts: Vec::new(),
-            destination_bbs: Vec::new(),
-            source_bbs: Vec::new(),
+            destination_bbs: FxHashSet::default(),
+            source_bbs: FxHashSet::default(),
         }
     }
 

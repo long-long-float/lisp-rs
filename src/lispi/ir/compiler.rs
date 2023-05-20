@@ -790,21 +790,40 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
         .collect()
 }
 
+fn connect_bbs(ctx: &mut Context, source_id: &Id<BasicBlock>, dest_id: &Id<BasicBlock>) {
+    let source = ctx.arena.get_mut(*source_id).unwrap();
+    source.destination_bbs.insert(*dest_id);
+
+    let dest = ctx.arena.get_mut(*dest_id).unwrap();
+    dest.source_bbs.insert(*source_id);
+}
+
 fn build_connections_between_bbs(ctx: &mut Context, funcs: &[Function]) {
     for func in funcs {
-        let mut label_bb_map = FxHashMap::default();
-
-        for bb_id in &func.basic_blocks {
-            let bb = ctx.arena.get(*bb_id).unwrap();
-            label_bb_map.insert(bb.label.clone(), bb_id);
+        // Connect consecutive basic blocks
+        for (forward_id, back_id) in func.basic_blocks.iter().tuple_windows() {
+            connect_bbs(ctx, forward_id, back_id);
         }
 
-        for (forward_id, back_id) in func.basic_blocks.iter().tuple_windows() {
-            let forward_bb = ctx.arena.get_mut(*forward_id).unwrap();
-            forward_bb.destination_bbs.push(*back_id);
+        // Connect non-consecutive (e.g. jump) basic blocks
+        for curr_id in &func.basic_blocks {
+            let curr_bb = ctx.arena.get(*curr_id).unwrap();
 
-            let back_bb = ctx.arena.get_mut(*back_id).unwrap();
-            back_bb.source_bbs.push(*forward_id);
+            let insts = curr_bb.insts.clone();
+            for inst in insts {
+                match &inst.inst {
+                    Instruction::Branch {
+                        then_bb: then_id,
+                        else_bb: else_id,
+                        ..
+                    } => {
+                        connect_bbs(ctx, curr_id, then_id);
+                        connect_bbs(ctx, curr_id, else_id);
+                    }
+                    Instruction::Jump(_, dest_id) => connect_bbs(ctx, curr_id, dest_id),
+                    _ => {}
+                }
+            }
         }
     }
 }
@@ -842,7 +861,14 @@ where
             que.push_back(bb);
         }
 
+        let mut visited_bbs = FxHashSet::default();
+
         while let Some(bb) = que.pop_back() {
+            if visited_bbs.contains(bb) {
+                continue;
+            }
+            visited_bbs.insert(bb);
+
             let bb = ctx.arena.get(*bb).unwrap();
 
             for dbb in &bb.destination_bbs {
