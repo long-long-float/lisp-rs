@@ -1,4 +1,6 @@
-use id_arena::Id;
+use std::collections::VecDeque;
+
+use id_arena::{Arena, Id};
 use rustc_hash::FxHashSet;
 
 use super::instruction as i;
@@ -30,5 +32,48 @@ impl BasicBlock {
 
     pub fn push_inst(&mut self, inst: i::AnnotatedInstr) {
         self.insts.push(inst);
+    }
+}
+
+pub trait BasicBlockIdExtension {
+    /// Find BasicBlock by BFS
+    fn find_forward<'a, F>(&self, arena: &'a Arena<BasicBlock>, pred: F) -> Option<&'a BasicBlock>
+    where
+        F: FnMut(&'a BasicBlock) -> bool;
+}
+
+impl BasicBlockIdExtension for Id<BasicBlock> {
+    fn find_forward<'a, F>(
+        &self,
+        arena: &'a Arena<BasicBlock>,
+        mut pred: F,
+    ) -> Option<&'a BasicBlock>
+    where
+        F: FnMut(&'a BasicBlock) -> bool,
+    {
+        let mut que = VecDeque::new();
+
+        que.push_back(self);
+
+        let mut visited_bbs = FxHashSet::default();
+
+        while let Some(bb) = que.pop_back() {
+            if visited_bbs.contains(bb) {
+                continue;
+            }
+            visited_bbs.insert(bb);
+
+            let bb = arena.get(*bb).unwrap();
+
+            if pred(bb) {
+                return Some(bb);
+            }
+
+            for dbb in &bb.destination_bbs {
+                que.push_back(dbb);
+            }
+        }
+
+        None
     }
 }

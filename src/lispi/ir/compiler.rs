@@ -18,7 +18,10 @@ use crate::{
     bug,
     lispi::{
         cli_option::CliOption,
-        ir::tag::{LoopPhiFunctionSiteIndex, Tag},
+        ir::{
+            basic_block::BasicBlockIdExtension,
+            tag::{LoopPhiFunctionSiteIndex, Tag},
+        },
         SymbolValue,
     },
     unimplemented,
@@ -48,9 +51,9 @@ struct Context<'a> {
     loop_label_map: FxHashMap<String, (Label, Id<BasicBlock>)>,
 
     /// Map loop label to updated loop variables.
-    loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, String)>>,
+    loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, Id<BasicBlock>)>>,
     /// Map variable to assigned variables.
-    assigned_map: FxHashMap<String, (AnnotatedInstr, String)>,
+    assigned_map: FxHashMap<String, (AnnotatedInstr, Id<BasicBlock>)>,
 
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
@@ -96,6 +99,10 @@ impl<'a> Context<'a> {
     fn current_bb(&mut self) -> &mut BasicBlock {
         let id = *self.basic_blocks.last().unwrap();
         self.arena.get_mut(id).unwrap()
+    }
+
+    fn current_bb_id(&mut self) -> Id<BasicBlock> {
+        *self.basic_blocks.last().unwrap()
     }
 
     fn push_inst(&mut self, inst: AnnotatedInstr) {
@@ -345,8 +352,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let value = compile_and_add(&mut result, *value, ctx)?;
             ctx.env.update_var(var.clone(), &value.result)?;
 
-            let label = ctx.current_bb().label.clone();
-            ctx.assigned_map.insert(var, (value, label));
+            let bb = ctx.current_bb_id();
+            ctx.assigned_map.insert(var, (value, bb));
         }
         Ast::IfExpr(IfExpr {
             cond,
@@ -509,7 +516,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                 .map(|update| {
                     Ok((
                         compile_and_add(&mut result, update, ctx)?,
-                        ctx.current_bb().label.to_owned(),
+                        ctx.current_bb_id(),
                     ))
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -708,10 +715,8 @@ fn compile_main_function(
 /// Insert phi nodes beginning of the loops
 fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions {
     // Moving is necessary because ctx is used in the following closure.
-    let loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, String)>> =
-        ctx.loop_updates_map.drain().collect();
-    let assigned_map: FxHashMap<String, (AnnotatedInstr, String)> =
-        ctx.assigned_map.drain().collect();
+    let loop_updates_map: FxHashMap<_, _> = ctx.loop_updates_map.drain().collect();
+    let assigned_map: FxHashMap<_, _> = ctx.assigned_map.drain().collect();
 
     funcs
         .into_iter()
@@ -723,8 +728,8 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                  ty,
                  basic_blocks,
              }| {
-                for bb in &basic_blocks {
-                    let bb = ctx.arena.get_mut(*bb).unwrap();
+                for bb_id in &basic_blocks {
+                    let bb = ctx.arena.get(*bb_id).unwrap();
 
                     let mut result = Vec::new();
 
@@ -752,7 +757,7 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                                     // %var = phi [%init, header_label], [%update, loop_label]
                                     // Variable %update is taken from ctx.loop_updates_map
 
-                                    let (update, loop_label) = match &tag.index {
+                                    let (update, loop_bb_id) = match &tag.index {
                                         LoopPhiFunctionSiteIndex::Loop(index) => {
                                             loop_updates_map[&tag.label][*index].clone()
                                         }
@@ -761,12 +766,43 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                                         }
                                     };
 
+                                    let loop_bb = ctx.arena.get(loop_bb_id).unwrap();
+
+                                    let cur_label = bb.label.clone();
+                                    let mut last_updated_label = &"".to_string();
+                                    if cur_label == loop_bb.label {
+                                        for dest_bb in &loop_bb.destination_bbs {
+                                            let found = dest_bb.find_forward(&ctx.arena, |bb| {
+                                                if bb.label != cur_label {
+                                                    last_updated_label = &bb.label;
+                                                    return false;
+                                                } else {
+                                                    return true;
+                                                }
+                                            });
+                                            if found.is_some() {
+                                                break;
+                                            }
+                                        }
+                                    } else {
+                                        loop_bb_id.find_forward(&ctx.arena, |bb| {
+                                            if bb.label != cur_label {
+                                                last_updated_label = &bb.label;
+                                                return false;
+                                            } else {
+                                                return true;
+                                            }
+                                        });
+                                    }
+                                    assert_ne!(last_updated_label, "");
+
                                     Instruction::Phi(vec![
                                         (Operand::Variable(init), tag.header_label.to_owned()),
+                                        // TODO: Add ALL incoming basic blocks
                                         (
                                             Operand::Variable(update.result.clone()),
                                             Label {
-                                                name: loop_label.clone(),
+                                                name: last_updated_label.clone(),
                                             },
                                         ),
                                     ])
@@ -785,6 +821,7 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                         })
                     }
 
+                    let bb = ctx.arena.get_mut(*bb_id).unwrap();
                     bb.insts = result;
                 }
 
@@ -947,9 +984,9 @@ pub fn compile(asts: Program, ir_ctx: &mut IrContext, opt: &CliOption) -> Result
         }
     }
 
-    let result = insert_phi_nodes_for_loops(result, &mut ctx);
-
     build_connections_between_bbs(&mut ctx, &result);
+
+    let result = insert_phi_nodes_for_loops(result, &mut ctx);
 
     if opt.dump {
         dump_bbs_as_dot(&mut ctx, &result, "cfg.gv")?;
