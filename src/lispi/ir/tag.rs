@@ -15,7 +15,6 @@ pub struct LoopPhiFunctionSite {
     pub label: String,
     pub index: LoopPhiFunctionSiteIndex,
     pub header_label: Label,
-    pub loop_label: Label,
 }
 
 #[derive(Clone, PartialEq, Debug)]

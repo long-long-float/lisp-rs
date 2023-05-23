@@ -467,7 +467,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                         label: label.clone(),
                         index: LoopPhiFunctionSiteIndex::Loop(index),
                         header_label: header_label.clone(),
-                        loop_label: loop_label.clone(), // TODO: Use the label updating vars instead of loop_label
                     })],
                 );
                 ctx.env.insert_var(id, inst.result);
@@ -489,7 +488,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                             name: fv_id.clone(),
                         }),
                         header_label: header_label.clone(),
-                        loop_label: loop_label.clone(), // TODO: Use the label updating vars instead of loop_label
                     })],
                 );
                 ctx.env.insert_var(fv_id.clone(), inst.result);
