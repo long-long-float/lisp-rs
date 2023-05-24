@@ -186,6 +186,32 @@ pub fn create_interference_graph(
     funcs
         .into_iter()
         .map(|func| {
+            // Calculate lifetime
+            {
+                let mut def_uses = FxHashMap::default();
+
+                for bb_id in &func.basic_blocks {
+                    let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
+
+                    let mut def_uses_bb = Vec::new();
+
+                    for annot_inst in &bb.insts {
+                        let mut used_vars = Vec::new();
+                        get_vars(&annot_inst.inst, &mut used_vars);
+
+                        let def_vars = if annot_inst.inst.is_terminal() {
+                            vec![]
+                        } else {
+                            vec![&annot_inst.result]
+                        };
+
+                        def_uses_bb.push((def_vars, used_vars));
+                    }
+
+                    def_uses.insert(*bb_id, def_uses_bb);
+                }
+            }
+
             let mut living_vars = FxHashSet::default();
 
             let mut inter_graph = InterferenceGraph::default();
