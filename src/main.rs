@@ -186,7 +186,8 @@ fn main() -> Result<()> {
                     }
                     _ => {}
                 },
-                _ => {}
+                Event::Mouse(_) => todo!(),
+                Event::Resize(_, _) => todo!(),
             }
         }
     }

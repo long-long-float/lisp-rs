@@ -853,9 +853,9 @@ pub fn generate_code(
                             assign_map.insert(label.name.clone(), Vec::new());
                         }
 
-                        assign_map.get_mut(&label.name).map(|entries| {
+                        if let Some(entries) = assign_map.get_mut(&label.name) {
                             entries.push((result.clone(), ty.clone(), node.clone()));
-                        });
+                        }
                     }
                 }
             }

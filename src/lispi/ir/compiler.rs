@@ -772,12 +772,12 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                                     let mut last_updated_label = &"".to_string();
                                     if cur_label == loop_bb.label {
                                         for dest_bb in &loop_bb.destination_bbs {
-                                            let found = dest_bb.find_forward(&ctx.arena, |bb| {
+                                            let found = dest_bb.find_forward(ctx.arena, |bb| {
                                                 if bb.label != cur_label {
                                                     last_updated_label = &bb.label;
-                                                    return false;
+                                                    false
                                                 } else {
-                                                    return true;
+                                                    true
                                                 }
                                             });
                                             if found.is_some() {
@@ -785,12 +785,12 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                                             }
                                         }
                                     } else {
-                                        loop_bb_id.find_forward(&ctx.arena, |bb| {
+                                        loop_bb_id.find_forward(ctx.arena, |bb| {
                                             if bb.label != cur_label {
                                                 last_updated_label = &bb.label;
-                                                return false;
+                                                false
                                             } else {
-                                                return true;
+                                                true
                                             }
                                         });
                                     }

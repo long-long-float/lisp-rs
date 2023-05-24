@@ -237,7 +237,7 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
     }
 }
 
-fn parse_list<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, AnnotatedAst> {
+fn parse_list(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
     let (left_token, right_token) = if let Some(&TokenWithLocation {
         token: Token::LeftSquareBracket,
         location: _,
@@ -248,7 +248,7 @@ fn parse_list<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, AnnotatedA
         (&Token::LeftParen, &Token::RightParen)
     };
     let (head_loc, tokens) = consume(tokens, left_token)?;
-    let (items, tokens) = consume_while(tokens, |token| token != right_token, |t| parse_value(t))?;
+    let (items, tokens) = consume_while(tokens, |token| token != right_token, parse_value)?;
     let (tail_loc, tokens) = consume(tokens, right_token)?;
 
     let location = LocationRange::new(head_loc.begin, tail_loc.end);
@@ -259,7 +259,7 @@ fn parse_list<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, AnnotatedA
     ))
 }
 
-fn parse_value<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, AnnotatedAst> {
+fn parse_value(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
     if let Some((
         TokenWithLocation {
             token: first,
@@ -329,7 +329,7 @@ fn parse_value<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, Annotated
     }
 }
 
-fn parse_program<'a>(tokens: &'a [TokenWithLocation]) -> ParseResult<'a, Program> {
+fn parse_program(tokens: &[TokenWithLocation]) -> ParseResult<Program> {
     if tokens.is_empty() {
         Ok((Vec::new(), tokens))
     } else {

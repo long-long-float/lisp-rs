@@ -257,7 +257,7 @@ impl AnnotatedInstr {
         }
     }
 
-    pub fn display<'a>(&'a self, colored: bool) -> AnnotatedInstrDisplay {
+    pub fn display(&self, colored: bool) -> AnnotatedInstrDisplay {
         AnnotatedInstrDisplay {
             instr: self,
             colored,

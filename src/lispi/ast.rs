@@ -503,7 +503,7 @@ impl Display for AnnotatedAst {
             Ast::Nil => write!(f, "()"),
             Ast::DefineMacro(DefineMacro { id, args, body }) => {
                 write!(f, "(define-macro {} (", id)?;
-                write_values(f, &args)?;
+                write_values(f, args)?;
                 write!(f, ") ")?;
                 write_values(f, body)?;
                 write!(f, ")")
@@ -638,7 +638,7 @@ pub fn collect_free_vars(asts: &[AnnotatedAst], binds: Vec<SymbolValue>) -> FxHa
     fn collect_free_vars_inner(ast: &AnnotatedAst, ctx: &mut Context) -> Result<()> {
         match &ast.ast {
             Ast::Symbol(sym) | Ast::SymbolWithType(sym, _) => {
-                if ctx.binds.iter().find(|var| var == &sym).is_none() {
+                if !ctx.binds.iter().any(|var| var == sym) {
                     ctx.frees.insert(sym.clone());
                 }
             }
