@@ -219,6 +219,15 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         }
     }
 
+    ir::removing_phi_instructions::remove_phi_instructions(&funcs, &mut ir_ctx);
+
+    if opt.dump {
+        printlnuw(&"Remove phi nodes:".red());
+        for fun in &funcs {
+            fun.dump(&ir_ctx.bb_arena);
+        }
+    }
+
     let func_with_reg_maps =
         ir::register_allocation::create_interference_graph(funcs, &mut ir_ctx)?;
 
