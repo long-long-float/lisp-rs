@@ -5,10 +5,7 @@ use colored::*;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
-use crate::{
-    bug,
-    lispi::{console::printlnuw, ir::register_allocation::RegisterMap},
-};
+use crate::{bug, lispi::ir::register_allocation::RegisterMap};
 
 use super::{
     cli_option::CliOption,
