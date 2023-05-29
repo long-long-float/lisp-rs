@@ -1,7 +1,11 @@
 use anyhow::Result;
+use id_arena::Id;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{bug, lispi::ir::instruction::Operand};
+use crate::{
+    bug,
+    lispi::ir::{basic_block::BasicBlock, instruction::Operand},
+};
 
 use super::{
     super::error::Error,
@@ -216,7 +220,9 @@ pub fn create_interference_graph(
                 let mut prev_all_in_outs = FxHashMap::default();
                 let mut all_in_outs_result = FxHashMap::default();
 
-                let mut all_in_outs = FxHashMap::default();
+                let mut all_in_outs: FxHashMap<&Id<BasicBlock>, Vec<_>> = FxHashMap::default();
+
+                let mut prev_in_vars = FxHashSet::default();
 
                 for _ in 0..10 {
                     let mut def_uses = def_uses.clone();
@@ -226,17 +232,26 @@ pub fn create_interference_graph(
 
                         let mut def_uses_bb = def_uses.remove(bb_id).unwrap();
 
-                        for _ in 0..bb.insts.len() {
+                        let mut in_outs = Vec::new();
+
+                        for i in 0..bb.insts.len() {
                             let (defs, uses) = def_uses_bb.pop().unwrap();
 
+                            let is_last_inst = i == 0;
                             let mut out_vars = FxHashSet::default();
-                            for dest_bb in &bb.destination_bbs {
-                                if let Some((inn, _)) = all_in_outs.get(dest_bb) {
-                                    for v in inn {
-                                        let v: &&Variable = v;
-                                        out_vars.insert(*v);
+                            if is_last_inst {
+                                for dest_bb in &bb.destination_bbs {
+                                    if let Some(in_outs) = all_in_outs.get(dest_bb) {
+                                        if let Some((inn, _)) = in_outs.first() {
+                                            for v in inn {
+                                                let v: &&Variable = v;
+                                                out_vars.insert(*v);
+                                            }
+                                        }
                                     }
                                 }
+                            } else {
+                                out_vars = FxHashSet::from_iter(prev_in_vars.drain());
                             }
 
                             let uses = FxHashSet::from_iter(uses.into_iter());
@@ -244,8 +259,12 @@ pub fn create_interference_graph(
                             let in_vars =
                                 FxHashSet::from_iter(uses.union(&diff).into_iter().map(|v| *v));
 
-                            all_in_outs.insert(bb_id, (in_vars, out_vars));
+                            prev_in_vars = in_vars.clone();
+
+                            in_outs.push((in_vars, out_vars));
                         }
+
+                        all_in_outs.insert(bb_id, in_outs);
                     }
 
                     if all_in_outs == prev_all_in_outs {
@@ -257,6 +276,21 @@ pub fn create_interference_graph(
                 }
 
                 println!("{:#?}", all_in_outs_result);
+
+                for (bb_id, in_outs) in &all_in_outs_result {
+                    let bb = ir_ctx.bb_arena.get(**bb_id).unwrap();
+
+                    println!("{}:", bb.label);
+                    println!("  dead:");
+                    for dest_bb in &bb.destination_bbs {
+                        let dest_bb = ir_ctx.bb_arena.get(*dest_bb).unwrap();
+                        println!("    {}", dest_bb.label);
+                        // let (dest_ins, _) = &all_in_outs_result[dest_bb];
+                        // let dest_bb = ir_ctx.bb_arena.get(*dest_bb).unwrap();
+                        // println!("    {}: {:#?}", dest_bb.label, outs.difference(dest_ins));
+                        //println!("    {:?}: {:#?}", dest_bb, outs.difference(dest_ins));
+                    }
+                }
             }
 
             let mut living_vars = FxHashSet::default();
