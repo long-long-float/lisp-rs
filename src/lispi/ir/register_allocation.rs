@@ -1,5 +1,6 @@
 use anyhow::Result;
 use id_arena::Id;
+use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
@@ -255,9 +256,9 @@ pub fn create_interference_graph(
                             }
 
                             let uses = FxHashSet::from_iter(uses.into_iter());
-                            let diff = FxHashSet::from_iter(out_vars.difference(&defs).map(|v| *v));
+                            let diff = FxHashSet::from_iter(out_vars.difference(&defs).copied());
                             let in_vars =
-                                FxHashSet::from_iter(uses.union(&diff).into_iter().map(|v| *v));
+                                FxHashSet::from_iter(uses.union(&diff).into_iter().copied());
 
                             prev_in_vars = in_vars.clone();
 
@@ -275,22 +276,34 @@ pub fn create_interference_graph(
                     prev_all_in_outs = FxHashMap::from_iter(all_in_outs.clone());
                 }
 
-                println!("{:#?}", all_in_outs_result);
+                // println!("{:#?}", all_in_outs_result);
 
-                for (bb_id, in_outs) in &all_in_outs_result {
-                    let bb = ir_ctx.bb_arena.get(**bb_id).unwrap();
+                for bb_id in &func.basic_blocks {
+                    let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
 
                     println!("{}:", bb.label);
-                    println!("  dead:");
-                    for dest_bb in &bb.destination_bbs {
-                        let dest_bb = ir_ctx.bb_arena.get(*dest_bb).unwrap();
-                        println!("    {}", dest_bb.label);
-                        // let (dest_ins, _) = &all_in_outs_result[dest_bb];
-                        // let dest_bb = ir_ctx.bb_arena.get(*dest_bb).unwrap();
-                        // println!("    {}: {:#?}", dest_bb.label, outs.difference(dest_ins));
-                        //println!("    {:?}: {:#?}", dest_bb, outs.difference(dest_ins));
+                    for curr_inst_idx in 0..bb.insts.len() {
+                        println!("  {}:", curr_inst_idx);
+
+                        print!("    dead: ");
+                        if curr_inst_idx < bb.insts.len() - 1 {
+                            let next_inst_idx = curr_inst_idx + 1;
+
+                            let in_outs = all_in_outs_result.get(bb_id).unwrap();
+
+                            let (_, outs) = &in_outs[curr_inst_idx];
+                            let (ins, _) = &in_outs[next_inst_idx];
+
+                            println!("{:?}", outs.difference(ins));
+                        } else {
+                            // Take from next bb
+                            for dest_bb in &bb.destination_bbs {
+                                let _dest_bb = ir_ctx.bb_arena.get(*dest_bb).unwrap();
+                            }
+                        }
                     }
                 }
+                println!();
             }
 
             let mut living_vars = FxHashSet::default();
