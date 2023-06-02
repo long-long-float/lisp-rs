@@ -26,7 +26,7 @@ mod compiler_test {
         assert!(Path::new("out.elf").exists());
 
         let output = Command::new("./rv32emu/build/rv32emu")
-            .args(["--dump-registers", "out.elf"])
+            .args(["--dump-registers", "-", "--quiet", "out.elf"])
             .output()
             .expect("Failed to execute");
 
