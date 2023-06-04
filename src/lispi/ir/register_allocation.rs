@@ -339,19 +339,35 @@ pub fn create_interference_graph(
                         let in_outs = all_in_outs_result.get(bb_id).unwrap();
                         let (ins, outs) = &in_outs[curr_inst_idx];
 
+                        fn in_args(func: &Function, var: &Variable) -> bool {
+                            func.args.iter().any(|(name, _)| &var.name == name)
+                        }
+
                         for v in ins {
+                            if in_args(&func, *v) {
+                                continue;
+                            }
                             inter_graph.add_node(v);
                         }
 
                         for v in outs {
+                            if in_args(&func, *v) {
+                                continue;
+                            }
                             inter_graph.add_node(v);
                         }
 
                         for (a, b) in ins.iter().tuple_combinations() {
+                            if in_args(&func, *a) || in_args(&func, *b) {
+                                continue;
+                            }
                             inter_graph.connect(*a, *b);
                         }
 
                         for (a, b) in outs.iter().tuple_combinations() {
+                            if in_args(&func, *a) || in_args(&func, *b) {
+                                continue;
+                            }
                             inter_graph.connect(*a, *b);
                         }
                     } else {
