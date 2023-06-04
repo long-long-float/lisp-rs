@@ -25,3 +25,4 @@ itertools = "0.10.5"
 
 [dev-dependencies]
 serde_json = "1.0"
+function_name = "0.3"

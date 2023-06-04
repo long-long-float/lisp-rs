@@ -1,6 +1,9 @@
 out.*
+cfg.gv
 
 test.*
+
+compiler_test_files
 
 /target
 .vscode
