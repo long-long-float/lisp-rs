@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use anyhow::Result;
 use id_arena::Id;
 use itertools::Itertools;
@@ -5,7 +7,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     bug,
-    lispi::ir::{basic_block::BasicBlock, instruction::Operand},
+    lispi::{
+        cli_option::CliOption,
+        ir::{basic_block::BasicBlock, instruction::Operand},
+    },
 };
 
 use super::{
@@ -58,6 +63,7 @@ impl InterferenceGraph {
     }
 
     /// Add an edge between node1 and node2.
+    /// If node1 or node2 don't exist, they will be created.
     fn connect(&mut self, node1: &Variable, node2: &Variable) {
         let node1 = self.get_id_or_add_node(node1);
         let node2 = self.get_id_or_add_node(node2);
@@ -94,6 +100,12 @@ impl InterferenceGraph {
         self.vars.get(var)
     }
 
+    fn get_var(&self, id: IGID) -> Option<&Variable> {
+        self.vars
+            .iter()
+            .find_map(|(var, iid)| if *iid == id { Some(var) } else { None })
+    }
+
     fn get_connected_vars(&self, var: &Variable) -> Vec<IGID> {
         if let Some(&id) = self.get_id(var) {
             self.nodes[id.value]
@@ -117,6 +129,26 @@ impl InterferenceGraph {
         } else {
             false
         }
+    }
+}
+
+impl Display for InterferenceGraph {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (id, connected) in self.nodes.iter().enumerate() {
+            let var = self.get_var(id.into()).unwrap();
+            write!(f, "{} -> ", var.name)?;
+
+            let connected = connected
+                .iter()
+                .map(|id| {
+                    let other = self.get_var(*id).unwrap();
+                    other.name.clone()
+                })
+                .join(", ");
+            writeln!(f, "{}", connected)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -184,6 +216,7 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
 pub fn create_interference_graph(
     funcs: Functions,
     ir_ctx: &mut IrContext,
+    opt: &CliOption,
 ) -> Result<Vec<(Function, RegisterMap)>> {
     // TODO: Take the number from outside
     let num_of_registers = 7;
@@ -191,150 +224,147 @@ pub fn create_interference_graph(
     funcs
         .into_iter()
         .map(|func| {
+            //
             // Calculate lifetime
-            {
-                let mut def_uses = FxHashMap::default();
+            //
+            let mut def_uses = FxHashMap::default();
 
-                for bb_id in &func.basic_blocks {
-                    let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
+            for bb_id in &func.basic_blocks {
+                let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
 
-                    let mut def_uses_bb = Vec::new();
+                let mut def_uses_bb = Vec::new();
 
-                    for annot_inst in &bb.insts {
-                        let mut used_vars = Vec::new();
-                        get_vars(&annot_inst.inst, &mut used_vars);
+                for annot_inst in &bb.insts {
+                    let mut used_vars = Vec::new();
+                    get_vars(&annot_inst.inst, &mut used_vars);
 
-                        let mut def_vars = FxHashSet::default();
-                        if !annot_inst.inst.is_terminal() {
-                            def_vars.insert(&annot_inst.result);
-                        };
+                    let mut def_vars = FxHashSet::default();
+                    if !annot_inst.inst.is_terminal() {
+                        def_vars.insert(&annot_inst.result);
+                    };
 
-                        def_uses_bb.push((def_vars, FxHashSet::from_iter(used_vars.into_iter())));
-                    }
-
-                    def_uses.insert(*bb_id, def_uses_bb);
+                    def_uses_bb.push((def_vars, FxHashSet::from_iter(used_vars.into_iter())));
                 }
 
-                // To make this immutable
-                let def_uses = def_uses;
+                def_uses.insert(*bb_id, def_uses_bb);
+            }
 
-                let mut prev_all_in_outs = FxHashMap::default();
-                let mut all_in_outs_result = FxHashMap::default();
+            // To make this immutable
+            let def_uses = def_uses;
 
-                let mut all_in_outs: FxHashMap<&Id<BasicBlock>, Vec<_>> = FxHashMap::default();
+            let mut prev_all_in_outs = FxHashMap::default();
+            let mut all_in_outs_result = FxHashMap::default();
 
-                let mut prev_in_vars = FxHashSet::default();
+            let mut all_in_outs: FxHashMap<&Id<BasicBlock>, Vec<_>> = FxHashMap::default();
 
-                for _ in 0..10 {
-                    let mut def_uses = def_uses.clone();
+            let mut prev_in_vars = FxHashSet::default();
 
-                    for bb_id in func.basic_blocks.iter().rev() {
-                        let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
+            for _ in 0..10 {
+                let mut def_uses = def_uses.clone();
 
-                        let mut def_uses_bb = def_uses.remove(bb_id).unwrap();
+                for bb_id in func.basic_blocks.iter().rev() {
+                    let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
 
-                        let mut in_outs = Vec::new();
+                    let mut def_uses_bb = def_uses.remove(bb_id).unwrap();
 
-                        for i in 0..bb.insts.len() {
-                            let (defs, uses) = def_uses_bb.pop().unwrap();
+                    let mut in_outs = Vec::new();
 
-                            let is_last_inst = i == 0;
-                            let mut out_vars = FxHashSet::default();
-                            if is_last_inst {
-                                for dest_bb in &bb.destination_bbs {
-                                    if let Some(in_outs) = all_in_outs.get(dest_bb) {
-                                        if let Some((inn, _)) = in_outs.first() {
-                                            for v in inn {
-                                                let v: &&Variable = v;
-                                                out_vars.insert(*v);
-                                            }
+                    for i in 0..bb.insts.len() {
+                        let (defs, uses) = def_uses_bb.pop().unwrap();
+
+                        let is_last_inst = i == 0;
+                        let mut out_vars = FxHashSet::default();
+                        if is_last_inst {
+                            for dest_bb in &bb.destination_bbs {
+                                if let Some(in_outs) = all_in_outs.get(dest_bb) {
+                                    if let Some((inn, _)) = in_outs.first() {
+                                        for v in inn {
+                                            let v: &&Variable = v;
+                                            out_vars.insert(*v);
                                         }
                                     }
                                 }
-                            } else {
-                                out_vars = FxHashSet::from_iter(prev_in_vars.drain());
                             }
-
-                            let uses = FxHashSet::from_iter(uses.into_iter());
-                            let diff = FxHashSet::from_iter(out_vars.difference(&defs).copied());
-                            let in_vars =
-                                FxHashSet::from_iter(uses.union(&diff).into_iter().copied());
-
-                            prev_in_vars = in_vars.clone();
-
-                            in_outs.push((in_vars, out_vars));
+                        } else {
+                            out_vars = FxHashSet::from_iter(prev_in_vars.drain());
                         }
 
-                        all_in_outs.insert(bb_id, in_outs);
+                        let uses = FxHashSet::from_iter(uses.into_iter());
+                        let diff = FxHashSet::from_iter(out_vars.difference(&defs).copied());
+                        let in_vars = FxHashSet::from_iter(uses.union(&diff).into_iter().copied());
+
+                        prev_in_vars = in_vars.clone();
+
+                        in_outs.push((in_vars, out_vars));
                     }
 
-                    if all_in_outs == prev_all_in_outs {
-                        all_in_outs_result = all_in_outs;
-                        break;
-                    }
-
-                    prev_all_in_outs = FxHashMap::from_iter(all_in_outs.clone());
+                    in_outs.reverse();
+                    all_in_outs.insert(bb_id, in_outs);
                 }
 
-                // println!("{:#?}", all_in_outs_result);
+                if all_in_outs == prev_all_in_outs {
+                    all_in_outs_result = all_in_outs;
+                    break;
+                }
 
+                prev_all_in_outs = FxHashMap::from_iter(all_in_outs.clone());
+            }
+
+            if opt.dump {
                 for bb_id in &func.basic_blocks {
                     let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
 
                     println!("{}:", bb.label);
-                    for curr_inst_idx in 0..bb.insts.len() {
-                        println!("  {}:", curr_inst_idx);
 
-                        print!("    dead: ");
-                        if curr_inst_idx < bb.insts.len() - 1 {
-                            let next_inst_idx = curr_inst_idx + 1;
-
-                            let in_outs = all_in_outs_result.get(bb_id).unwrap();
-
-                            let (_, outs) = &in_outs[curr_inst_idx];
-                            let (ins, _) = &in_outs[next_inst_idx];
-
-                            println!("{:?}", outs.difference(ins));
-                        } else {
-                            // Take from next bb
-                            for dest_bb in &bb.destination_bbs {
-                                let _dest_bb = ir_ctx.bb_arena.get(*dest_bb).unwrap();
-                            }
-                        }
+                    for (idx, (ins, outs)) in all_in_outs_result[bb_id].iter().enumerate() {
+                        println!("  {}:", idx);
+                        println!("    in: {}", ins.iter().join(", "));
+                        println!("    out: {}", outs.iter().join(", "));
                     }
                 }
                 println!();
             }
 
-            let mut living_vars = FxHashSet::default();
-
+            //
+            // Build interference graph
+            //
             let mut inter_graph = InterferenceGraph::default();
 
-            for bb in func.basic_blocks.iter().rev() {
-                let bb = ir_ctx.bb_arena.get(*bb).unwrap();
+            for bb_id in &func.basic_blocks {
+                let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
 
-                for annot_inst in bb.insts.iter().rev() {
-                    let mut used_vars = Vec::new();
-                    get_vars(&annot_inst.inst, &mut used_vars);
+                for curr_inst_idx in 0..bb.insts.len() {
+                    if curr_inst_idx < bb.insts.len() - 1 {
+                        // In this case, "out" of curr-inst and "in" of next-inst are self-evidently equal.
+                        let in_outs = all_in_outs_result.get(bb_id).unwrap();
+                        let (ins, outs) = &in_outs[curr_inst_idx];
 
-                    for var in used_vars {
-                        let in_args = func.args.iter().any(|(name, _)| &var.name == name);
-                        if in_args {
-                            continue;
+                        for v in ins {
+                            inter_graph.add_node(v);
                         }
 
-                        living_vars.insert(var);
-                    }
+                        for v in outs {
+                            inter_graph.add_node(v);
+                        }
 
-                    for lvar1 in &living_vars {
-                        for lvar2 in &living_vars {
-                            inter_graph.connect(lvar1, lvar2);
+                        for (a, b) in ins.iter().tuple_combinations() {
+                            inter_graph.connect(*a, *b);
+                        }
+
+                        for (a, b) in outs.iter().tuple_combinations() {
+                            inter_graph.connect(*a, *b);
+                        }
+                    } else {
+                        // Take from next bb
+                        for dest_bb in &bb.destination_bbs {
+                            let _dest_bb = ir_ctx.bb_arena.get(*dest_bb).unwrap();
                         }
                     }
-
-                    let result_var = &annot_inst.result;
-                    living_vars.remove(result_var);
                 }
+            }
+
+            if opt.dump {
+                println!("{}", inter_graph);
             }
 
             // A vector of (IGID, connected IGIDs).
