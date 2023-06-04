@@ -30,8 +30,8 @@ use anyhow::Result;
 use crate::lispi::ast::dump_asts;
 use crate::lispi::cli_option::CliOption;
 use crate::lispi::{
-    environment as env, evaluator as e, macro_expander as m, parser as p, tokenizer as t,
-    typer as ty,
+    environment as env, evaluator as e, ir::instruction as i, macro_expander as m, parser as p,
+    tokenizer as t, typer as ty,
 };
 
 use self::console::printlnuw;
@@ -226,6 +226,26 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         for fun in &funcs {
             fun.dump(&ir_ctx.bb_arena);
         }
+    }
+
+    // Insert a nop instruction to empty BB
+    for func in &funcs {
+        for bb in &func.basic_blocks {
+            let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
+            if bb.insts.is_empty() {
+                bb.insts.push(i::AnnotatedInstr::new(
+                    i::Variable {
+                        name: "".to_string(),
+                    },
+                    ir::instruction::Instruction::Nop,
+                    ty::Type::None,
+                ));
+            }
+        }
+    }
+
+    if opt.dump {
+        ir::compiler::dump_bbs_as_dot(&mut ir_ctx, &funcs, "cfg.gv")?;
     }
 
     let func_with_reg_maps =

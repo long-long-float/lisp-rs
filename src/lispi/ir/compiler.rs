@@ -883,7 +883,7 @@ fn build_connections_between_bbs(ctx: &mut Context, funcs: &[Function]) {
     }
 }
 
-fn dump_bbs_as_dot<P>(ctx: &mut Context, funcs: &[Function], path: P) -> Result<()>
+pub fn dump_bbs_as_dot<P>(ctx: &mut IrContext, funcs: &[Function], path: P) -> Result<()>
 where
     P: AsRef<Path>,
 {
@@ -899,7 +899,7 @@ where
         let mut que = VecDeque::new();
 
         for bb_id in &func.basic_blocks {
-            let bb = ctx.arena.get(*bb_id).unwrap();
+            let bb = ctx.bb_arena.get(*bb_id).unwrap();
             let insts = bb
                 .insts
                 .iter()
@@ -924,12 +924,12 @@ where
             }
             visited_bbs.insert(bb);
 
-            let bb = ctx.arena.get(*bb).unwrap();
+            let bb = ctx.bb_arena.get(*bb).unwrap();
 
             for dbb in &bb.destination_bbs {
                 que.push_back(dbb);
 
-                let dbb = ctx.arena.get(*dbb).unwrap();
+                let dbb = ctx.bb_arena.get(*dbb).unwrap();
 
                 writeln!(out, "    {} -> {};", bb.label, dbb.label)?;
             }
@@ -987,10 +987,6 @@ pub fn compile(asts: Program, ir_ctx: &mut IrContext, opt: &CliOption) -> Result
     build_connections_between_bbs(&mut ctx, &result);
 
     let result = insert_phi_nodes_for_loops(result, &mut ctx);
-
-    if opt.dump {
-        dump_bbs_as_dot(&mut ctx, &result, "cfg.gv")?;
-    }
 
     Ok(result)
 }
