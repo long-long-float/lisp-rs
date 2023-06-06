@@ -96,7 +96,12 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn current_bb(&mut self) -> &mut BasicBlock {
+    fn current_bb(&self) -> &BasicBlock {
+        let id = *self.basic_blocks.last().unwrap();
+        self.arena.get(id).unwrap()
+    }
+
+    fn current_bb_mut(&mut self) -> &mut BasicBlock {
         let id = *self.basic_blocks.last().unwrap();
         self.arena.get_mut(id).unwrap()
     }
@@ -106,7 +111,24 @@ impl<'a> Context<'a> {
     }
 
     fn push_inst(&mut self, inst: AnnotatedInstr) {
-        self.current_bb().push_inst(inst);
+        self.current_bb_mut().push_inst(inst);
+    }
+
+    /// Get the last inserted instruction.
+    /// This function must be called after inserting instructions.
+    fn last_inst(&self) -> Result<AnnotatedInstr> {
+        if let Some(last) = self.current_bb().insts.last() {
+            Ok(last.clone())
+        } else if let Some(last_bb) = self.current_bb().preceding_bb {
+            let last_bb = self.arena.get(last_bb).unwrap();
+            last_bb
+                .insts
+                .last()
+                .cloned()
+                .ok_or_else(|| bug!("Current and preceding BB have no instructions."))
+        } else {
+            Err(bug!("Current BB is at the head and has no instructions."))
+        }
     }
 
     fn new_bb(&mut self, label: String) -> Id<BasicBlock> {
@@ -119,26 +141,15 @@ impl<'a> Context<'a> {
     }
 }
 
-fn get_last_instr(insts: &Instructions) -> AnnotatedInstr {
-    insts.last().unwrap().clone()
-}
-
 fn compile_and_add(
     result: &mut Vec<AnnotatedInstr>,
     ast: AnnotatedAst,
     ctx: &mut Context,
 ) -> Result<AnnotatedInstr> {
     let mut insts = compile_ast(ast, ctx)?;
-    let inst = if let Some(last) = ctx.current_bb().insts.last() {
-        last.clone()
-    } else if let Some(last_bb) = ctx.current_bb().preceding_bb {
-        let last_bb = ctx.arena.get(last_bb).unwrap();
-        last_bb.insts.last().unwrap().clone()
-    } else {
-        return Err(bug!("Unmet condition"));
-    };
     result.append(&mut insts);
-    Ok(inst)
+
+    ctx.last_inst()
 }
 
 fn add_instr(
@@ -693,7 +704,7 @@ fn compile_main_function(
         body.append(&mut insts);
     }
 
-    let res = get_last_instr(&body);
+    let res = ctx.last_inst()?;
     add_instr(
         &mut body,
         ctx,
