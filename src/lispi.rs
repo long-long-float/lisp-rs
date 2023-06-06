@@ -178,7 +178,7 @@ pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value,
 pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     let (program, mut _env) = frontend(program, opt)?;
 
-    let mut ir_ctx = ir::IrContext::new();
+    let mut ir_ctx = ir::IrContext::default();
 
     let funcs = ir::compiler::compile(program, &mut ir_ctx, opt)?;
 

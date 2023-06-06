@@ -23,33 +23,31 @@ pub type RegisterMap = FxHashMap<Variable, usize>;
 
 /// ID in Interference Graph
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-struct IGID {
-    value: usize,
-}
+struct Igid(usize);
 
-impl IGID {
-    fn new(value: usize) -> Self {
-        IGID { value }
+impl Igid {
+    fn value(&self) -> usize {
+        self.0
     }
 }
 
-impl From<usize> for IGID {
+impl From<usize> for Igid {
     fn from(value: usize) -> Self {
-        IGID::new(value)
+        Igid(value)
     }
 }
 
 #[derive(Default)]
 /// Undirected graph for interference analyzation.
 struct InterferenceGraph {
-    vars: FxHashMap<Variable, IGID>,
+    vars: FxHashMap<Variable, Igid>,
 
     /// Adjacency list
-    nodes: Vec<FxHashSet<IGID>>,
+    nodes: Vec<FxHashSet<Igid>>,
 }
 
 impl InterferenceGraph {
-    fn add_node(&mut self, var: &Variable) -> IGID {
+    fn add_node(&mut self, var: &Variable) -> Igid {
         if let Some(id) = self.vars.get(var) {
             *id
         } else {
@@ -72,14 +70,14 @@ impl InterferenceGraph {
             return;
         }
 
-        self.nodes[node1.value].insert(node2);
-        self.nodes[node2.value].insert(node1);
+        self.nodes[node1.value()].insert(node2);
+        self.nodes[node2.value()].insert(node1);
     }
 
     /// Remove var node and edges from/to var.
     fn remove(&mut self, var: &Variable) {
         if let Some(&id) = self.get_id(var) {
-            self.nodes[id.value].clear();
+            self.nodes[id.value()].clear();
             for node in &mut self.nodes {
                 node.remove(&id);
             }
@@ -88,7 +86,7 @@ impl InterferenceGraph {
         }
     }
 
-    fn get_id_or_add_node(&mut self, var: &Variable) -> IGID {
+    fn get_id_or_add_node(&mut self, var: &Variable) -> Igid {
         if let Some(id) = self.get_id(var) {
             *id
         } else {
@@ -96,19 +94,19 @@ impl InterferenceGraph {
         }
     }
 
-    fn get_id(&self, var: &Variable) -> Option<&IGID> {
+    fn get_id(&self, var: &Variable) -> Option<&Igid> {
         self.vars.get(var)
     }
 
-    fn get_var(&self, id: IGID) -> Option<&Variable> {
+    fn get_var(&self, id: Igid) -> Option<&Variable> {
         self.vars
             .iter()
             .find_map(|(var, iid)| if *iid == id { Some(var) } else { None })
     }
 
-    fn get_connected_vars(&self, var: &Variable) -> Vec<IGID> {
+    fn get_connected_vars(&self, var: &Variable) -> Vec<Igid> {
         if let Some(&id) = self.get_id(var) {
-            self.nodes[id.value]
+            self.nodes[id.value()]
                 .iter()
                 .map(|id| id.to_owned())
                 .collect::<Vec<_>>()
@@ -125,7 +123,7 @@ impl InterferenceGraph {
     #[allow(dead_code)]
     fn is_connected_to(&self, src: &Variable, dest: &Variable) -> bool {
         if let (Some(&src), Some(dest)) = (self.get_id(src), self.get_id(dest)) {
-            self.nodes[src.value].contains(dest)
+            self.nodes[src.value()].contains(dest)
         } else {
             false
         }
@@ -344,31 +342,31 @@ pub fn create_interference_graph(
                         }
 
                         for v in ins {
-                            if in_args(&func, *v) {
+                            if in_args(&func, v) {
                                 continue;
                             }
                             inter_graph.add_node(v);
                         }
 
                         for v in outs {
-                            if in_args(&func, *v) {
+                            if in_args(&func, v) {
                                 continue;
                             }
                             inter_graph.add_node(v);
                         }
 
                         for (a, b) in ins.iter().tuple_combinations() {
-                            if in_args(&func, *a) || in_args(&func, *b) {
+                            if in_args(&func, a) || in_args(&func, b) {
                                 continue;
                             }
-                            inter_graph.connect(*a, *b);
+                            inter_graph.connect(a, b);
                         }
 
                         for (a, b) in outs.iter().tuple_combinations() {
-                            if in_args(&func, *a) || in_args(&func, *b) {
+                            if in_args(&func, a) || in_args(&func, b) {
                                 continue;
                             }
-                            inter_graph.connect(*a, *b);
+                            inter_graph.connect(a, b);
                         }
                     } else {
                         // Take from next bb

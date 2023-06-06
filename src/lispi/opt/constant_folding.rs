@@ -145,12 +145,10 @@ where
         let op = Operand::Immediate(Immediate::Integer(val));
         insert_imm(ctx, &op, var);
         I::Operand(op)
+    } else if unfolding_for_riscv {
+        if_else(left, right)
     } else {
-        if unfolding_for_riscv {
-            if_else(left, right)
-        } else {
-            if_else(folded_left, right)
-        }
+        if_else(folded_left, right)
     }
 }
 
@@ -180,12 +178,10 @@ where
         let op = Operand::Immediate(Immediate::Boolean(val));
         insert_imm(ctx, &op, var);
         I::Operand(op)
+    } else if unfolding_for_riscv {
+        if_else(left, right)
     } else {
-        if unfolding_for_riscv {
-            if_else(left, right)
-        } else {
-            if_else(folded_left, right)
-        }
+        if_else(folded_left, right)
     }
 }
 

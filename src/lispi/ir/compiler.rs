@@ -75,7 +75,7 @@ impl<'a> Context<'a> {
             func_labels: Environment::default(),
             funcs: Environment::default(),
             func_fvs,
-            var_gen: UniqueGenerator::new(),
+            var_gen: UniqueGenerator::default(),
             arena,
             basic_blocks: Vec::new(),
             loop_label_map: FxHashMap::default(),
@@ -941,7 +941,7 @@ where
     Ok(())
 }
 
-pub fn compile(asts: Program, ir_ctx: &mut IrContext, opt: &CliOption) -> Result<Functions> {
+pub fn compile(asts: Program, ir_ctx: &mut IrContext, _opt: &CliOption) -> Result<Functions> {
     let mut result = Vec::new();
 
     let main_bb = ir_ctx

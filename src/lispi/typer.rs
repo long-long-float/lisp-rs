@@ -990,7 +990,7 @@ pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Resul
 
     let mut ctx = Context {
         env: ty_env,
-        tv_gen: UniqueGenerator::new(),
+        tv_gen: UniqueGenerator::default(),
     };
     let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
     // for c in &constraints {

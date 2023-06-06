@@ -14,6 +14,7 @@ macro_rules! assert_error {
     };
 }
 
+#[allow(dead_code)]
 pub static EPS: f32 = 0.0001;
 
 #[macro_export]
