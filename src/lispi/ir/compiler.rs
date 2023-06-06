@@ -141,31 +141,18 @@ impl<'a> Context<'a> {
     }
 }
 
-fn compile_and_add(
-    result: &mut Vec<AnnotatedInstr>,
-    ast: AnnotatedAst,
-    ctx: &mut Context,
-) -> Result<AnnotatedInstr> {
-    let mut insts = compile_ast(ast, ctx)?;
-    result.append(&mut insts);
-
+fn compile_and_add(ast: AnnotatedAst, ctx: &mut Context) -> Result<AnnotatedInstr> {
+    compile_ast(ast, ctx)?;
     ctx.last_inst()
 }
 
-fn add_instr(
-    result: &mut Vec<AnnotatedInstr>,
-    ctx: &mut Context,
-    inst: Instruction,
-    ty: Type,
-) -> AnnotatedInstr {
+fn add_instr(ctx: &mut Context, inst: Instruction, ty: Type) -> AnnotatedInstr {
     let inst = AnnotatedInstr::new(ctx.gen_var(), inst, ty);
-    result.push(inst.clone());
     ctx.push_inst(inst.clone());
     inst
 }
 
 fn add_instr_with_tags(
-    result: &mut Vec<AnnotatedInstr>,
     ctx: &mut Context,
     inst: Instruction,
     ty: Type,
@@ -173,7 +160,6 @@ fn add_instr_with_tags(
 ) -> AnnotatedInstr {
     let mut inst = AnnotatedInstr::new(ctx.gen_var(), inst, ty);
     inst.tags = tags;
-    result.push(inst.clone());
     ctx.push_inst(inst.clone());
     inst
 }
@@ -198,7 +184,7 @@ fn collect_updated_vars(asts: &[AnnotatedAst]) -> Vec<SymbolValue> {
     fvs
 }
 
-fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
+fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
     use Instruction as I;
 
     let AnnotatedAst {
@@ -207,17 +193,13 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         ty: ast_ty,
     } = ast;
 
-    let mut result = Vec::new();
-
     match ast {
         Ast::List(vs) => {
             if let Some((fun_ast, args)) = vs.split_first() {
                 let args = args
                     .iter()
-                    .map(|arg| compile_and_add(&mut result, arg.clone(), ctx))
+                    .map(|arg| compile_and_add(arg.clone(), ctx))
                     .collect::<Result<Vec<_>>>()?;
-
-                // result.append(&mut args.clone().into_iter().flatten().collect::<Vec<_>>());
 
                 if let AnnotatedAst {
                     ast: Ast::Symbol(fun_sym),
@@ -245,11 +227,10 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                                 ">>" => I::Shift(ShiftOperator::LogicalRight, left, right),
                                 _ => return Err(bug!()),
                             };
-                            add_instr(&mut result, ctx, inst, ast_ty);
+                            add_instr(ctx, inst, ast_ty);
                         }
                         "io-write" => {
                             add_instr(
-                                &mut result,
                                 ctx,
                                 I::Store(
                                     Operand::Variable(args[0].result.clone()),
@@ -260,10 +241,10 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                         }
                         "not" => {
                             let value = args[0].result.clone();
-                            add_instr(&mut result, ctx, I::Not(Operand::Variable(value)), ast_ty);
+                            add_instr(ctx, I::Not(Operand::Variable(value)), ast_ty);
                         }
                         _ => {
-                            let fun = compile_and_add(&mut result, fun_ast.clone(), ctx)?;
+                            let fun = compile_and_add(fun_ast.clone(), ctx)?;
 
                             let args = args
                                 .into_iter()
@@ -281,7 +262,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                             // }
 
                             add_instr(
-                                &mut result,
                                 ctx,
                                 I::Call {
                                     fun: Operand::Variable(fun.result),
@@ -299,7 +279,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::Quoted(_) => todo!(),
         Ast::Integer(v) => {
             add_instr(
-                &mut result,
                 ctx,
                 I::Operand(Operand::Immediate(Immediate::Integer(v))),
                 ast_ty,
@@ -309,13 +288,12 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::Symbol(sym) => {
             if let Some(label) = ctx.func_labels.find_var(&sym) {
                 add_instr(
-                    &mut result,
                     ctx,
                     I::Operand(Operand::Immediate(Immediate::Label(label))),
                     ast_ty,
                 );
             } else if let Some(var) = ctx.env.find_var(&sym) {
-                add_instr(&mut result, ctx, I::Operand(Operand::Variable(var)), ast_ty);
+                add_instr(ctx, I::Operand(Operand::Variable(var)), ast_ty);
             } else {
                 return Err(Error::UndefinedVariable(sym, "compiling")
                     .with_null_location()
@@ -325,7 +303,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::SymbolWithType(_, _) => todo!(),
         Ast::Boolean(v) => {
             add_instr(
-                &mut result,
                 ctx,
                 I::Operand(Operand::Immediate(Immediate::Boolean(v))),
                 ast_ty,
@@ -336,7 +313,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         Ast::Nil => todo!(),
         Ast::DefineMacro(_) => todo!(),
         Ast::Define(Define { id, init }) => {
-            let inst = compile_and_add(&mut result, *init, ctx)?;
+            let inst = compile_and_add(*init, ctx)?;
 
             // If inst was a Function here, register the id and FV as a pair to fun_fvs.
             // Get the required FV from fun_fvs at Call time and pass the FV in addition to the argument
@@ -360,7 +337,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             var_loc: _,
             value,
         }) => {
-            let value = compile_and_add(&mut result, *value, ctx)?;
+            let value = compile_and_add(*value, ctx)?;
             ctx.env.update_var(var.clone(), &value.result)?;
 
             let bb = ctx.current_bb_id();
@@ -371,7 +348,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             then_ast,
             else_ast,
         }) => {
-            let cond = compile_and_add(&mut result, *cond, ctx)?;
+            let cond = compile_and_add(*cond, ctx)?;
             let then_label = ctx.gen_label();
             let else_label = ctx.gen_label();
             let end_label = ctx.gen_label();
@@ -380,7 +357,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let else_bb = ctx.new_bb(else_label.name.clone());
 
             add_instr(
-                &mut result,
                 ctx,
                 I::Branch {
                     cond: Operand::Variable(cond.result),
@@ -395,26 +371,20 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             let end_bb = ctx.new_bb(end_label.name.clone());
 
             ctx.add_bb(then_bb);
-            let then_res = compile_and_add(&mut result, *then_ast, ctx)?;
-            add_instr(
-                &mut result,
-                ctx,
-                I::Jump(end_label.clone(), end_bb),
-                Type::None,
-            );
+            let then_res = compile_and_add(*then_ast, ctx)?;
+            add_instr(ctx, I::Jump(end_label.clone(), end_bb), Type::None);
 
             ctx.add_bb(else_bb);
             let else_res = if let Some(else_ast) = else_ast {
-                Some(compile_and_add(&mut result, *else_ast, ctx)?)
+                Some(compile_and_add(*else_ast, ctx)?)
             } else {
                 None
             };
-            add_instr(&mut result, ctx, I::Jump(end_label, end_bb), Type::None);
+            add_instr(ctx, I::Jump(end_label, end_bb), Type::None);
 
             ctx.add_bb(end_bb);
             if let Some(else_res) = else_res {
                 add_instr(
-                    &mut result,
                     ctx,
                     I::Phi(vec![
                         (Operand::Variable(then_res.result), then_label),
@@ -423,12 +393,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
                     ast_ty,
                 );
             } else {
-                add_instr(
-                    &mut result,
-                    ctx,
-                    I::Operand(Operand::Variable(then_res.result)),
-                    ast_ty,
-                );
+                add_instr(ctx, I::Operand(Operand::Variable(then_res.result)), ast_ty);
             }
         }
         Ast::Cond(_) => todo!(),
@@ -436,19 +401,17 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             sequential: _,
             proc_id: _,
             inits,
-            body,
+            body: _,
         }) => {
             for (id, init) in inits {
                 // sequential
-                let inst = compile_and_add(&mut result, init, ctx)?;
+                let inst = compile_and_add(init, ctx)?;
                 ctx.env.insert_var(id, inst.result);
             }
-
-            result.append(&mut compile_asts(body, ctx)?);
         }
         Ast::Begin(Begin { body }) => {
             for inst in body {
-                compile_and_add(&mut result, inst, ctx)?;
+                compile_and_add(inst, ctx)?;
             }
         }
         Ast::BuildList(_) => todo!(),
@@ -461,7 +424,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             let mut init_vars = Vec::new();
             for (_id, value) in &inits {
-                let inst = compile_and_add(&mut result, value.clone(), ctx)?;
+                let inst = compile_and_add(value.clone(), ctx)?;
                 init_vars.push(inst.clone());
             }
 
@@ -477,7 +440,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             for (index, ((id, _value), init)) in inits.into_iter().zip(init_vars).enumerate() {
                 let inst = add_instr_with_tags(
-                    &mut result,
                     ctx,
                     Instruction::Operand(Operand::Variable(init.result)),
                     init.ty,
@@ -496,7 +458,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             for fv_id in updated_free_vars {
                 let fv = ctx.env.find_var(fv_id).unwrap();
                 let inst = add_instr_with_tags(
-                    &mut result,
                     ctx,
                     Instruction::Operand(Operand::Variable(fv.clone())),
                     Type::None,
@@ -514,7 +475,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             ctx.loop_label_map.insert(label, (loop_label, loop_bb));
 
             for inst in body {
-                compile_and_add(&mut result, inst, ctx)?;
+                compile_and_add(inst, ctx)?;
             }
 
             ctx.add_bb(end_bb);
@@ -524,16 +485,11 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 
             let updated_vars = updates
                 .into_iter()
-                .map(|update| {
-                    Ok((
-                        compile_and_add(&mut result, update, ctx)?,
-                        ctx.current_bb_id(),
-                    ))
-                })
+                .map(|update| Ok((compile_and_add(update, ctx)?, ctx.current_bb_id())))
                 .collect::<Result<Vec<_>>>()?;
             ctx.loop_updates_map.insert(label, updated_vars);
 
-            add_instr(&mut result, ctx, I::Jump(loop_label, loop_bb), Type::None);
+            add_instr(ctx, I::Jump(loop_label, loop_bb), Type::None);
 
             let label = ctx.gen_label();
             let bb = ctx.new_bb(label.name);
@@ -592,7 +548,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
             ctx.funcs.insert_var(name.clone(), fun);
 
             add_instr(
-                &mut result,
                 ctx,
                 I::Operand(Operand::Immediate(Immediate::Label(Label { name }))),
                 ast_ty,
@@ -600,7 +555,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
         }
     }
 
-    Ok(result)
+    Ok(())
 }
 
 // fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<AnnotatedAst> {
@@ -679,13 +634,11 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<Instructions> {
 //     }
 // }
 
-fn compile_asts(asts: Vec<AnnotatedAst>, ctx: &mut Context) -> Result<Instructions> {
-    let mut result = Vec::new();
+fn compile_asts(asts: Vec<AnnotatedAst>, ctx: &mut Context) -> Result<()> {
     for ast in asts {
-        let mut insts = compile_ast(ast, ctx)?;
-        result.append(&mut insts);
+        compile_ast(ast, ctx)?;
     }
-    Ok(result)
+    Ok(())
 }
 
 fn compile_main_function(
@@ -694,19 +647,15 @@ fn compile_main_function(
     main_bb: Id<BasicBlock>,
     ctx: &mut Context,
 ) -> Result<()> {
-    let mut body = Vec::new();
-
     ctx.basic_blocks.clear();
     ctx.add_bb(main_bb);
 
     for ast in asts {
-        let mut insts = compile_ast(ast, ctx)?;
-        body.append(&mut insts);
+        compile_ast(ast, ctx)?;
     }
 
     let res = ctx.last_inst()?;
     add_instr(
-        &mut body,
         ctx,
         Instruction::Ret(Operand::Variable(res.result)),
         Type::None,
@@ -960,11 +909,6 @@ pub fn compile(asts: Program, ir_ctx: &mut IrContext, _opt: &CliOption) -> Resul
         .alloc(BasicBlock::new("main".to_string(), None));
 
     let mut ctx = Context::new(&mut ir_ctx.bb_arena);
-
-    // let asts = asts
-    //     .into_iter()
-    //     .map(|ast| compile_lambdas_ast(ast, &mut ctx))
-    //     .collect::<Result<Vec<_>>>()?;
 
     compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
 
