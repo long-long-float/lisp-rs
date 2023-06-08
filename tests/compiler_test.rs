@@ -141,8 +141,8 @@ x
     #[test]
     #[named]
     fn define_function_and_call_directly() {
-        let registers = compile_and_run(function_name!(), "((lambda (x) (* x x)) 5)");
-        assert_eq!(Some(25), registers["x10"].as_i64());
+        let registers = compile_and_run(function_name!(), "((lambda (x) (+ x x)) 5)");
+        assert_eq!(Some(10), registers["x10"].as_i64());
     }
 
     #[test]

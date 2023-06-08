@@ -185,6 +185,101 @@ fn collect_updated_vars(asts: &[AnnotatedAst]) -> Vec<SymbolValue> {
     fvs
 }
 
+fn compile_apply_lambda(
+    lambda_ast: AnnotatedAst,
+    args: Vec<AnnotatedInstr>,
+    ast_ty: Type,
+    ctx: &mut Context,
+) -> Result<()> {
+    let fun = compile_and_add(lambda_ast, ctx)?;
+
+    let args = args
+        .into_iter()
+        .map(|arg| Operand::Variable(arg.result))
+        .collect::<Vec<_>>();
+
+    // if let Some(func_fv) = ctx.func_fvs.find_var(fun_sym) {
+    //     for fv in func_fv {
+    //         // TODO: We should find the variable fv from the context which called function is 'defined'.
+    //         // However we find it from the context which the function is 'called'.
+    //         if let Some(fv) = ctx.env.find_var(&fv) {
+    //             args.push(Operand::Variable(fv));
+    //         }
+    //     }
+    // }
+
+    add_instr(
+        ctx,
+        Instruction::Call {
+            fun: Operand::Variable(fun.result),
+            args,
+        },
+        ast_ty,
+    );
+
+    Ok(())
+}
+
+fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: Type, ctx: &mut Context) -> Result<()> {
+    use Instruction as I;
+
+    if let Some((fun_ast, args)) = vs.split_first() {
+        let args = args
+            .iter()
+            .map(|arg| compile_and_add(arg.clone(), ctx))
+            .collect::<Result<Vec<_>>>()?;
+
+        match &fun_ast.ast {
+            Ast::Symbol(fun_sym) => {
+                let name = fun_sym.as_str();
+                match name {
+                    "+" | "-" | "*" | "<=" | "<" | ">" | "or" | "<<" | ">>" => {
+                        let left = args[0].result.clone();
+                        let right = args[1].result.clone();
+
+                        let left = Operand::Variable(left);
+                        let right = Operand::Variable(right);
+
+                        let inst = match name {
+                            "+" => I::Add(left, right),
+                            "-" => I::Sub(left, right),
+                            "*" => I::Mul(left, right),
+                            "<=" => I::Cmp(CmpOperator::SGE, left, right),
+                            ">" => I::Cmp(CmpOperator::SGT, left, right),
+                            "<" => I::Cmp(CmpOperator::SLT, left, right),
+                            "or" => I::Or(left, right),
+                            "<<" => I::Shift(ShiftOperator::LogicalLeft, left, right),
+                            ">>" => I::Shift(ShiftOperator::LogicalRight, left, right),
+                            _ => return Err(bug!()),
+                        };
+                        add_instr(ctx, inst, ast_ty);
+                    }
+                    "io-write" => {
+                        add_instr(
+                            ctx,
+                            I::Store(
+                                Operand::Variable(args[0].result.clone()),
+                                Operand::Variable(args[1].result.clone()),
+                            ),
+                            ast_ty,
+                        );
+                    }
+                    "not" => {
+                        let value = args[0].result.clone();
+                        add_instr(ctx, I::Not(Operand::Variable(value)), ast_ty);
+                    }
+                    _ => compile_apply_lambda(fun_ast.clone(), args, ast_ty, ctx)?,
+                }
+                Ok(())
+            }
+            Ast::Lambda(_) => compile_apply_lambda(fun_ast.clone(), args, ast_ty, ctx),
+            _ => Err(unimplemented!()),
+        }
+    } else {
+        Err(unimplemented!())
+    }
+}
+
 fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
     use Instruction as I;
 
@@ -195,88 +290,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
     } = ast;
 
     match ast {
-        Ast::List(vs) => {
-            if let Some((fun_ast, args)) = vs.split_first() {
-                let args = args
-                    .iter()
-                    .map(|arg| compile_and_add(arg.clone(), ctx))
-                    .collect::<Result<Vec<_>>>()?;
-
-                if let AnnotatedAst {
-                    ast: Ast::Symbol(fun_sym),
-                    ..
-                } = fun_ast
-                {
-                    let name = fun_sym.as_str();
-                    match name {
-                        "+" | "-" | "*" | "<=" | "<" | ">" | "or" | "<<" | ">>" => {
-                            let left = args[0].result.clone();
-                            let right = args[1].result.clone();
-
-                            let left = Operand::Variable(left);
-                            let right = Operand::Variable(right);
-
-                            let inst = match name {
-                                "+" => I::Add(left, right),
-                                "-" => I::Sub(left, right),
-                                "*" => I::Mul(left, right),
-                                "<=" => I::Cmp(CmpOperator::SGE, left, right),
-                                ">" => I::Cmp(CmpOperator::SGT, left, right),
-                                "<" => I::Cmp(CmpOperator::SLT, left, right),
-                                "or" => I::Or(left, right),
-                                "<<" => I::Shift(ShiftOperator::LogicalLeft, left, right),
-                                ">>" => I::Shift(ShiftOperator::LogicalRight, left, right),
-                                _ => return Err(bug!()),
-                            };
-                            add_instr(ctx, inst, ast_ty);
-                        }
-                        "io-write" => {
-                            add_instr(
-                                ctx,
-                                I::Store(
-                                    Operand::Variable(args[0].result.clone()),
-                                    Operand::Variable(args[1].result.clone()),
-                                ),
-                                ast_ty,
-                            );
-                        }
-                        "not" => {
-                            let value = args[0].result.clone();
-                            add_instr(ctx, I::Not(Operand::Variable(value)), ast_ty);
-                        }
-                        _ => {
-                            let fun = compile_and_add(fun_ast.clone(), ctx)?;
-
-                            let args = args
-                                .into_iter()
-                                .map(|arg| Operand::Variable(arg.result))
-                                .collect::<Vec<_>>();
-
-                            // if let Some(func_fv) = ctx.func_fvs.find_var(fun_sym) {
-                            //     for fv in func_fv {
-                            //         // TODO: We should find the variable fv from the context which called function is 'defined'.
-                            //         // However we find it from the context which the function is 'called'.
-                            //         if let Some(fv) = ctx.env.find_var(&fv) {
-                            //             args.push(Operand::Variable(fv));
-                            //         }
-                            //     }
-                            // }
-
-                            add_instr(
-                                ctx,
-                                I::Call {
-                                    fun: Operand::Variable(fun.result),
-                                    args,
-                                },
-                                ast_ty,
-                            );
-                        }
-                    }
-                }
-            } else {
-                return Err(unimplemented!());
-            }
-        }
+        Ast::List(vs) => compile_apply(vs, ast_ty, ctx)?,
         Ast::Quoted(_) => todo!(),
         Ast::Integer(v) => {
             add_instr(
