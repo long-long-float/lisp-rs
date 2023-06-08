@@ -989,25 +989,26 @@ pub fn generate_code(
                         )?;
                     }
                     Call { fun, args } => {
-                        ctx.arg_count = 0;
-                        for arg in args {
-                            load_argument(&mut ctx, &mut insts, &register_map, arg);
-                        }
-
-                        // Save caller-saved registers
-                        // Now only for temporary registers
                         let used_regs = register_map
                             .values()
                             .unique()
                             .map(|id| Register::t(*id as u32))
+                            .chain(args.iter().enumerate().map(|(i, _)| Register::a(i as u32)))
+                            .filter(|reg| reg != &result_reg)
                             .collect_vec();
 
+                        // Save caller-saved registers for temporary and function arguments registers now
                         for (i, reg) in used_regs.iter().enumerate() {
                             insts.push(Instruction::sw(
                                 reg.clone(),
                                 Register::sp(),
                                 Immediate::new((i as i32 + 2) * 4, XLEN),
                             ));
+                        }
+
+                        ctx.arg_count = 0;
+                        for arg in args {
+                            load_argument(&mut ctx, &mut insts, &register_map, arg);
                         }
 
                         if let i::Operand::Immediate(i::Immediate::Label(label)) = fun {
@@ -1020,6 +1021,8 @@ pub fn generate_code(
                             todo!()
                         }
 
+                        insts.push(Instruction::mv(result_reg, Register::a(0)));
+
                         // Load caller-saved registers
                         for (i, reg) in used_regs.iter().enumerate() {
                             insts.push(Instruction::lw(
@@ -1028,8 +1031,6 @@ pub fn generate_code(
                                 Immediate::new((i as i32 + 2) * 4, XLEN),
                             ));
                         }
-
-                        insts.push(Instruction::mv(result_reg, Register::a(0)));
                     }
                     Phi(_nodes) => {}
                     Operand(op) => {
