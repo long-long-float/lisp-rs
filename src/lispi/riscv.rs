@@ -10,7 +10,7 @@ use crate::{bug, lispi::ir::register_allocation::RegisterMap};
 use super::{
     cli_option::CliOption,
     error::*,
-    ir::{instruction as i, register_allocation as ra, IrContext},
+    ir::{basic_block as bb, instruction as i, register_allocation as ra, IrContext},
 };
 
 type RegisterType = u32;
@@ -749,7 +749,7 @@ fn generate_code_bin_op(
 }
 
 pub fn generate_code(
-    funcs: Vec<(i::Function, ra::RegisterMap)>,
+    funcs: Vec<(bb::Function, ra::RegisterMap)>,
     ir_ctx: &mut IrContext,
     opt: &CliOption,
 ) -> Result<Codes> {

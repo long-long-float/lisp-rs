@@ -3,6 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lispi::ir::IrContext;
 
+use super::super::ir::basic_block::*;
 use super::super::ir::instruction::*;
 
 use Instruction as I;

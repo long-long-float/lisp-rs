@@ -9,13 +9,16 @@ use crate::{
     bug,
     lispi::{
         cli_option::CliOption,
-        ir::{basic_block::BasicBlock, instruction::Operand},
+        ir::{
+            basic_block::{BasicBlock, Function, Functions},
+            instruction::Operand,
+        },
     },
 };
 
 use super::{
     super::error::Error,
-    instruction::{Function, Functions, Instruction, Variable},
+    instruction::{Instruction, Variable},
     IrContext,
 };
 

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs::File, io::Write, path::Path, vec};
+use std::vec;
 
 use anyhow::Result;
 use id_arena::{Arena, Id};
@@ -10,7 +10,8 @@ use super::{
         ast::*, environment::Environment, error::Error, evaluator as e, parser::*, typer::Type,
         unique_generator::UniqueGenerator,
     },
-    basic_block::BasicBlock,
+    basic_block as bb,
+    basic_block::{BasicBlock, Function, Functions},
     tag::LoopPhiFunctionSite,
     IrContext,
 };
@@ -797,110 +798,6 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
         .collect()
 }
 
-fn connect_bbs(ctx: &mut Context, source_id: &Id<BasicBlock>, dest_id: &Id<BasicBlock>) {
-    let source = ctx.arena.get_mut(*source_id).unwrap();
-    source.destination_bbs.insert(*dest_id);
-
-    let dest = ctx.arena.get_mut(*dest_id).unwrap();
-    dest.source_bbs.insert(*source_id);
-}
-
-fn build_connections_between_bbs(ctx: &mut Context, funcs: &[Function]) {
-    for func in funcs {
-        // Connect consecutive basic blocks
-        for (forward_id, back_id) in func.basic_blocks.iter().tuple_windows() {
-            let forward_bb = ctx.arena.get(*forward_id).unwrap();
-            let is_terminal = forward_bb
-                .insts
-                .last()
-                .map_or(false, |inst| inst.inst.is_terminal());
-
-            if !is_terminal {
-                connect_bbs(ctx, forward_id, back_id);
-            }
-        }
-
-        // Connect non-consecutive (e.g. jump) basic blocks
-        for curr_id in &func.basic_blocks {
-            let curr_bb = ctx.arena.get(*curr_id).unwrap();
-
-            let insts = curr_bb.insts.clone();
-            for inst in insts {
-                match &inst.inst {
-                    Instruction::Branch {
-                        then_bb: then_id,
-                        else_bb: else_id,
-                        ..
-                    } => {
-                        connect_bbs(ctx, curr_id, then_id);
-                        connect_bbs(ctx, curr_id, else_id);
-                    }
-                    Instruction::Jump(_, dest_id) => connect_bbs(ctx, curr_id, dest_id),
-                    _ => {}
-                }
-            }
-        }
-    }
-}
-
-pub fn dump_bbs_as_dot<P>(ctx: &mut IrContext, funcs: &[Function], path: P) -> Result<()>
-where
-    P: AsRef<Path>,
-{
-    let mut out = File::create(path)?;
-
-    writeln!(
-        out,
-        "digraph cfg {{
-    node [shape=box, nojustify=true]"
-    )?;
-
-    for func in funcs {
-        let mut que = VecDeque::new();
-
-        for bb_id in &func.basic_blocks {
-            let bb = ctx.bb_arena.get(*bb_id).unwrap();
-            let insts = bb
-                .insts
-                .iter()
-                .map(|inst| inst.display(false).to_string())
-                .join("\\l");
-            writeln!(
-                out,
-                "    {} [label=\"{}:\\l{}\\l\"]",
-                bb.label, bb.label, insts
-            )?;
-        }
-
-        if let Some(bb) = func.basic_blocks.first() {
-            que.push_back(bb);
-        }
-
-        let mut visited_bbs = FxHashSet::default();
-
-        while let Some(bb) = que.pop_back() {
-            if visited_bbs.contains(bb) {
-                continue;
-            }
-            visited_bbs.insert(bb);
-
-            let bb = ctx.bb_arena.get(*bb).unwrap();
-
-            for dbb in &bb.destination_bbs {
-                que.push_back(dbb);
-
-                let dbb = ctx.bb_arena.get(*dbb).unwrap();
-
-                writeln!(out, "    {} -> {};", bb.label, dbb.label)?;
-            }
-        }
-    }
-
-    writeln!(out, "}}")?;
-
-    Ok(())
-}
-
 pub fn compile(asts: Program, ir_ctx: &mut IrContext, _opt: &CliOption) -> Result<Functions> {
     let mut result = Vec::new();
 
@@ -939,7 +836,7 @@ pub fn compile(asts: Program, ir_ctx: &mut IrContext, _opt: &CliOption) -> Resul
         }
     }
 
-    build_connections_between_bbs(&mut ctx, &result);
+    bb::build_connections_between_bbs(ctx.arena, &result);
 
     let result = insert_phi_nodes_for_loops(result, &mut ctx);
 

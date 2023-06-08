@@ -245,7 +245,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
     }
 
     if opt.dump {
-        ir::compiler::dump_bbs_as_dot(&mut ir_ctx, &funcs, "cfg.gv")?;
+        ir::basic_block::dump_bbs_as_dot(&mut ir_ctx.bb_arena, &funcs, "cfg.gv")?;
     }
 
     let func_with_reg_maps =

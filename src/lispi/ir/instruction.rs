@@ -1,9 +1,9 @@
 use colored::Colorize;
-use id_arena::{Arena, Id};
+use id_arena::Id;
 use rustc_hash::FxHashMap;
 use std::fmt::Display;
 
-use crate::lispi::{ty::Type, SymbolValue};
+use crate::lispi::ty::Type;
 
 use super::{basic_block::BasicBlock, tag::Tag};
 
@@ -318,60 +318,7 @@ impl Display for AnnotatedInstrDisplay<'_> {
     }
 }
 
-pub type BasicBlocks = Vec<Id<BasicBlock>>;
-
-#[derive(Clone, Debug)]
-pub struct Function {
-    pub name: String,
-    pub args: Vec<(String, Type)>,
-    pub free_vars: Vec<SymbolValue>,
-    pub ty: Type,
-
-    pub basic_blocks: BasicBlocks,
-}
-
-impl Function {
-    pub fn new(
-        name: String,
-        args: Vec<(String, Type)>,
-        free_vars: Vec<SymbolValue>,
-        ty: Type,
-        basic_blocks: BasicBlocks,
-    ) -> Self {
-        Self {
-            name,
-            args,
-            free_vars,
-            ty,
-            basic_blocks,
-        }
-    }
-
-    pub fn dump(&self, arena: &Arena<BasicBlock>) {
-        print!("function {} (", self.name);
-        for (id, ty) in &self.args {
-            print!("%{}: {}, ", id, ty);
-        }
-        print!(") (");
-        for id in &self.free_vars {
-            print!("%{}, ", id);
-        }
-        println!("): {} {{", self.ty);
-
-        for bb in &self.basic_blocks {
-            let bb = arena.get(*bb).unwrap();
-            println!("  {}:", bb.label);
-            for inst in &bb.insts {
-                println!("  {}", inst.display(true));
-            }
-        }
-
-        println!("}}");
-    }
-}
-
 pub type Instructions = Vec<AnnotatedInstr>;
-pub type Functions = Vec<Function>;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Operand {

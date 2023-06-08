@@ -1,13 +1,10 @@
 use rustc_hash::FxHashMap;
 
-use super::{
-    super::ir::{instruction as i, IrContext},
-    instruction::Functions,
-};
+use super::super::ir::{basic_block as bb, instruction as i, IrContext};
 
-pub fn remove_phi_instructions(funcs: &Functions, ir_ctx: &mut IrContext) {
+pub fn remove_phi_instructions(funcs: &bb::Functions, ir_ctx: &mut IrContext) {
     for fun in funcs {
-        let i::Function {
+        let bb::Function {
             name: _,
             args: _,
             free_vars: _,
