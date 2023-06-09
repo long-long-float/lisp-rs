@@ -147,7 +147,7 @@ x
 
     #[test]
     #[named]
-    fn define_recursive_function_and_call() {
+    fn named_let_recursive_function() {
         let registers = compile_and_run(
             function_name!(),
             r#"
@@ -158,6 +158,18 @@ x
 "#,
         );
         assert_eq!(Some(24), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn simple_let_add() {
+        let registers = compile_and_run(
+            function_name!(),
+            r#"
+(let* ([x 2] [y 3]) (+ x y))
+"#,
+        );
+        assert_eq!(Some(5), registers["x10"].as_i64());
     }
 
     #[test]

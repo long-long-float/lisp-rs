@@ -413,15 +413,27 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         }
         Ast::Cond(_) => todo!(),
         Ast::Let(Let {
-            sequential: _,
-            proc_id: _,
+            sequential,
+            proc_id,
             inits,
-            body: _,
+            body,
         }) => {
-            for (id, init) in inits {
-                // sequential
-                let inst = compile_and_add(init, ctx)?;
-                ctx.env.insert_var(id, inst.result);
+            if let Some(_proc_id) = proc_id {
+            } else {
+                ctx.env.push_local();
+
+                if sequential {
+                    for (id, init) in inits {
+                        let inst = compile_and_add(init, ctx)?;
+                        ctx.env.insert_var(id, inst.result);
+                    }
+                } else {
+                    return Err(unimplemented!());
+                }
+
+                compile_asts(body, ctx)?;
+
+                ctx.env.pop_local();
             }
         }
         Ast::Begin(Begin { body }) => {
