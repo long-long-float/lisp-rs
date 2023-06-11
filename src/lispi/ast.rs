@@ -30,7 +30,8 @@ pub enum Ast {
     Cond(Cond),
     Let(Let),
     Begin(Begin),
-    BuildList(Vec<AnnotatedAst>),
+    ListLiteral(Vec<AnnotatedAst>),
+    ArrayLiteral(Vec<AnnotatedAst>),
 
     /// For optimizing tail recursion
     Loop(Loop),
@@ -360,12 +361,19 @@ impl AnnotatedAst {
                     .collect::<Result<Vec<_>>>()?;
                 Ast::Loop(Loop { inits, label, body })
             }
-            Ast::BuildList(vs) => {
+            Ast::ListLiteral(vs) => {
                 let vs = vs
                     .into_iter()
                     .map(|v| func(v, ctx))
                     .collect::<Result<Vec<_>>>()?;
-                Ast::BuildList(vs)
+                Ast::ListLiteral(vs)
+            }
+            Ast::ArrayLiteral(vs) => {
+                let vs = vs
+                    .into_iter()
+                    .map(|v| func(v, ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::ArrayLiteral(vs)
             }
         };
 
@@ -455,7 +463,12 @@ impl AnnotatedAst {
                     func(ast, ctx)?;
                 }
             }
-            Ast::BuildList(vs) => {
+            Ast::ListLiteral(vs) => {
+                for v in vs {
+                    func(v, ctx)?;
+                }
+            }
+            Ast::ArrayLiteral(vs) => {
                 for v in vs {
                     func(v, ctx)?;
                 }
@@ -597,8 +610,13 @@ impl Display for AnnotatedAst {
                 write_values(f, body)?;
                 write!(f, ")")
             }
-            Ast::BuildList(values) => {
+            Ast::ListLiteral(values) => {
                 write!(f, "(list ")?;
+                write_values(f, values)?;
+                write!(f, ")")
+            }
+            Ast::ArrayLiteral(values) => {
+                write!(f, "(array ")?;
                 write_values(f, values)?;
                 write!(f, ")")
             }

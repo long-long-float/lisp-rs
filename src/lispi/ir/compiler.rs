@@ -540,7 +540,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 compile_and_add(inst, ctx)?;
             }
         }
-        Ast::BuildList(_) => todo!(),
+        Ast::ListLiteral(_) => todo!(),
+        Ast::ArrayLiteral(_) => todo!(),
         Ast::Loop(Loop { inits, label, body }) => {
             ctx.loop_updates_map.insert(label.clone(), Vec::new());
 

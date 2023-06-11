@@ -205,7 +205,8 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
             "begin" => Ok(Ast::Begin(Begin {
                 body: args.to_vec(),
             })),
-            "list" => Ok(Ast::BuildList(args.to_vec())),
+            "list" => Ok(Ast::ListLiteral(args.to_vec())),
+            "array" => Ok(Ast::ArrayLiteral(args.to_vec())),
             "cond" => {
                 let err = Error::Eval("'cond' is formed as (cond (cond body ...) ...)".to_string())
                     .with_location(location);

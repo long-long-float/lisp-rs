@@ -32,6 +32,14 @@ fn typing(program: &str) -> Result<Type, Error> {
 }
 
 #[test]
+fn literal_test() {
+    assert_eq!(
+        typing("(array 1 2 3)"),
+        Ok(Type::Array(Box::new(Type::Int)))
+    );
+}
+
+#[test]
 fn list_test() {
     assert_error!(&typing("(car 1)"), Error::TypeNotMatched(_, _, _, _));
     assert_error!(&typing("(car '(1 2) 1)"), Error::Type(_));

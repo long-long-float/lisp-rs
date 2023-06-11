@@ -258,7 +258,8 @@ impl From<&Ast> for Value {
             | Ast::Let(_)
             | Ast::Begin(_)
             | Ast::Loop(_)
-            | Ast::BuildList(_)
+            | Ast::ListLiteral(_)
+            | Ast::ArrayLiteral(_)
             | Ast::Cond(_) => Value::nil(),
 
             Ast::Continue(v) => Value::Continue(v.clone()),
@@ -759,7 +760,7 @@ fn eval_ast(ast: &AnnotatedAst, env: &mut Env) -> EvalResult {
 
             Ok(result)
         }
-        Ast::BuildList(vs) => Ok(Value::List(eval_asts(vs, env)?)),
+        Ast::ListLiteral(vs) => Ok(Value::List(eval_asts(vs, env)?)),
         Ast::Cond(Cond { clauses }) => {
             for CondClause { cond, body } in clauses {
                 let cond = eval_ast(cond, env)?;

@@ -28,6 +28,7 @@ pub enum Type {
         inner: Vec<Box<Type>>,
     },
     List(Box<Type>),
+    Array(Box<Type>),
     Function {
         args: Vec<Box<Type>>,
         result: Box<Type>,
@@ -92,7 +93,7 @@ impl Type {
             | Type::Symbol
             | Type::None => false,
 
-            Type::List(e) => e.has_free_var(tv),
+            Type::List(e) | Type::Array(e) => e.has_free_var(tv),
 
             Type::Composite { name: _, inner } => inner.iter().any(|i| i.has_free_var(tv)),
             Type::Function { args, result } => {
@@ -118,6 +119,7 @@ impl Type {
             | Type::None => self,
 
             Type::List(e) => Type::List(Box::new(e.replace(assign))),
+            Type::Array(e) => Type::Array(Box::new(e.replace(assign))),
 
             Type::Composite { name, inner } => {
                 let inner = inner
@@ -188,6 +190,7 @@ impl std::fmt::Display for Type {
             Type::Nil => write!(f, "nil"),
             Type::Scala(name) => write!(f, "{}", name),
             Type::List(e) => write!(f, "list<{}>", e),
+            Type::Array(e) => write!(f, "array<{}>", e),
             Type::Composite { name, inner } => {
                 let inner = inner
                     .iter()
@@ -326,6 +329,34 @@ fn get_result_type_with_loc(body: &[AnnotatedAst]) -> TypeWithLocation {
     body.last()
         .map(|a| a.ty.clone().with_location(a.location, false))
         .unwrap_or(Type::Nil.with_null_location())
+}
+
+fn collect_constraints_from_collection_literal<TC, AC>(
+    ast: AnnotatedAst,
+    vs: Vec<AnnotatedAst>,
+    mut type_constuctor: TC,
+    mut ast_constuctor: AC,
+    ctx: &mut Context,
+) -> Result<(AnnotatedAst, Constraints)>
+where
+    TC: FnMut(Box<Type>) -> Type,
+    AC: FnMut(Vec<AnnotatedAst>) -> Ast,
+{
+    let (vs, mut ct) = collect_constraints_from_asts(vs, ctx)?;
+
+    let result_ty = if let Some((fst_arg, rest_args)) = vs.split_first() {
+        for rest in rest_args {
+            ct.push(TypeEquality::new(
+                fst_arg.ty.clone().with_location(fst_arg.location, false),
+                rest.ty.clone().with_location(rest.location, false),
+            ));
+        }
+        type_constuctor(Box::new(fst_arg.ty.clone()))
+    } else {
+        type_constuctor(Box::new(ctx.gen_tv()))
+    };
+
+    Ok((ast.with_new_ast_and_type(ast_constuctor(vs), result_ty), ct))
 }
 
 fn collect_constraints_from_ast(
@@ -701,22 +732,19 @@ fn collect_constraints_from_ast(
                 ct,
             ))
         }
-        Ast::BuildList(vs) => {
-            let (vs, mut ct) = collect_constraints_from_asts(vs.clone(), ctx)?;
-
-            let result_ty = if let Some((fst_arg, rest_args)) = vs.split_first() {
-                for rest in rest_args {
-                    ct.push(TypeEquality::new(
-                        fst_arg.ty.clone().with_location(fst_arg.location, false),
-                        rest.ty.clone().with_location(rest.location, false),
-                    ));
-                }
-                Type::List(Box::new(fst_arg.ty.clone()))
-            } else {
-                Type::List(Box::new(ctx.gen_tv()))
-            };
-
-            Ok((ast.with_new_ast_and_type(Ast::BuildList(vs), result_ty), ct))
+        Ast::ListLiteral(vs) => {
+            let vs = vs.clone();
+            collect_constraints_from_collection_literal(ast, vs, Type::List, Ast::ListLiteral, ctx)
+        }
+        Ast::ArrayLiteral(vs) => {
+            let vs = vs.clone();
+            collect_constraints_from_collection_literal(
+                ast,
+                vs,
+                Type::Array,
+                Ast::ArrayLiteral,
+                ctx,
+            )
         }
         Ast::Continue(_) | Ast::DefineMacro(_) => Ok((ast, Vec::new())),
     }
@@ -775,7 +803,7 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
             | (Type::Int, Type::Numeric)
             | (Type::Numeric, Type::Float)
             | (Type::Float, Type::Numeric) => unify(rest.to_vec()),
-            (Type::List(e0), Type::List(e1)) => {
+            (Type::List(e0), Type::List(e1)) | (Type::Array(e0), Type::Array(e1)) => {
                 let mut rest = rest.to_vec();
                 rest.push(TypeEquality::new(
                     e0.clone().with_locations(&c.left.loc, c.left.expected),
@@ -958,9 +986,13 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
             let body = replace_asts(body, assign);
             ast.with_new_ast_and_type(Ast::Loop(Loop { inits, label, body }), new_ty)
         }
-        Ast::BuildList(vs) => {
+        Ast::ListLiteral(vs) => {
             let vs = replace_asts(vs, assign);
-            ast.with_new_ast_and_type(Ast::BuildList(vs), new_ty)
+            ast.with_new_ast_and_type(Ast::ListLiteral(vs), new_ty)
+        }
+        Ast::ArrayLiteral(vs) => {
+            let vs = replace_asts(vs, assign);
+            ast.with_new_ast_and_type(Ast::ArrayLiteral(vs), new_ty)
         }
     }
 }

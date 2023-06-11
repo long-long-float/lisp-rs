@@ -99,12 +99,19 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
                 .collect::<Result<Vec<_>>>()?;
             Ast::Loop(Loop { inits, label, body })
         }
-        Ast::BuildList(values) => {
+        Ast::ListLiteral(values) => {
             let values = values
                 .into_iter()
                 .map(|value| expand_macros_ast(value, menv))
                 .collect::<Result<Vec<_>>>()?;
-            Ast::BuildList(values)
+            Ast::ListLiteral(values)
+        }
+        Ast::ArrayLiteral(values) => {
+            let values = values
+                .into_iter()
+                .map(|value| expand_macros_ast(value, menv))
+                .collect::<Result<Vec<_>>>()?;
+            Ast::ArrayLiteral(values)
         }
         Ast::List(vs) => {
             if let Some((
