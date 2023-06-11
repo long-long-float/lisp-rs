@@ -122,13 +122,14 @@ impl<'a> Context<'a> {
             Ok(last.clone())
         } else if let Some(last_bb) = self.current_bb().preceding_bb {
             let last_bb = self.arena.get(last_bb).unwrap();
-            last_bb
+            let last_inst = last_bb
                 .insts
                 .last()
                 .cloned()
-                .ok_or_else(|| bug!("Current and preceding BB have no instructions."))
+                .expect("Current and preceding BB have no instructions.");
+            Ok(last_inst)
         } else {
-            Err(bug!("Current BB is at the head and has no instructions."))
+            panic!("Current BB is at the head and has no instructions.")
         }
     }
 
@@ -419,6 +420,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             body,
         }) => {
             if let Some(_proc_id) = proc_id {
+                return Err(unimplemented!());
             } else {
                 ctx.env.push_local();
 
