@@ -341,6 +341,7 @@ impl Display for Operand {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum CmpOperator {
+    Eq,
     /// '<='
     SGE,
     /// '>'
@@ -354,6 +355,7 @@ impl Display for CmpOperator {
         use CmpOperator::*;
 
         let str = match self {
+            Eq => "=",
             SGE => "<=",
             SGT => ">",
             SLT => "<",

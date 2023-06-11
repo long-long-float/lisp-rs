@@ -234,7 +234,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: Type, ctx: &mut Context) -> Resu
             Ast::Symbol(fun_sym) => {
                 let name = fun_sym.as_str();
                 match name {
-                    "+" | "-" | "*" | "<=" | "<" | ">" | "or" | "<<" | ">>" => {
+                    "+" | "-" | "*" | "=" | "<=" | "<" | ">" | "or" | "<<" | ">>" => {
                         let left = args[0].result.clone();
                         let right = args[1].result.clone();
 
@@ -245,6 +245,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: Type, ctx: &mut Context) -> Resu
                             "+" => I::Add(left, right),
                             "-" => I::Sub(left, right),
                             "*" => I::Mul(left, right),
+                            "=" => I::Cmp(CmpOperator::Eq, left, right),
                             "<=" => I::Cmp(CmpOperator::SGE, left, right),
                             ">" => I::Cmp(CmpOperator::SGT, left, right),
                             "<" => I::Cmp(CmpOperator::SLT, left, right),
@@ -279,6 +280,61 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: Type, ctx: &mut Context) -> Resu
     } else {
         Err(unimplemented!())
     }
+}
+
+fn compile_lambda(
+    name: String,
+    args: Vec<String>,
+    body: Vec<AnnotatedAst>,
+    ast_ty: Type,
+    ctx: &mut Context,
+) -> Result<()> {
+    let label = Label { name: name.clone() };
+
+    let mut free_vars = collect_free_vars(&body, args.clone());
+    for id in ctx.preludes.current_local().variables.keys() {
+        free_vars.remove(id);
+    }
+    let free_vars = free_vars.into_iter().collect::<Vec<_>>();
+
+    let args = args
+        .into_iter()
+        .map(|arg| (arg, Type::None))
+        .collect::<Vec<_>>();
+
+    let bb = ctx.new_bb(label.name);
+
+    let mut old_bbs = ctx.basic_blocks.drain(0..).collect();
+
+    ctx.env.push_local();
+
+    for (arg, _) in &args {
+        ctx.env
+            .insert_var(arg.clone(), Variable { name: arg.clone() });
+    }
+
+    // for fv in &free_vars {
+    //     ctx.env
+    //         .insert_var(fv.clone(), Variable { name: fv.clone() });
+    // }
+
+    ctx.add_bb(bb);
+    compile_asts(body, ctx)?;
+    ctx.env.pop_local();
+
+    let fun = Function::new(
+        name.clone(),
+        args,
+        free_vars,
+        ast_ty,
+        ctx.basic_blocks.drain(0..).collect(),
+    );
+
+    ctx.basic_blocks.append(&mut old_bbs);
+
+    ctx.funcs.insert_var(name, fun);
+
+    Ok(())
 }
 
 fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
@@ -419,8 +475,49 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             inits,
             body,
         }) => {
-            if let Some(_proc_id) = proc_id {
-                return Err(unimplemented!());
+            if let Some(proc_id) = proc_id {
+                // Define the body as a function
+                ctx.env.insert_var(
+                    proc_id.clone(),
+                    Variable {
+                        name: proc_id.clone(),
+                    },
+                );
+                let (lambda_args, passed_args): (Vec<_>, Vec<_>) = inits.into_iter().unzip();
+                // TODO: Set the type
+                let lambda_ty = Type::None;
+                compile_lambda(proc_id.clone(), lambda_args, body, lambda_ty.clone(), ctx)?;
+
+                let lambda = ctx.funcs.find_var(&proc_id).unwrap();
+                let mut free_vars = lambda.free_vars;
+                free_vars.push(proc_id.clone());
+                ctx.func_fvs.insert_var(proc_id.clone(), free_vars);
+
+                // This is needed for constants folding.
+                let lambda_label = Operand::Immediate(Immediate::Label(Label {
+                    name: proc_id.clone(),
+                }));
+                ctx.push_inst(AnnotatedInstr::new(
+                    Variable {
+                        name: proc_id.clone(),
+                    },
+                    I::Operand(lambda_label.clone()),
+                    lambda_ty,
+                ));
+
+                // Call it with initial values and its function name
+                let passed_args = passed_args
+                    .into_iter()
+                    .map(|arg| Ok(Operand::Variable(compile_and_add(arg, ctx)?.result)))
+                    .collect::<Result<Vec<_>>>()?;
+                add_instr(
+                    ctx,
+                    Instruction::Call {
+                        fun: lambda_label,
+                        args: passed_args,
+                    },
+                    ast_ty,
+                );
             } else {
                 ctx.env.push_local();
 
@@ -531,50 +628,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             body,
         }) => {
             let name = format!("fun{}", ctx.var_gen.gen_string());
-            let label = Label { name: name.clone() };
-
-            let mut free_vars = collect_free_vars(&body, args.clone());
-            for id in ctx.preludes.current_local().variables.keys() {
-                free_vars.remove(id);
-            }
-            let free_vars = free_vars.into_iter().collect::<Vec<_>>();
-
-            let args = args
-                .into_iter()
-                .map(|arg| (arg, Type::None))
-                .collect::<Vec<_>>();
-
-            let bb = ctx.new_bb(label.name);
-
-            let mut old_bbs = ctx.basic_blocks.drain(0..).collect();
-
-            ctx.env.push_local();
-
-            for (arg, _) in &args {
-                ctx.env
-                    .insert_var(arg.clone(), Variable { name: arg.clone() });
-            }
-
-            // for fv in &free_vars {
-            //     ctx.env
-            //         .insert_var(fv.clone(), Variable { name: fv.clone() });
-            // }
-
-            ctx.add_bb(bb);
-            compile_asts(body, ctx)?;
-            ctx.env.pop_local();
-
-            let fun = Function::new(
-                name.clone(),
-                args,
-                free_vars,
-                ast_ty.clone(),
-                ctx.basic_blocks.drain(0..).collect(),
-            );
-
-            ctx.basic_blocks.append(&mut old_bbs);
-
-            ctx.funcs.insert_var(name.clone(), fun);
+            compile_lambda(name.clone(), args, body, ast_ty.clone(), ctx)?;
 
             add_instr(
                 ctx,

@@ -120,6 +120,12 @@ fn insert_imm(ctx: &mut Context, op: &Operand, var: &Variable) {
     }
 }
 
+enum ConstantsFoldingMode {
+    None,
+    Right,
+    Both,
+}
+
 fn fold_constants_arith<F1, F2>(
     ctx: &mut Context,
     var: &Variable,
@@ -127,29 +133,31 @@ fn fold_constants_arith<F1, F2>(
     right: Operand,
     if_int: F1,
     if_else: F2,
-    unfolding_for_riscv: bool,
+    mode: ConstantsFoldingMode,
 ) -> Instruction
 where
     F1: Fn(i32, i32) -> i32,
     F2: Fn(Operand, Operand) -> Instruction,
 {
     let folded_left = fold_imm(ctx, left.clone());
-    let right = fold_imm(ctx, right);
+    let folded_right = fold_imm(ctx, right.clone());
 
     if let (
         Operand::Immediate(Immediate::Integer(left)),
         Operand::Immediate(Immediate::Integer(right)),
-    ) = (&folded_left, &right)
+    ) = (&folded_left, &folded_right)
     {
         let val = if_int(*left, *right);
 
         let op = Operand::Immediate(Immediate::Integer(val));
         insert_imm(ctx, &op, var);
         I::Operand(op)
-    } else if unfolding_for_riscv {
-        if_else(left, right)
     } else {
-        if_else(folded_left, right)
+        match mode {
+            ConstantsFoldingMode::None => if_else(left, right),
+            ConstantsFoldingMode::Right => if_else(left, folded_right),
+            ConstantsFoldingMode::Both => if_else(folded_left, folded_right),
+        }
     }
 }
 
@@ -167,12 +175,12 @@ where
     F2: Fn(Operand, Operand) -> Instruction,
 {
     let folded_left = fold_imm(ctx, left.clone());
-    let right = fold_imm(ctx, right);
+    let folded_right = fold_imm(ctx, right.clone());
 
     if let (
         Operand::Immediate(Immediate::Boolean(left)),
         Operand::Immediate(Immediate::Boolean(right)),
-    ) = (&left, &right)
+    ) = (&folded_left, &folded_right)
     {
         let val = if_int(*left, *right);
 
@@ -180,9 +188,9 @@ where
         insert_imm(ctx, &op, var);
         I::Operand(op)
     } else if unfolding_for_riscv {
-        if_else(left, right)
+        if_else(left, folded_right)
     } else {
-        if_else(folded_left, right)
+        if_else(folded_left, folded_right)
     }
 }
 
@@ -204,6 +212,12 @@ fn fold_constants_insts(
             tags: _,
         } in bb.insts.clone()
         {
+            let default_mode = if unfolding_for_riscv {
+                ConstantsFoldingMode::Right
+            } else {
+                ConstantsFoldingMode::Both
+            };
+
             let inst = match inst {
                 I::Operand(Operand::Immediate(imm)) => {
                     ctx.env.insert(var.name.clone(), imm.clone());
@@ -243,7 +257,7 @@ fn fold_constants_insts(
                     right,
                     |l, r| l + r,
                     I::Add,
-                    unfolding_for_riscv,
+                    default_mode,
                 )),
                 I::Sub(left, right) => Some(fold_constants_arith(
                     ctx,
@@ -252,7 +266,7 @@ fn fold_constants_insts(
                     right,
                     |l, r| l - r,
                     I::Sub,
-                    unfolding_for_riscv,
+                    ConstantsFoldingMode::None,
                 )),
                 I::Mul(left, right) => Some(fold_constants_arith(
                     ctx,
@@ -261,7 +275,7 @@ fn fold_constants_insts(
                     right,
                     |l, r| l * r,
                     I::Mul,
-                    unfolding_for_riscv,
+                    default_mode,
                 )),
                 I::Or(left, right) => Some(fold_constants_logical(
                     ctx,
@@ -290,7 +304,7 @@ fn fold_constants_insts(
                         }
                     },
                     |l, r| I::Shift(op, l, r),
-                    unfolding_for_riscv,
+                    default_mode,
                 )),
                 I::Store(addr, value) => {
                     if !unfolding_for_riscv {
@@ -324,6 +338,7 @@ fn fold_constants_insts(
                     ) = (&left, &right)
                     {
                         let val = match op {
+                            CmpOperator::Eq => left == right,
                             CmpOperator::SGE => left <= right,
                             CmpOperator::SGT => left < right,
                             CmpOperator::SLT => left > right,

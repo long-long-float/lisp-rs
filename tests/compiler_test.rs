@@ -151,13 +151,13 @@ x
         let registers = compile_and_run(
             function_name!(),
             r#"
-(let fact ([x 4]) 
-  (if (= x 0)
-      1
-    (* x (fact (- x 1)))))
+(let sum ([x 10]) 
+  (if (< x 1)
+      0
+    (+ x (sum (- x 1)))))
 "#,
         );
-        assert_eq!(Some(24), registers["x10"].as_i64());
+        assert_eq!(Some(55), registers["x10"].as_i64());
     }
 
     #[test]

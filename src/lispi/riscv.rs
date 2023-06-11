@@ -123,6 +123,7 @@ struct RInstruction {
 #[derive(Clone, PartialEq, Debug)]
 enum RInstructionOp {
     Add,
+    Sub,
     Or,
     ShiftLeft,
     ShiftRight,
@@ -229,6 +230,7 @@ impl GenerateCode for RInstruction {
 
         let (funct7, funct3, opcode) = match self.op {
             Add => (0b0000000, 0b000, 0b0110011),
+            Sub => (0b0100000, 0b000, 0b0110011),
             Or => (0b0000000, 0b110, 0b0110011),
             ShiftLeft => (0b0000000, 0b001, 0b0110011),
             ShiftRight => (0b0000000, 0b101, 0b0110011),
@@ -243,6 +245,7 @@ impl GenerateCode for RInstruction {
 
         let name = match self.op {
             Add => "add",
+            Sub => "sub",
             Or => "or",
             ShiftLeft => "sll",
             ShiftRight => "srl",
@@ -633,7 +636,11 @@ fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
     println!();
 }
 
-fn load_operand(ctx: &mut Context, register_map: &RegisterMap, op: i::Operand) -> Result<Register> {
+fn get_register_from_operand(
+    ctx: &mut Context,
+    register_map: &RegisterMap,
+    op: i::Operand,
+) -> Result<Register> {
     match op {
         i::Operand::Variable(var) => {
             if let Some(reg) = register_map.get(&var) {
@@ -647,10 +654,10 @@ fn load_operand(ctx: &mut Context, register_map: &RegisterMap, op: i::Operand) -
                 )))
             }
         }
-        i::Operand::Immediate(imm) => Err(bug!(format!(
-            "Cannot load immediate operand. This should be formed as `%var = {}.`",
-            imm
-        ))),
+        i::Operand::Immediate(imm) => panic!(
+            "Cannot load immediate operand. This should be formed as `%var = {}`.",
+            imm,
+        ),
     }
 }
 
@@ -662,12 +669,8 @@ fn load_operand_to(
     rd: Register,
 ) {
     match op {
-        i::Operand::Variable(var) => {
-            let reg = register_map
-                .get(&var)
-                .map(|&reg| Register::t(reg as u32))
-                .or_else(|| ctx.arg_reg_map.get(&var.name).cloned())
-                .unwrap();
+        i::Operand::Variable(_) => {
+            let reg = get_register_from_operand(ctx, register_map, op).unwrap();
             insts.push(Instruction::mv(rd, reg));
         }
         i::Operand::Immediate(imm) => {
@@ -722,7 +725,7 @@ fn generate_code_bin_op(
 
     let inst = match (left, right) {
         (Immediate(imm), var) | (var, Immediate(imm)) => {
-            let rs1 = load_operand(ctx, register_map, var)?;
+            let rs1 = get_register_from_operand(ctx, register_map, var)?;
             I(IInstruction {
                 op: opi,
                 imm: imm.into(),
@@ -731,8 +734,8 @@ fn generate_code_bin_op(
             })
         }
         (left, right) => {
-            let rs1 = load_operand(ctx, register_map, left)?;
-            let rs2 = load_operand(ctx, register_map, right)?;
+            let rs1 = get_register_from_operand(ctx, register_map, left)?;
+            let rs2 = get_register_from_operand(ctx, register_map, right)?;
 
             R(RInstruction {
                 op,
@@ -868,7 +871,7 @@ pub fn generate_code(
                         then_bb: _,
                         else_bb: _,
                     } => {
-                        let cond = load_operand(&mut ctx, &register_map, cond)?;
+                        let cond = get_register_from_operand(&mut ctx, &register_map, cond)?;
                         insts.push(SB(SBInstruction {
                             op: SBInstructionOp::Bne,
                             imm: RelAddress::Label(then_label),
@@ -919,7 +922,17 @@ pub fn generate_code(
                             result_reg,
                         )?;
                     }
-                    Sub(_, _) => todo!(),
+                    Sub(left, right) => {
+                        let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
+                        let rs2 = get_register_from_operand(&mut ctx, &register_map, right)?;
+
+                        insts.push(R(RInstruction {
+                            op: RInstructionOp::Sub,
+                            rs1,
+                            rs2,
+                            rd: result_reg,
+                        }));
+                    }
                     Mul(_, _) => todo!(),
                     Or(left, right) => {
                         generate_code_bin_op(
@@ -934,7 +947,7 @@ pub fn generate_code(
                         )?;
                     }
                     Not(op) => {
-                        let op = load_operand(&mut ctx, &register_map, op)?;
+                        let op = get_register_from_operand(&mut ctx, &register_map, op)?;
                         insts.push(I(IInstruction {
                             op: IInstructionOp::Xori,
                             // imm: Immediate::new(0xfffu32 as i32, XLEN),
@@ -944,8 +957,8 @@ pub fn generate_code(
                         }))
                     }
                     Shift(op, left, right) => {
-                        let rs1 = load_operand(&mut ctx, &register_map, left)?;
-                        let rs2 = load_operand(&mut ctx, &register_map, right)?;
+                        let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
+                        let rs2 = get_register_from_operand(&mut ctx, &register_map, right)?;
 
                         let op = match op {
                             i::ShiftOperator::LogicalLeft => RInstructionOp::ShiftLeft,
@@ -960,8 +973,8 @@ pub fn generate_code(
                         }))
                     }
                     Store(addr, value) => {
-                        let rs1 = load_operand(&mut ctx, &register_map, addr)?;
-                        let rs2 = load_operand(&mut ctx, &register_map, value)?;
+                        let rs1 = get_register_from_operand(&mut ctx, &register_map, addr)?;
+                        let rs2 = get_register_from_operand(&mut ctx, &register_map, value)?;
 
                         insts.push(S(SInstruction {
                             op: SInstructionOp::Sw,
@@ -971,10 +984,13 @@ pub fn generate_code(
                         }))
                     }
                     Cmp(op, left, right) => {
+                        use i::CmpOperator::*;
+
                         let (inst_op, inst_opi) = match op {
-                            i::CmpOperator::SGE => todo!(),
-                            i::CmpOperator::SGT => todo!(),
-                            i::CmpOperator::SLT => (RInstructionOp::Slt, IInstructionOp::Slti),
+                            Eq => todo!(),
+                            SGE => todo!(),
+                            SGT => todo!(),
+                            SLT => (RInstructionOp::Slt, IInstructionOp::Slti),
                         };
 
                         generate_code_bin_op(
