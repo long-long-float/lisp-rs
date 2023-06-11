@@ -1007,6 +1007,36 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
     insert_function(
         env,
         ty_env,
+        s("array->len"),
+        Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv.clone()))], tv)),
+        |args| {
+            match_call_args!(args, Value::List(vs), {
+                Ok(Value::Integer(vs.len() as i32))
+            })
+        },
+    );
+    insert_function(
+        env,
+        ty_env,
+        s("array->get"),
+        Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv.clone())), Type::Int], tv)),
+        |args| {
+            match_call_args!(args, Value::List(vs), Value::Integer(idx), {
+                if let Some(v) = vs.get(*idx as usize) {
+                    Ok(v.clone())
+                } else {
+                    // TODO: Annotate the location
+                    Err(Error::Eval("out of range".to_string())
+                        .with_null_location()
+                        .into())
+                }
+            })
+        },
+    );
+
+    insert_function(
+        env,
+        ty_env,
         s("newline"),
         Type::function(vec![], Type::Any),
         |_| {
