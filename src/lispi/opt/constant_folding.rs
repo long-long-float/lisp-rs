@@ -161,6 +161,7 @@ where
     }
 }
 
+/// TODO: Commonalize with fold_constants_arith
 fn fold_constants_logical<F1, F2>(
     ctx: &mut Context,
     var: &Variable,
@@ -168,7 +169,7 @@ fn fold_constants_logical<F1, F2>(
     right: Operand,
     if_int: F1,
     if_else: F2,
-    unfolding_for_riscv: bool,
+    mode: ConstantsFoldingMode,
 ) -> Instruction
 where
     F1: Fn(bool, bool) -> bool,
@@ -187,10 +188,12 @@ where
         let op = Operand::Immediate(Immediate::Boolean(val));
         insert_imm(ctx, &op, var);
         I::Operand(op)
-    } else if unfolding_for_riscv {
-        if_else(left, folded_right)
     } else {
-        if_else(folded_left, folded_right)
+        match mode {
+            ConstantsFoldingMode::None => if_else(left, right),
+            ConstantsFoldingMode::Right => if_else(left, folded_right),
+            ConstantsFoldingMode::Both => if_else(folded_left, folded_right),
+        }
     }
 }
 
@@ -284,7 +287,7 @@ fn fold_constants_insts(
                     right,
                     |l, r| l | r,
                     I::Or,
-                    unfolding_for_riscv,
+                    default_mode,
                 )),
                 I::Shift(op, left, right) => Some(fold_constants_arith(
                     ctx,
