@@ -93,7 +93,7 @@ x
 
     #[test]
     #[named]
-    fn many_variables() {
+    fn function_many_variables() {
         let registers = compile_and_run(
             function_name!(),
             r#"
@@ -113,7 +113,7 @@ x
 
     #[test]
     #[named]
-    fn define_function_and_call() {
+    fn function_simple_call() {
         let registers = compile_and_run(
             function_name!(),
             r#"
@@ -126,7 +126,7 @@ x
 
     #[test]
     #[named]
-    fn define_function_and_call_rank2() {
+    fn function_call_rank2() {
         let registers = compile_and_run(
             function_name!(),
             r#"
@@ -140,14 +140,14 @@ x
 
     #[test]
     #[named]
-    fn define_function_and_call_directly() {
+    fn function_call_directly() {
         let registers = compile_and_run(function_name!(), "((lambda (x) (+ x x)) 5)");
         assert_eq!(Some(10), registers["x10"].as_i64());
     }
 
     #[test]
     #[named]
-    fn named_let_recursive_function() {
+    fn let_recursive_function() {
         let registers = compile_and_run(
             function_name!(),
             r#"
@@ -162,7 +162,7 @@ x
 
     #[test]
     #[named]
-    fn simple_let_add() {
+    fn let_let_add() {
         let registers = compile_and_run(
             function_name!(),
             r#"
@@ -201,7 +201,7 @@ x
 
     #[test]
     #[named]
-    fn sum_by_loop() {
+    fn tail_recursion_sum_by_loop() {
         let registers = compile_and_run(
             function_name!(),
             r#"
@@ -214,5 +214,31 @@ sum
 "#,
         );
         assert_eq!(Some(55), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn array_len() {
+        let registers = compile_and_run(
+            function_name!(),
+            r#"
+(define ary (array 1 2 3))
+(array->len ary)
+"#,
+        );
+        assert_eq!(Some(3), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn array_get_1() {
+        let registers = compile_and_run(
+            function_name!(),
+            r#"
+(define ary (array 1 2 3))
+(array->get ary 1)
+"#,
+        );
+        assert_eq!(Some(2), registers["x10"].as_i64());
     }
 }
