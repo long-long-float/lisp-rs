@@ -336,6 +336,7 @@ pub fn generate_code(
                             insts.push(Instruction::ret());
                         }
                     }
+                    Alloca { ty, count } => todo!(),
                     Add(left, right) => {
                         generate_code_bin_op(
                             &mut ctx,
@@ -409,6 +410,7 @@ pub fn generate_code(
                             rs2,
                         }))
                     }
+                    LoadElement { addr, ty, index } => todo!(),
                     Cmp(op, left, right) => {
                         use i::CmpOperator::*;
 

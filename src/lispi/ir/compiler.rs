@@ -7,7 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{
     super::{
-        ast::*, environment::Environment, error::Error, evaluator as e, parser::*, typer::Type,
+        ast::*, environment::Environment, error::Error, evaluator as e, parser::*, typer as t,
         unique_generator::UniqueGenerator,
     },
     basic_block as bb,
@@ -148,7 +148,7 @@ fn compile_and_add(ast: AnnotatedAst, ctx: &mut Context) -> Result<AnnotatedInst
     ctx.last_inst()
 }
 
-fn add_instr(ctx: &mut Context, inst: Instruction, ty: Type) -> AnnotatedInstr {
+fn add_instr(ctx: &mut Context, inst: Instruction, ty: t::Type) -> AnnotatedInstr {
     let inst = AnnotatedInstr::new(ctx.gen_var(), inst, ty);
     ctx.push_inst(inst.clone());
     inst
@@ -157,7 +157,7 @@ fn add_instr(ctx: &mut Context, inst: Instruction, ty: Type) -> AnnotatedInstr {
 fn add_instr_with_tags(
     ctx: &mut Context,
     inst: Instruction,
-    ty: Type,
+    ty: t::Type,
     tags: Vec<Tag>,
 ) -> AnnotatedInstr {
     let mut inst = AnnotatedInstr::new(ctx.gen_var(), inst, ty);
@@ -189,7 +189,7 @@ fn collect_updated_vars(asts: &[AnnotatedAst]) -> Vec<SymbolValue> {
 fn compile_apply_lambda(
     lambda_ast: AnnotatedAst,
     args: Vec<AnnotatedInstr>,
-    ast_ty: Type,
+    ast_ty: t::Type,
     ctx: &mut Context,
 ) -> Result<()> {
     let fun = compile_and_add(lambda_ast, ctx)?;
@@ -221,7 +221,7 @@ fn compile_apply_lambda(
     Ok(())
 }
 
-fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: Type, ctx: &mut Context) -> Result<()> {
+fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> Result<()> {
     use Instruction as I;
 
     if let Some((fun_ast, args)) = vs.split_first() {
@@ -266,6 +266,28 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: Type, ctx: &mut Context) -> Resu
                             ast_ty,
                         );
                     }
+                    "array->get" => {
+                        let ary = args[0].result.clone();
+                        let index = args[1].result.clone();
+
+                        add_instr(
+                            ctx,
+                            I::LoadElement {
+                                addr: Operand::Variable(ary),
+                                ty: Type::I32,
+                                index: Operand::Variable(index),
+                            },
+                            ast_ty,
+                        );
+                    }
+                    "array->len" => {
+                        // TODO: Implement
+                        add_instr(
+                            ctx,
+                            I::Operand(Operand::Immediate(Immediate::Integer(0))),
+                            ast_ty,
+                        );
+                    }
                     "not" => {
                         let value = args[0].result.clone();
                         add_instr(ctx, I::Not(Operand::Variable(value)), ast_ty);
@@ -286,7 +308,7 @@ fn compile_lambda(
     name: String,
     args: Vec<String>,
     body: Vec<AnnotatedAst>,
-    ast_ty: Type,
+    ast_ty: t::Type,
     ctx: &mut Context,
 ) -> Result<()> {
     let label = Label { name: name.clone() };
@@ -299,7 +321,7 @@ fn compile_lambda(
 
     let args = args
         .into_iter()
-        .map(|arg| (arg, Type::None))
+        .map(|arg| (arg, t::Type::None))
         .collect::<Vec<_>>();
 
     let bb = ctx.new_bb(label.name);
@@ -391,7 +413,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             // Get the required FV from fun_fvs at Call time and pass the FV in addition to the argument
             if let AnnotatedInstr {
                 inst: I::Operand(Operand::Immediate(Immediate::Label(fname))),
-                ty: Type::Function { .. },
+                ty: t::Type::Function { .. },
                 ..
             } = inst
             {
@@ -437,14 +459,14 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                     then_bb,
                     else_bb,
                 },
-                Type::None,
+                t::Type::None,
             );
 
             let end_bb = ctx.new_bb(end_label.name.clone());
 
             ctx.add_bb(then_bb);
             let then_res = compile_and_add(*then_ast, ctx)?;
-            add_instr(ctx, I::Jump(end_label.clone(), end_bb), Type::None);
+            add_instr(ctx, I::Jump(end_label.clone(), end_bb), t::Type::None);
 
             ctx.add_bb(else_bb);
             let else_res = if let Some(else_ast) = else_ast {
@@ -452,7 +474,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             } else {
                 None
             };
-            add_instr(ctx, I::Jump(end_label, end_bb), Type::None);
+            add_instr(ctx, I::Jump(end_label, end_bb), t::Type::None);
 
             ctx.add_bb(end_bb);
             if let Some(else_res) = else_res {
@@ -485,7 +507,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 );
                 let (lambda_args, passed_args): (Vec<_>, Vec<_>) = inits.into_iter().unzip();
                 // TODO: Set the type
-                let lambda_ty = Type::None;
+                let lambda_ty = t::Type::None;
                 compile_lambda(proc_id.clone(), lambda_args, body, lambda_ty.clone(), ctx)?;
 
                 let lambda = ctx.funcs.find_var(&proc_id).unwrap();
@@ -541,7 +563,21 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             }
         }
         Ast::ListLiteral(_) => todo!(),
-        Ast::ArrayLiteral(_) => todo!(),
+        Ast::ArrayLiteral(vs) => {
+            // let vs = vs
+            //     .into_iter()
+            //     .map(|v| Ok(Operand::Variable(compile_and_add(v, ctx)?.result)))
+            //     .collect::<Result<Vec<_>>>()?;
+
+            add_instr(
+                ctx,
+                I::Alloca {
+                    ty: Type::I32,
+                    count: Operand::Immediate(Immediate::Integer(vs.len() as i32)),
+                },
+                ast_ty,
+            );
+        }
         Ast::Loop(Loop { inits, label, body }) => {
             ctx.loop_updates_map.insert(label.clone(), Vec::new());
 
@@ -587,7 +623,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 let inst = add_instr_with_tags(
                     ctx,
                     Instruction::Operand(Operand::Variable(fv.clone())),
-                    Type::None,
+                    t::Type::None,
                     vec![Tag::LoopPhiFunctionSite(LoopPhiFunctionSite {
                         label: label.clone(),
                         index: LoopPhiFunctionSiteIndex::FreeVar(Variable {
@@ -616,7 +652,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 .collect::<Result<Vec<_>>>()?;
             ctx.loop_updates_map.insert(label, updated_vars);
 
-            add_instr(ctx, I::Jump(loop_label, loop_bb), Type::None);
+            add_instr(ctx, I::Jump(loop_label, loop_bb), t::Type::None);
 
             let label = ctx.gen_label();
             let bb = ctx.new_bb(label.name);
@@ -742,14 +778,14 @@ fn compile_main_function(
     add_instr(
         ctx,
         Instruction::Ret(Operand::Variable(res.result)),
-        Type::None,
+        t::Type::None,
     );
 
     result.push(Function::new(
         "main".to_string(),
         Vec::new(),
         Vec::new(),
-        Type::None,
+        t::Type::None,
         ctx.basic_blocks.drain(0..).collect(),
     ));
 
@@ -909,7 +945,7 @@ pub fn compile(asts: Program, ir_ctx: &mut IrContext, _opt: &CliOption) -> Resul
             let inst = AnnotatedInstr::new(
                 ctx.gen_var(),
                 Instruction::Ret(Operand::Variable(res.result)),
-                Type::None,
+                t::Type::None,
             );
             ctx.arena
                 .get_mut(*fun.basic_blocks.last().unwrap())

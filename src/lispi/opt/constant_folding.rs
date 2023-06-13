@@ -59,6 +59,8 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                 }
                 Instruction::Ret(op) => register_as_used(&mut used_vars, op),
 
+                Instruction::Alloca { ty: _, count } => register_as_used(&mut used_vars, count),
+
                 Instruction::Add(l, r)
                 | Instruction::Sub(l, r)
                 | Instruction::Mul(l, r)
@@ -70,6 +72,11 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     register_as_used(&mut used_vars, r);
                 }
                 Instruction::Not(op) => register_as_used(&mut used_vars, op),
+
+                Instruction::LoadElement { addr, ty: _, index } => {
+                    register_as_used(&mut used_vars, addr);
+                    register_as_used(&mut used_vars, index);
+                }
 
                 Instruction::Call { fun, args } => {
                     register_as_used(&mut used_vars, fun);
@@ -253,6 +260,11 @@ fn fold_constants_insts(
                     })
                 }
 
+                I::Alloca { ty, count } => Some(I::Alloca {
+                    ty,
+                    count: fold_imm(ctx, count),
+                }),
+
                 I::Add(left, right) => Some(fold_constants_arith(
                     ctx,
                     &var,
@@ -318,6 +330,11 @@ fn fold_constants_insts(
                         Some(I::Store(addr, value))
                     }
                 }
+                I::LoadElement { addr, ty, index } => Some(I::LoadElement {
+                    addr: fold_imm(ctx, addr),
+                    ty,
+                    index: fold_imm(ctx, index),
+                }),
                 I::Not(op) => {
                     let op = fold_imm(ctx, op);
                     if let Operand::Immediate(Immediate::Boolean(op)) = &op {

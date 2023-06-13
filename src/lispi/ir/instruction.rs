@@ -3,9 +3,14 @@ use id_arena::Id;
 use rustc_hash::FxHashMap;
 use std::fmt::Display;
 
-use crate::lispi::ty::Type;
+use crate::lispi::ty as t;
 
 use super::{basic_block::BasicBlock, tag::Tag};
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Type {
+    I32,
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Instruction {
@@ -20,6 +25,13 @@ pub enum Instruction {
     Jump(Label, Id<BasicBlock>),
     Ret(Operand),
 
+    /// It allocates `sizeof(ty) * count` on the stack frame.
+    /// Allocated memory is released when the function returns.
+    Alloca {
+        ty: Type,
+        count: Operand,
+    },
+
     Add(Operand, Operand),
     Sub(Operand, Operand),
     Mul(Operand, Operand),
@@ -28,6 +40,11 @@ pub enum Instruction {
     Shift(ShiftOperator, Operand, Operand),
     /// addr, value
     Store(Operand, Operand),
+    LoadElement {
+        addr: Operand,
+        ty: Type,
+        index: Operand,
+    },
     Cmp(CmpOperator, Operand, Operand),
     Call {
         fun: Operand,
@@ -111,6 +128,11 @@ impl Instruction {
                 }
             }
 
+            I::Alloca { ty, count } => I::Alloca {
+                ty,
+                count: replace_var(replace_var_map, count),
+            },
+
             I::Add(left, right) => I::Add(
                 replace_var(replace_var_map, left),
                 replace_var(replace_var_map, right),
@@ -137,6 +159,11 @@ impl Instruction {
                 replace_var(replace_var_map, addr),
                 replace_var(replace_var_map, value),
             ),
+            I::LoadElement { addr, ty, index } => I::LoadElement {
+                addr: replace_var(replace_var_map, addr),
+                ty,
+                index: replace_var(replace_var_map, index),
+            },
 
             I::Cmp(op, left, right) => I::Cmp(
                 op,
@@ -179,6 +206,9 @@ impl Display for Instruction {
             Ret(val) => {
                 write!(f, "ret {}", val)
             }
+            Alloca { ty, count } => {
+                write!(f, "alloca {:?}, {}", ty, count)
+            }
             Add(left, right) => {
                 write!(f, "add {}, {}", left, right)
             }
@@ -202,6 +232,9 @@ impl Display for Instruction {
             }
             Store(addr, value) => {
                 write!(f, "store {}, {}", addr, value)
+            }
+            LoadElement { addr, ty, index } => {
+                write!(f, "loadelement {}, {:?}, {}", addr, ty, index)
             }
             Cmp(op, left, right) => {
                 write!(f, "cmp {}, {}, {}", op, left, right)
@@ -243,12 +276,12 @@ pub enum ShiftOperator {
 pub struct AnnotatedInstr {
     pub result: Variable,
     pub inst: Instruction,
-    pub ty: Type,
+    pub ty: t::Type,
     pub tags: Vec<Tag>,
 }
 
 impl AnnotatedInstr {
-    pub fn new(result: Variable, inst: Instruction, ty: Type) -> Self {
+    pub fn new(result: Variable, inst: Instruction, ty: t::Type) -> Self {
         Self {
             result,
             inst,
@@ -287,13 +320,15 @@ impl Display for AnnotatedInstrDisplay<'_> {
                 write!(f, "  {}", inst)?;
             }
 
-            Add(_, _)
+            Alloca { .. }
+            | Add(_, _)
             | Sub(_, _)
             | Mul(_, _)
             | Or(_, _)
             | Not(_)
             | Shift(_, _, _)
             | Store(_, _)
+            | LoadElement { .. }
             | Cmp(_, _, _)
             | Call { .. }
             | Operand(_)
@@ -395,10 +430,18 @@ pub enum Immediate {
 
 impl Display for Immediate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Immediate::*;
         match self {
-            Immediate::Integer(v) => write!(f, "{}", v),
-            Immediate::Boolean(v) => write!(f, "{}", v),
-            Immediate::Label(v) => write!(f, "{}", v),
+            Integer(v) => write!(f, "{}", v),
+            Boolean(v) => write!(f, "{}", v),
+            Label(v) => write!(f, "{}", v),
+            // Array(elems) => {
+            //     write!(
+            //         f,
+            //         "[{}]",
+            //         elems.iter().map(|elem| elem.to_string()).join(", ")
+            //     )
+            // }
         }
     }
 }

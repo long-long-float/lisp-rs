@@ -166,6 +166,7 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
         }
         Instruction::Jump(_, _) => {}
         Instruction::Ret(op) => add_only_var(op, vars),
+        Instruction::Alloca { ty: _, count } => add_only_var(count, vars),
         Instruction::Add(left, right) => {
             add_only_var(left, vars);
             add_only_var(right, vars);
@@ -192,6 +193,10 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
         Instruction::Store(addr, value) => {
             add_only_var(addr, vars);
             add_only_var(value, vars);
+        }
+        Instruction::LoadElement { addr, ty: _, index } => {
+            add_only_var(addr, vars);
+            add_only_var(index, vars);
         }
         Instruction::Cmp(_, left, right) => {
             add_only_var(left, vars);
