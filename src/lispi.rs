@@ -262,7 +262,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         printlnuw("");
     }
 
-    let codes = riscv::generate_code(func_with_reg_maps, &mut ir_ctx, opt)?;
+    let codes = riscv::code_generator::generate_code(func_with_reg_maps, &mut ir_ctx, opt)?;
 
     let big_endian = true;
 

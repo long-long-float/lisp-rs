@@ -1,5 +1,12 @@
+use std::fmt::Display;
+
+use crate::lispi::ir::instruction as i;
+
+type RegisterType = u32;
+pub const XLEN: u8 = 32;
+
 #[derive(Clone, PartialEq, Debug)]
-enum Instruction {
+pub enum Instruction {
     R(RInstruction),
     I(IInstruction),
     S(SInstruction),
@@ -11,7 +18,7 @@ enum Instruction {
 impl Instruction {
     // Pseudo instructions
 
-    fn mv(rd: Register, rs1: Register) -> Instruction {
+    pub fn mv(rd: Register, rs1: Register) -> Instruction {
         Instruction::R(RInstruction {
             op: RInstructionOp::Add,
             rs1,
@@ -20,7 +27,7 @@ impl Instruction {
         })
     }
 
-    fn li(rd: Register, imm: Immediate) -> Instruction {
+    pub fn li(rd: Register, imm: Immediate) -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Addi,
             imm,
@@ -29,7 +36,7 @@ impl Instruction {
         })
     }
 
-    fn ret() -> Instruction {
+    pub fn ret() -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Jalr,
             imm: Immediate::new(0, XLEN),
@@ -39,7 +46,7 @@ impl Instruction {
     }
 
     #[allow(dead_code)]
-    fn nop() -> Instruction {
+    pub fn nop() -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Addi,
             imm: Immediate::new(0, XLEN),
@@ -51,7 +58,7 @@ impl Instruction {
     // Frequently used instructions
 
     /// Store `rs2` to `mem[rs1 + imm]`
-    fn sw(rs2: Register, rs1: Register, imm: Immediate) -> Instruction {
+    pub fn sw(rs2: Register, rs1: Register, imm: Immediate) -> Instruction {
         Instruction::S(SInstruction {
             op: SInstructionOp::Sw,
             rs1,
@@ -61,7 +68,7 @@ impl Instruction {
     }
 
     /// Load `mem[rs1 + imm]` to `rd`
-    fn lw(rd: Register, rs1: Register, imm: Immediate) -> Instruction {
+    pub fn lw(rd: Register, rs1: Register, imm: Immediate) -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Lw,
             rs1,
@@ -70,7 +77,7 @@ impl Instruction {
         })
     }
 
-    fn addi(rd: Register, rs1: Register, imm: Immediate) -> Instruction {
+    pub fn addi(rd: Register, rs1: Register, imm: Immediate) -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Addi,
             rs1,
@@ -95,15 +102,15 @@ impl Display for Instruction {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct RInstruction {
-    op: RInstructionOp,
-    rs1: Register,
-    rs2: Register,
-    rd: Register,
+pub struct RInstruction {
+    pub op: RInstructionOp,
+    pub rs1: Register,
+    pub rs2: Register,
+    pub rd: Register,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-enum RInstructionOp {
+pub enum RInstructionOp {
     Add,
     Sub,
     Or,
@@ -114,15 +121,15 @@ enum RInstructionOp {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct IInstruction {
-    op: IInstructionOp,
-    imm: Immediate,
-    rs1: Register,
-    rd: Register,
+pub struct IInstruction {
+    pub op: IInstructionOp,
+    pub imm: Immediate,
+    pub rs1: Register,
+    pub rd: Register,
 }
 
 impl IInstruction {
-    fn is_nop(&self) -> bool {
+    pub fn is_nop(&self) -> bool {
         self.op == IInstructionOp::Addi
             && self.imm.value == 0
             && self.rs1.is_zero()
@@ -131,7 +138,7 @@ impl IInstruction {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-enum IInstructionOp {
+pub enum IInstructionOp {
     Ori,
     Addi,
     Jalr,
@@ -143,53 +150,53 @@ enum IInstructionOp {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct SInstruction {
-    op: SInstructionOp,
-    imm: Immediate,
-    rs1: Register,
-    rs2: Register,
+pub struct SInstruction {
+    pub op: SInstructionOp,
+    pub imm: Immediate,
+    pub rs1: Register,
+    pub rs2: Register,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-enum SInstructionOp {
+pub enum SInstructionOp {
     /// Store Word
     Sw,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct JInstruction {
-    op: JInstructionOp,
-    imm: RelAddress,
-    rd: Register,
+pub struct JInstruction {
+    pub op: JInstructionOp,
+    pub imm: RelAddress,
+    pub rd: Register,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-enum JInstructionOp {
+pub enum JInstructionOp {
     Jal,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct UInstruction {
-    op: UInstructionOp,
-    imm: Immediate,
-    rd: Register,
+pub struct UInstruction {
+    pub op: UInstructionOp,
+    pub imm: Immediate,
+    pub rd: Register,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-enum UInstructionOp {
+pub enum UInstructionOp {
     Lui,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct SBInstruction {
-    op: SBInstructionOp,
-    imm: RelAddress,
-    rs1: Register,
-    rs2: Register,
+pub struct SBInstruction {
+    pub op: SBInstructionOp,
+    pub imm: RelAddress,
+    pub rs1: Register,
+    pub rs2: Register,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-enum SBInstructionOp {
+pub enum SBInstructionOp {
     /// Branch EQual
     #[allow(dead_code)]
     Beq,
@@ -197,7 +204,7 @@ enum SBInstructionOp {
     Bne,
 }
 
-trait GenerateCode {
+pub trait GenerateCode {
     fn generate_code(&self) -> RegisterType;
     fn generate_asm(&self) -> String;
 }
@@ -417,5 +424,153 @@ impl GenerateCode for SBInstruction {
             Bne => "bne",
         };
         format!("{} {}, {}, {}", name, self.rs1, self.rs2, self.imm)
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum RelAddress {
+    Label(i::Label),
+    Immediate(Immediate),
+}
+
+impl RelAddress {
+    fn value(&self) -> RegisterType {
+        match self {
+            RelAddress::Label(_) => unimplemented!(),
+            RelAddress::Immediate(imm) => imm.value as RegisterType,
+        }
+    }
+}
+
+impl Display for RelAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RelAddress::Label(label) => write!(f, "{}", label),
+            RelAddress::Immediate(imm) => write!(f, "{}", imm.value),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Register {
+    Integer(u32),
+    #[allow(dead_code)]
+    Float(u32),
+}
+
+impl Register {
+    pub fn zero() -> Register {
+        Register::Integer(0)
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.as_int() == 0
+    }
+
+    pub fn ra() -> Register {
+        Register::Integer(1)
+    }
+
+    pub fn sp() -> Register {
+        Register::Integer(2)
+    }
+
+    #[allow(dead_code)]
+    pub fn gp() -> Register {
+        Register::Integer(3)
+    }
+
+    #[allow(dead_code)]
+    pub fn tp() -> Register {
+        Register::Integer(4)
+    }
+
+    pub fn t(i: u32) -> Register {
+        match i {
+            0..=2 => Register::Integer(5 + i),
+            3.. => Register::Integer(28 - 3 + i),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn fp() -> Register {
+        Self::s(0)
+    }
+
+    pub fn s(i: u32) -> Register {
+        match i {
+            0 | 1 => Register::Integer(8 + i),
+            2.. => Register::Integer(18 - 2 + i),
+        }
+    }
+
+    pub fn a(i: u32) -> Register {
+        Register::Integer(10 + i)
+    }
+
+    pub fn as_int(&self) -> u32 {
+        if let Register::Integer(i) = self {
+            if i >= &32u32 {
+                panic!("Register #{} is invalid!", *i)
+            } else {
+                *i
+            }
+        } else {
+            panic!("Register {} is invalid!", self)
+        }
+    }
+}
+
+impl Display for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Register::Integer(i) => match i {
+                0 => write!(f, "zero"),
+                1 => write!(f, "ra"),
+                2 => write!(f, "sp"),
+                3 => write!(f, "gp"),
+                4 => write!(f, "tp"),
+                5..=7 => write!(f, "t{}", i - 5),
+                8 => write!(f, "s0"),
+                9 => write!(f, "s1"),
+                10..=17 => write!(f, "a{}", i - 10),
+                18..=27 => write!(f, "s{}", i - 16),
+                28..=31 => write!(f, "t{}", i - 25),
+                _ => write!(f, "(invalid register {})", i),
+            },
+            Register::Float(i) => {
+                write!(f, "f{}", i)
+            }
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Immediate {
+    pub value: i32,
+    /// Length in bits
+    pub len: u8,
+}
+
+impl Immediate {
+    pub fn new(value: i32, len: u8) -> Immediate {
+        Immediate { value, len }
+    }
+}
+
+impl Display for Immediate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl From<i::Immediate> for Immediate {
+    fn from(imm: i::Immediate) -> Self {
+        use i::Immediate::*;
+        match imm {
+            Integer(v) => Immediate::new(v, XLEN),
+            Boolean(v) => Immediate::new(v as i32, 1),
+            Label(_) => todo!(),
+        }
     }
 }
