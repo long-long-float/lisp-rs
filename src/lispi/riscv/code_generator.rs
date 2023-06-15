@@ -442,11 +442,25 @@ pub fn generate_code(
                     }
                     StoreElement {
                         addr,
-                        ty,
+                        ty: _,
                         index,
                         value,
                     } => {
-                        // TODO: Implement
+                        let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
+                        let value = get_register_from_operand(&mut ctx, &register_map, value)?;
+                        let i::Operand::Immediate(index) = index else {
+                            panic!("index must be an immediate");
+                        };
+
+                        let mut index = Immediate::from(index);
+                        index.value *= 4; // TODO: Use sizeof(ty)
+
+                        insts.push(S(SInstruction {
+                            op: SInstructionOp::Sw,
+                            imm: index,
+                            rs1: addr,
+                            rs2: value,
+                        }))
                     }
                     Cmp(op, left, right) => {
                         use i::CmpOperator::*;

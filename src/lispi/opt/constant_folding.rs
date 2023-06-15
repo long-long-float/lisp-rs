@@ -354,7 +354,7 @@ fn fold_constants_insts(
                     addr: fold_imm(ctx, addr),
                     ty,
                     index: fold_imm(ctx, index),
-                    value: fold_imm(ctx, value),
+                    value,
                 }),
                 I::Not(op) => {
                     let op = fold_imm(ctx, op);
