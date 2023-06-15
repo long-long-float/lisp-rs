@@ -39,6 +39,8 @@ fn remove_redundant_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resul
                      tags,
                  }| {
                     if let I::Operand(Operand::Variable(var)) = &inst {
+                        let var = ctx.replace_var_map.get(var).unwrap_or(var);
+
                         // Don't remove loading arguments.
                         let in_args = fun.args.iter().any(|(name, _)| name == &var.name);
                         if !in_args {
