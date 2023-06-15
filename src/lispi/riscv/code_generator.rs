@@ -336,7 +336,34 @@ pub fn generate_code(
                             insts.push(Instruction::ret());
                         }
                     }
-                    Alloca { ty, count } => todo!(),
+                    Alloca { ty: _, count } => {
+                        insts.push(Instruction::mv(result_reg, Register::sp()));
+
+                        match count {
+                            count @ i::Operand::Variable(_) => {
+                                let count =
+                                    get_register_from_operand(&mut ctx, &register_map, count)?;
+
+                                insts.push(Instruction::R(RInstruction {
+                                    op: RInstructionOp::Sub,
+                                    rs1: Register::sp(),
+                                    rs2: count, // TODO: Multiply sizeof(ty)
+                                    rd: Register::sp(),
+                                }));
+                            }
+                            i::Operand::Immediate(count) => {
+                                let mut count = Immediate::from(count);
+                                count.value = -count.value & 0xfff;
+                                insts.push(Instruction::addi(
+                                    Register::sp(),
+                                    Register::sp(),
+                                    count.into(), // TODO: Multiply sizeof(ty)
+                                ));
+                            }
+                        }
+
+                        // TODO: Add allocated size to sp at the end of function
+                    }
                     Add(left, right) => {
                         generate_code_bin_op(
                             &mut ctx,
@@ -410,13 +437,17 @@ pub fn generate_code(
                             rs2,
                         }))
                     }
-                    LoadElement { addr, ty, index } => todo!(),
+                    LoadElement { addr, ty, index } => {
+                        // TODO: Implement
+                    }
                     StoreElement {
                         addr,
                         ty,
                         index,
                         value,
-                    } => todo!(),
+                    } => {
+                        // TODO: Implement
+                    }
                     Cmp(op, left, right) => {
                         use i::CmpOperator::*;
 
