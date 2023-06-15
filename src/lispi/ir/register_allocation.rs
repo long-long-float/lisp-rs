@@ -198,6 +198,16 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
             add_only_var(addr, vars);
             add_only_var(index, vars);
         }
+        Instruction::StoreElement {
+            addr,
+            ty: _,
+            index,
+            value,
+        } => {
+            add_only_var(addr, vars);
+            add_only_var(index, vars);
+            add_only_var(value, vars);
+        }
         Instruction::Cmp(_, left, right) => {
             add_only_var(left, vars);
             add_only_var(right, vars);

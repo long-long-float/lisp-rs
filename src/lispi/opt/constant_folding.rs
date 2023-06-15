@@ -77,6 +77,16 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     register_as_used(&mut used_vars, addr);
                     register_as_used(&mut used_vars, index);
                 }
+                Instruction::StoreElement {
+                    addr,
+                    ty: _,
+                    index,
+                    value,
+                } => {
+                    register_as_used(&mut used_vars, addr);
+                    register_as_used(&mut used_vars, index);
+                    register_as_used(&mut used_vars, value);
+                }
 
                 Instruction::Call { fun, args } => {
                     register_as_used(&mut used_vars, fun);
@@ -334,6 +344,17 @@ fn fold_constants_insts(
                     addr: fold_imm(ctx, addr),
                     ty,
                     index: fold_imm(ctx, index),
+                }),
+                I::StoreElement {
+                    addr,
+                    ty,
+                    index,
+                    value,
+                } => Some(I::StoreElement {
+                    addr: fold_imm(ctx, addr),
+                    ty,
+                    index: fold_imm(ctx, index),
+                    value: fold_imm(ctx, value),
                 }),
                 I::Not(op) => {
                     let op = fold_imm(ctx, op);

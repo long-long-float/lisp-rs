@@ -45,6 +45,12 @@ pub enum Instruction {
         ty: Type,
         index: Operand,
     },
+    StoreElement {
+        addr: Operand,
+        ty: Type,
+        index: Operand,
+        value: Operand,
+    },
     Cmp(CmpOperator, Operand, Operand),
     Call {
         fun: Operand,
@@ -70,7 +76,7 @@ impl Instruction {
         use Instruction::*;
 
         match self {
-            Store(_, _) | Call { .. } => false,
+            Store(_, _) | StoreElement { .. } | Call { .. } => false,
             _ => !self.is_terminal(),
         }
     }
@@ -164,6 +170,17 @@ impl Instruction {
                 ty,
                 index: replace_var(replace_var_map, index),
             },
+            I::StoreElement {
+                addr,
+                ty,
+                index,
+                value,
+            } => I::StoreElement {
+                addr: replace_var(replace_var_map, addr),
+                ty,
+                index: replace_var(replace_var_map, index),
+                value: replace_var(replace_var_map, value),
+            },
 
             I::Cmp(op, left, right) => I::Cmp(
                 op,
@@ -235,6 +252,14 @@ impl Display for Instruction {
             }
             LoadElement { addr, ty, index } => {
                 write!(f, "loadelement {}, {:?}, {}", addr, ty, index)
+            }
+            StoreElement {
+                addr,
+                ty,
+                index,
+                value,
+            } => {
+                write!(f, "storeelement {}, {:?}, {}, {}", addr, ty, index, value)
             }
             Cmp(op, left, right) => {
                 write!(f, "cmp {}, {}, {}", op, left, right)
@@ -316,7 +341,7 @@ impl Display for AnnotatedInstrDisplay<'_> {
         } = &self.instr;
 
         match inst {
-            Branch { .. } | Jump(_, _) | Ret(_) | Nop => {
+            Branch { .. } | Jump(_, _) | Ret(_) | Nop | Store(_, _) | StoreElement { .. } => {
                 write!(f, "  {}", inst)?;
             }
 
@@ -327,7 +352,6 @@ impl Display for AnnotatedInstrDisplay<'_> {
             | Or(_, _)
             | Not(_)
             | Shift(_, _, _)
-            | Store(_, _)
             | LoadElement { .. }
             | Cmp(_, _, _)
             | Call { .. }

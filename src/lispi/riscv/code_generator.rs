@@ -411,6 +411,12 @@ pub fn generate_code(
                         }))
                     }
                     LoadElement { addr, ty, index } => todo!(),
+                    StoreElement {
+                        addr,
+                        ty,
+                        index,
+                        value,
+                    } => todo!(),
                     Cmp(op, left, right) => {
                         use i::CmpOperator::*;
 

@@ -564,19 +564,33 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         }
         Ast::ListLiteral(_) => todo!(),
         Ast::ArrayLiteral(vs) => {
-            // let vs = vs
-            //     .into_iter()
-            //     .map(|v| Ok(Operand::Variable(compile_and_add(v, ctx)?.result)))
-            //     .collect::<Result<Vec<_>>>()?;
-
-            add_instr(
-                ctx,
-                I::Alloca {
-                    ty: Type::I32,
-                    count: Operand::Immediate(Immediate::Integer(vs.len() as i32)),
-                },
-                ast_ty,
+            let ary = Operand::Variable(
+                add_instr(
+                    ctx,
+                    I::Alloca {
+                        ty: Type::I32,
+                        count: Operand::Immediate(Immediate::Integer(vs.len() as i32)),
+                    },
+                    ast_ty.clone(),
+                )
+                .result,
             );
+
+            for (idx, v) in vs.into_iter().enumerate() {
+                let value = Operand::Variable(compile_and_add(v, ctx)?.result);
+                add_instr(
+                    ctx,
+                    I::StoreElement {
+                        addr: ary.clone(),
+                        ty: Type::I32, // TODO: Set the element type
+                        index: Operand::Immediate(Immediate::Integer(idx as i32)),
+                        value,
+                    },
+                    t::Type::Nil,
+                );
+            }
+
+            add_instr(ctx, I::Operand(ary), ast_ty);
         }
         Ast::Loop(Loop { inits, label, body }) => {
             ctx.loop_updates_map.insert(label.clone(), Vec::new());
