@@ -357,7 +357,7 @@ pub fn generate_code(
                                 insts.push(Instruction::addi(
                                     Register::sp(),
                                     Register::sp(),
-                                    count.into(), // TODO: Multiply sizeof(ty)
+                                    count, // TODO: Multiply sizeof(ty)
                                 ));
                             }
                         }
@@ -437,8 +437,21 @@ pub fn generate_code(
                             rs2,
                         }))
                     }
-                    LoadElement { addr, ty, index } => {
-                        // TODO: Implement
+                    LoadElement { addr, ty: _, index } => {
+                        let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
+                        let i::Operand::Immediate(index) = index else {
+                            panic!("index must be an immediate");
+                        };
+
+                        let mut index = Immediate::from(index);
+                        index.value *= 4; // TODO: Use sizeof(ty)
+
+                        insts.push(I(IInstruction {
+                            op: IInstructionOp::Lw,
+                            imm: index,
+                            rs1: addr,
+                            rd: result_reg,
+                        }))
                     }
                     StoreElement {
                         addr,
