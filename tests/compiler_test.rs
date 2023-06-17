@@ -1,16 +1,21 @@
 #[cfg(feature = "rv32emu-test")]
 mod compiler_test {
-    use std::env;
+    use colored::Colorize;
+    use core::time;
+    use serde_json::Value;
     use std::fs::{create_dir, File};
     use std::io::Write;
     use std::path::Path;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
     use std::str;
+    use std::{env, thread};
 
     use function_name::named;
     use lisp_rs::lispi::cli_option::CliOption;
     use lisp_rs::lispi::compile;
-    use serde_json::Value;
+
+    /// Timeout for execution the emulator in seconds
+    const TIMEOUT_EMU: u32 = 5;
 
     fn compile_and_run(name: &'static str, program: &str) -> Value {
         if !name.is_empty() {
@@ -37,16 +42,38 @@ mod compiler_test {
         assert!(Path::new("out.bin").exists());
         assert!(Path::new("out.elf").exists());
 
-        let output = Command::new("./rv32emu/build/rv32emu")
+        let mut child = Command::new("./rv32emu/build/rv32emu")
             .args(["--dump-registers", "-", "--quiet", "out.elf"])
-            .output()
-            .expect("Failed to execute");
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn rv32emu.");
+
+        let mut over_timeout = true;
+        for _ in 0..(TIMEOUT_EMU * 10) {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    assert!(status.success());
+
+                    over_timeout = false;
+                    break;
+                }
+                Ok(None) => {}
+                Err(e) => panic!("error attempting to wait: {e}"),
+            }
+
+            thread::sleep(time::Duration::from_millis(100));
+        }
+
+        if over_timeout {
+            child.kill().expect("Failed to kill rv32emu.");
+            panic!("{}", "Timeout during execution on rv32emu.".yellow());
+        }
+
+        let output = child.wait_with_output().unwrap();
 
         if dump {
             println!("{}", str::from_utf8(&output.stdout).unwrap_or(""));
         }
-
-        assert!(output.status.success());
 
         let registers: Value = serde_json::from_slice(&output.stdout).unwrap();
         registers
@@ -227,6 +254,22 @@ sum
 "#,
         );
         assert_eq!(Some(3), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn array_in_function() {
+        let registers = compile_and_run(
+            function_name!(),
+            r#"
+(define f (lambda () 
+    (define ary (array 1 2 3))
+    (array->get ary 1)))
+(define g (lambda () (f)))
+(g)
+"#,
+        );
+        assert_eq!(Some(2), registers["x10"].as_i64());
     }
 
     #[test]
