@@ -196,8 +196,11 @@ pub fn generate_code(
         ctx.label_addrs.insert(label, insts.len() as i32);
     }
 
+    const NUM_OF_SAVED_REGISTERS: i32 = 2;
+
     fn add_fun_header(insts: &mut Vec<Instruction>, register_map: &RegisterMap) {
-        let frame_size = 4 * (2 + register_map.values().unique().count() as i32);
+        let frame_size =
+            4 * (NUM_OF_SAVED_REGISTERS + register_map.values().unique().count() as i32);
 
         insts.push(Instruction::addi(
             Register::sp(),
@@ -210,20 +213,23 @@ pub fn generate_code(
             Immediate::new(0, XLEN),
         ));
         insts.push(Instruction::sw(
-            Register::s(0),
+            Register::fp(),
             Register::sp(),
             Immediate::new(4, XLEN),
         ));
 
         insts.push(Instruction::addi(
-            Register::s(0),
+            Register::fp(),
             Register::sp(),
-            Immediate::new(8, XLEN),
+            Immediate::new(frame_size, XLEN),
         ));
     }
 
     fn add_fun_footer(insts: &mut Vec<Instruction>, register_map: &RegisterMap) {
-        let frame_size = 4 * (2 + register_map.values().unique().count() as i32);
+        let frame_size =
+            4 * (NUM_OF_SAVED_REGISTERS + register_map.values().unique().count() as i32);
+
+        insts.push(Instruction::mv(Register::t(0), Register::fp()));
 
         insts.push(Instruction::lw(
             Register::ra(),
@@ -231,15 +237,12 @@ pub fn generate_code(
             Immediate::new(0, XLEN),
         ));
         insts.push(Instruction::lw(
-            Register::s(0),
+            Register::fp(),
             Register::sp(),
             Immediate::new(4, XLEN),
         ));
-        insts.push(Instruction::addi(
-            Register::sp(),
-            Register::sp(),
-            Immediate::new(frame_size, XLEN),
-        ));
+
+        insts.push(Instruction::mv(Register::sp(), Register::t(0)));
     }
 
     use Instruction::*;
