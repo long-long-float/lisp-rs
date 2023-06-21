@@ -259,32 +259,37 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                     "io-write" => {
                         add_instr(
                             ctx,
-                            I::Store(
-                                Operand::Variable(args[0].result.clone()),
-                                Operand::Variable(args[1].result.clone()),
-                            ),
+                            I::Store(args[0].result.clone().into(), args[1].result.clone().into()),
                             ast_ty,
                         );
                     }
                     "array->get" => {
-                        let ary = args[0].result.clone();
-                        let index = args[1].result.clone();
+                        let ary = args[0].result.clone().into();
+                        let index = args[1].result.clone().into();
+
+                        let index = add_instr(ctx, I::Add(index, 1.into()), t::Type::None)
+                            .result
+                            .into();
 
                         add_instr(
                             ctx,
                             I::LoadElement {
-                                addr: Operand::Variable(ary),
+                                addr: ary,
                                 ty: Type::I32,
-                                index: Operand::Variable(index),
+                                index,
                             },
                             ast_ty,
                         );
                     }
                     "array->len" => {
-                        // TODO: Implement
+                        let ary = args[0].result.clone().into();
                         add_instr(
                             ctx,
-                            I::Operand(Operand::Immediate(Immediate::Integer(0))),
+                            I::LoadElement {
+                                addr: ary,
+                                ty: Type::I32,
+                                index: 0.into(),
+                            },
                             ast_ty,
                         );
                     }
@@ -569,11 +574,24 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                     ctx,
                     I::Alloca {
                         ty: Type::I32,
-                        count: Operand::Immediate(Immediate::Integer(vs.len() as i32)),
+                        count: (vs.len() as i32 + 1).into(),
                     },
                     ast_ty.clone(),
                 )
                 .result,
+            );
+
+            let len = add_instr(ctx, I::Operand((vs.len() as i32).into()), t::Type::Nil).result;
+
+            add_instr(
+                ctx,
+                I::StoreElement {
+                    addr: ary.clone(),
+                    ty: Type::I32, // TODO: Set the element type
+                    index: 0.into(),
+                    value: len.into(),
+                },
+                t::Type::Nil,
             );
 
             for (idx, v) in vs.into_iter().enumerate() {
@@ -583,7 +601,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                     I::StoreElement {
                         addr: ary.clone(),
                         ty: Type::I32, // TODO: Set the element type
-                        index: Operand::Immediate(Immediate::Integer(idx as i32)),
+                        index: (idx as i32 + 1).into(),
                         value,
                     },
                     t::Type::Nil,

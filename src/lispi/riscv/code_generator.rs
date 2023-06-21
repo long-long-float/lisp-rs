@@ -196,7 +196,7 @@ pub fn generate_code(
         ctx.label_addrs.insert(label, insts.len() as i32);
     }
 
-    const NUM_OF_SAVED_REGISTERS: i32 = 2;
+    const NUM_OF_SAVED_REGISTERS: i32 = 3;
 
     fn add_fun_header(insts: &mut Vec<Instruction>, register_map: &RegisterMap) {
         let frame_size =
@@ -217,29 +217,38 @@ pub fn generate_code(
             Register::sp(),
             Immediate::new(4, XLEN),
         ));
+        insts.push(Instruction::sw(
+            Register::s(1),
+            Register::sp(),
+            Immediate::new(8, XLEN),
+        ));
 
         insts.push(Instruction::addi(
             Register::fp(),
             Register::sp(),
             Immediate::new(frame_size, XLEN),
         ));
+
+        insts.push(Instruction::mv(Register::s(1), Register::sp()));
     }
 
-    fn add_fun_footer(insts: &mut Vec<Instruction>, register_map: &RegisterMap) {
-        let frame_size =
-            4 * (NUM_OF_SAVED_REGISTERS + register_map.values().unique().count() as i32);
-
+    fn add_fun_footer(insts: &mut Vec<Instruction>) {
         insts.push(Instruction::mv(Register::t(0), Register::fp()));
 
         insts.push(Instruction::lw(
             Register::ra(),
-            Register::sp(),
+            Register::s(1),
             Immediate::new(0, XLEN),
         ));
         insts.push(Instruction::lw(
             Register::fp(),
-            Register::sp(),
+            Register::s(1),
             Immediate::new(4, XLEN),
+        ));
+        insts.push(Instruction::lw(
+            Register::s(1),
+            Register::s(1),
+            Immediate::new(8, XLEN),
         ));
 
         insts.push(Instruction::mv(Register::sp(), Register::t(0)));
@@ -334,14 +343,12 @@ pub fn generate_code(
                                 rd: Register::zero(),
                             }));
                         } else {
-                            add_fun_footer(&mut insts, &register_map);
+                            add_fun_footer(&mut insts);
 
                             insts.push(Instruction::ret());
                         }
                     }
                     Alloca { ty: _, count } => {
-                        insts.push(Instruction::mv(result_reg, Register::sp()));
-
                         match count {
                             count @ i::Operand::Variable(_) => {
                                 let count =
@@ -356,16 +363,19 @@ pub fn generate_code(
                             }
                             i::Operand::Immediate(count) => {
                                 let mut count = Immediate::from(count);
-                                count.value = -count.value & 0xfff;
+
+                                // TODO: Multiply sizeof(ty)
+                                count.value = -(count.value * 4) & 0xfff;
+
                                 insts.push(Instruction::addi(
                                     Register::sp(),
                                     Register::sp(),
-                                    count, // TODO: Multiply sizeof(ty)
+                                    count,
                                 ));
                             }
                         }
 
-                        // TODO: Add allocated size to sp at the end of function
+                        insts.push(Instruction::mv(result_reg, Register::sp()));
                     }
                     Add(left, right) => {
                         generate_code_bin_op(

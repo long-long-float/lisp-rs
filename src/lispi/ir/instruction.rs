@@ -398,6 +398,18 @@ impl Display for Operand {
     }
 }
 
+impl From<Variable> for Operand {
+    fn from(var: Variable) -> Self {
+        Operand::Variable(var)
+    }
+}
+
+impl From<i32> for Operand {
+    fn from(value: i32) -> Self {
+        Operand::Immediate(Immediate::Integer(value))
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum CmpOperator {
     Eq,
