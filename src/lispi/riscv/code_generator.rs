@@ -522,8 +522,8 @@ pub fn generate_code(
                         for (i, reg) in used_regs.iter().enumerate() {
                             insts.push(Instruction::sw(
                                 reg.clone(),
-                                Register::sp(),
-                                Immediate::new((i as i32 + 2) * 4, XLEN),
+                                Register::s(1),
+                                Immediate::new((i as i32 + 3) * 4, XLEN),
                             ));
                         }
 
@@ -548,8 +548,8 @@ pub fn generate_code(
                         for (i, reg) in used_regs.iter().enumerate() {
                             insts.push(Instruction::lw(
                                 reg.clone(),
-                                Register::sp(),
-                                Immediate::new((i as i32 + 2) * 4, XLEN),
+                                Register::s(1),
+                                Immediate::new((i as i32 + 3) * 4, XLEN),
                             ));
                         }
                     }
