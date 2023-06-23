@@ -77,12 +77,12 @@ impl Instruction {
         })
     }
 
-    pub fn addi(rd: Register, rs1: Register, imm: Immediate) -> Instruction {
+    pub fn addi(rd: Register, rs1: Register, imm: i32) -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Addi,
             rs1,
             rd,
-            imm,
+            imm: Immediate::for_i(imm),
         })
     }
 }
@@ -555,6 +555,11 @@ pub struct Immediate {
 impl Immediate {
     pub fn new(value: i32, len: u8) -> Immediate {
         Immediate { value, len }
+    }
+
+    /// Create an immediate for I-instruction.
+    pub fn for_i(value: i32) -> Self {
+        Self::new(value & 0xfff, 12)
     }
 }
 
