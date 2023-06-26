@@ -137,12 +137,6 @@ fn insert_imm(ctx: &mut Context, op: &Operand, var: &Variable) {
     }
 }
 
-enum ConstantsFoldingMode {
-    None,
-    Right,
-    Both,
-}
-
 fn fold_constants_arith<F1, F2>(
     ctx: &mut Context,
     var: &Variable,
@@ -150,7 +144,6 @@ fn fold_constants_arith<F1, F2>(
     right: Operand,
     if_int: F1,
     if_else: F2,
-    mode: ConstantsFoldingMode,
 ) -> Instruction
 where
     F1: Fn(i32, i32) -> i32,
@@ -170,11 +163,7 @@ where
         insert_imm(ctx, &op, var);
         I::Operand(op)
     } else {
-        match mode {
-            ConstantsFoldingMode::None => if_else(left, right),
-            ConstantsFoldingMode::Right => if_else(left, folded_right),
-            ConstantsFoldingMode::Both => if_else(folded_left, folded_right),
-        }
+        if_else(folded_left, folded_right)
     }
 }
 
@@ -186,7 +175,6 @@ fn fold_constants_logical<F1, F2>(
     right: Operand,
     if_int: F1,
     if_else: F2,
-    mode: ConstantsFoldingMode,
 ) -> Instruction
 where
     F1: Fn(bool, bool) -> bool,
@@ -206,20 +194,11 @@ where
         insert_imm(ctx, &op, var);
         I::Operand(op)
     } else {
-        match mode {
-            ConstantsFoldingMode::None => if_else(left, right),
-            ConstantsFoldingMode::Right => if_else(left, folded_right),
-            ConstantsFoldingMode::Both => if_else(folded_left, folded_right),
-        }
+        if_else(folded_left, folded_right)
     }
 }
 
-fn fold_constants_insts(
-    fun: &Function,
-    ctx: &mut Context,
-    ir_ctx: &mut IrContext,
-    unfolding_for_riscv: bool,
-) -> Result<()> {
+fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContext) -> Result<()> {
     for bb in &fun.basic_blocks {
         let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
 
@@ -232,12 +211,6 @@ fn fold_constants_insts(
             tags: _,
         } in bb.insts.clone()
         {
-            let default_mode = if unfolding_for_riscv {
-                ConstantsFoldingMode::Right
-            } else {
-                ConstantsFoldingMode::Both
-            };
-
             let inst = match inst {
                 I::Operand(Operand::Immediate(imm)) => {
                     ctx.env.insert(var.name.clone(), imm.clone());
@@ -256,11 +229,7 @@ fn fold_constants_insts(
                     then_bb,
                     else_bb,
                 } => {
-                    let cond = if !unfolding_for_riscv {
-                        fold_imm(ctx, cond)
-                    } else {
-                        cond
-                    };
+                    let cond = fold_imm(ctx, cond);
                     Some(I::Branch {
                         cond,
                         then_label,
@@ -282,7 +251,6 @@ fn fold_constants_insts(
                     right,
                     |l, r| l + r,
                     I::Add,
-                    default_mode,
                 )),
                 I::Sub(left, right) => Some(fold_constants_arith(
                     ctx,
@@ -291,7 +259,6 @@ fn fold_constants_insts(
                     right,
                     |l, r| l - r,
                     I::Sub,
-                    ConstantsFoldingMode::None,
                 )),
                 I::Mul(left, right) => Some(fold_constants_arith(
                     ctx,
@@ -300,7 +267,6 @@ fn fold_constants_insts(
                     right,
                     |l, r| l * r,
                     I::Mul,
-                    default_mode,
                 )),
                 I::Or(left, right) => Some(fold_constants_logical(
                     ctx,
@@ -309,7 +275,6 @@ fn fold_constants_insts(
                     right,
                     |l, r| l | r,
                     I::Or,
-                    default_mode,
                 )),
                 I::Shift(op, left, right) => Some(fold_constants_arith(
                     ctx,
@@ -329,16 +294,11 @@ fn fold_constants_insts(
                         }
                     },
                     |l, r| I::Shift(op, l, r),
-                    default_mode,
                 )),
                 I::Store(addr, value) => {
-                    if !unfolding_for_riscv {
-                        let addr = fold_imm(ctx, addr);
-                        let value = fold_imm(ctx, value);
-                        Some(I::Store(addr, value))
-                    } else {
-                        Some(I::Store(addr, value))
-                    }
+                    let addr = fold_imm(ctx, addr);
+                    let value = fold_imm(ctx, value);
+                    Some(I::Store(addr, value))
                 }
                 I::LoadElement { addr, ty, index } => Some(I::LoadElement {
                     addr: fold_imm(ctx, addr),
@@ -367,11 +327,8 @@ fn fold_constants_insts(
                     }
                 }
                 I::Cmp(op, left, right) => {
-                    let (left, right) = if !unfolding_for_riscv {
-                        (fold_imm(ctx, left), fold_imm(ctx, right))
-                    } else {
-                        (left, right)
-                    };
+                    let left = fold_imm(ctx, left);
+                    let right = fold_imm(ctx, right);
 
                     if let (
                         Operand::Immediate(Immediate::Integer(left)),
@@ -398,13 +355,7 @@ fn fold_constants_insts(
 
                     Some(I::Call { fun, args })
                 }
-                I::Ret(op) => {
-                    if !unfolding_for_riscv {
-                        Some(I::Ret(fold_imm(ctx, op)))
-                    } else {
-                        Some(I::Ret(op))
-                    }
-                }
+                I::Ret(op) => Some(I::Ret(fold_imm(ctx, op))),
 
                 I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => Some(inst),
             };
@@ -420,16 +371,12 @@ fn fold_constants_insts(
     Ok(())
 }
 
-pub fn optimize(
-    funcs: &Functions,
-    ir_ctx: &mut IrContext,
-    unfolding_for_riscv: bool,
-) -> Result<()> {
+pub fn optimize(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
     let mut ctx = Context {
         env: FxHashMap::default(),
     };
     for fun in funcs {
-        fold_constants_insts(fun, &mut ctx, ir_ctx, unfolding_for_riscv)?;
+        fold_constants_insts(fun, &mut ctx, ir_ctx)?;
     }
 
     for fun in funcs {

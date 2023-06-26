@@ -209,7 +209,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         //     printlnuw("");
         // }
 
-        opt::constant_folding::optimize(&funcs, &mut ir_ctx, true)?;
+        opt::constant_folding::optimize(&funcs, &mut ir_ctx)?;
         if opt.dump {
             printlnuw(&"Constant folding:".red());
             for fun in &funcs {
