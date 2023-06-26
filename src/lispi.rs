@@ -21,6 +21,7 @@ use object::elf::*;
 use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Sym, Writer};
 use object::write::StreamingBuffer;
 use object::Endianness;
+use std::collections::HashSet;
 use std::{fs::File, io::BufWriter, io::Write};
 
 use colored::*;
@@ -119,7 +120,11 @@ impl std::fmt::Display for LocationRange {
     }
 }
 
-pub fn frontend(program: Vec<String>, opt: &CliOption) -> Result<(Program, Environment<Value>)> {
+pub fn frontend(
+    program: Vec<String>,
+    opt: &CliOption,
+    applied_opts: &HashSet<opt::Optimize>,
+) -> Result<(Program, Environment<Value>)> {
     let tokens = t::tokenize(program)?;
 
     if opt.dump {
@@ -151,7 +156,11 @@ pub fn frontend(program: Vec<String>, opt: &CliOption) -> Result<(Program, Envir
     //     println!("{}", ast);
     // }
 
-    let program = opt::tail_recursion::optimize(program)?;
+    let program = if applied_opts.contains(&opt::Optimize::TailRecursion) {
+        opt::tail_recursion::optimize(program)?
+    } else {
+        program
+    };
 
     if opt.dump {
         println!("{}", "Optimized AST:".red());
@@ -171,12 +180,16 @@ pub fn frontend(program: Vec<String>, opt: &CliOption) -> Result<(Program, Envir
 ///
 /// Functions of each steps return Result to express errors.
 pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value, ty::Type)>> {
-    let (program, mut env) = frontend(program, opt)?;
+    let (program, mut env) = frontend(program, opt, &opt::Optimize::all())?;
     e::eval_program(&program, &mut env)
 }
 
-pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
-    let (program, mut _env) = frontend(program, opt)?;
+pub fn compile(
+    program: Vec<String>,
+    opt: &CliOption,
+    applied_opts: HashSet<opt::Optimize>,
+) -> Result<()> {
+    let (program, mut _env) = frontend(program, opt, &applied_opts)?;
 
     let mut ir_ctx = ir::IrContext::default();
 
@@ -190,7 +203,7 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
         printlnuw("");
     }
 
-    if !opt.without_opts {
+    if applied_opts.contains(&opt::Optimize::RemovingRedundantAssignments) {
         opt::removing_redundant_assignments::optimize(&funcs, &mut ir_ctx)?;
         if opt.dump {
             printlnuw(&"Remove redundant assignments:".red());
@@ -199,16 +212,9 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
             }
             printlnuw("");
         }
+    }
 
-        // opt::removing_duplicated_assignments::optimize(&funcs, &mut ir_ctx)?;
-        // if opt.dump {
-        //     printlnuw(&"Remove duplicated assignments:".red());
-        //     for fun in &funcs {
-        //         fun.dump(&ir_ctx.bb_arena);
-        //     }
-        //     printlnuw("");
-        // }
-
+    if applied_opts.contains(&opt::Optimize::ConstantFolding) {
         opt::constant_folding::optimize(&funcs, &mut ir_ctx)?;
         if opt.dump {
             printlnuw(&"Constant folding:".red());
@@ -217,7 +223,9 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
             }
             printlnuw("");
         }
+    }
 
+    if applied_opts.contains(&opt::Optimize::ImmediateUnfolding) {
         opt::immediate_unfolding::optimize(&funcs, &mut ir_ctx, true)?;
         if opt.dump {
             printlnuw(&"Immediate unfolding:".red());

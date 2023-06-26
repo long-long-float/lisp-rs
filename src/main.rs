@@ -14,7 +14,7 @@ use std::path::Path;
 use lisp_rs::lispi::cli_option::CliOption;
 use lisp_rs::lispi::error::ErrorWithLocation;
 use lisp_rs::lispi::*;
-use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e};
+use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e, opt};
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
 fn main() -> Result<()> {
@@ -27,7 +27,12 @@ fn main() -> Result<()> {
         let lines = read_lines(&filename)?;
 
         if cli.compile {
-            let result = compile(lines.clone(), &cli);
+            let applied_opts = if cli.without_opts {
+                opt::Optimize::minimum()
+            } else {
+                opt::Optimize::all()
+            };
+            let result = compile(lines.clone(), &cli, applied_opts);
             match result {
                 Ok(_) => {}
                 Err(err) => show_error(err, filename, lines),

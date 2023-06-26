@@ -3,7 +3,7 @@ mod common;
 use lisp_rs::lispi::{
     cli_option::CliOption,
     error::{Error, ErrorWithLocation},
-    frontend,
+    frontend, opt,
     typer::Type,
 };
 
@@ -17,7 +17,7 @@ fn typing(program: &str) -> Result<Type, Error> {
         without_opts: false,
     };
 
-    let result = frontend(lines, &opt);
+    let result = frontend(lines, &opt, &opt::Optimize::all());
     match result {
         Ok((asts, _)) => Ok(asts.last().unwrap().ty.clone()),
         Err(err) => {
