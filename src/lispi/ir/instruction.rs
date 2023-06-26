@@ -410,7 +410,7 @@ impl From<i32> for Operand {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CmpOperator {
     Eq,
     /// '<='

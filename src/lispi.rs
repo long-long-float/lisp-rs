@@ -217,6 +217,15 @@ pub fn compile(program: Vec<String>, opt: &CliOption) -> Result<()> {
             }
             printlnuw("");
         }
+
+        opt::immediate_unfolding::optimize(&funcs, &mut ir_ctx, true)?;
+        if opt.dump {
+            printlnuw(&"Immediate unfolding:".red());
+            for fun in &funcs {
+                fun.dump(&ir_ctx.bb_arena);
+            }
+            printlnuw("");
+        }
     }
 
     ir::removing_phi_instructions::remove_phi_instructions(&funcs, &mut ir_ctx);
