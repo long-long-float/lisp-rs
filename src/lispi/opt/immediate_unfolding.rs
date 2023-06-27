@@ -153,6 +153,15 @@ pub fn optimize(
                         ImmediateUnfoldingMode::Both,
                         &mut ctx,
                     )),
+                    I::Div(left, right) => Some(unfold_immediate_arith(
+                        left,
+                        right,
+                        I::Div,
+                        &mut insts,
+                        &result,
+                        ImmediateUnfoldingMode::Both,
+                        &mut ctx,
+                    )),
                     I::Or(left, right) => Some(unfold_immediate_arith(
                         left,
                         right,

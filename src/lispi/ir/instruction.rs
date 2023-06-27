@@ -35,6 +35,7 @@ pub enum Instruction {
     Add(Operand, Operand),
     Sub(Operand, Operand),
     Mul(Operand, Operand),
+    Div(Operand, Operand),
     Or(Operand, Operand),
     Not(Operand),
     Shift(ShiftOperator, Operand, Operand),
@@ -151,6 +152,10 @@ impl Instruction {
                 replace_var(replace_var_map, left),
                 replace_var(replace_var_map, right),
             ),
+            I::Div(left, right) => I::Div(
+                replace_var(replace_var_map, left),
+                replace_var(replace_var_map, right),
+            ),
             I::Or(left, right) => I::Or(
                 replace_var(replace_var_map, left),
                 replace_var(replace_var_map, right),
@@ -234,6 +239,9 @@ impl Display for Instruction {
             }
             Mul(left, right) => {
                 write!(f, "mul {}, {}", left, right)
+            }
+            Div(left, right) => {
+                write!(f, "div {}, {}", left, right)
             }
             Or(left, right) => {
                 write!(f, "or {}, {}", left, right)
@@ -349,6 +357,7 @@ impl Display for AnnotatedInstrDisplay<'_> {
             | Add(_, _)
             | Sub(_, _)
             | Mul(_, _)
+            | Div(_, _)
             | Or(_, _)
             | Not(_)
             | Shift(_, _, _)

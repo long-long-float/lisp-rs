@@ -167,22 +167,15 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
         Instruction::Jump(_, _) => {}
         Instruction::Ret(op) => add_only_var(op, vars),
         Instruction::Alloca { ty: _, count } => add_only_var(count, vars),
-        Instruction::Add(left, right) => {
+        Instruction::Add(left, right)
+        | Instruction::Sub(left, right)
+        | Instruction::Mul(left, right)
+        | Instruction::Div(left, right)
+        | Instruction::Or(left, right) => {
             add_only_var(left, vars);
             add_only_var(right, vars);
         }
-        Instruction::Sub(left, right) => {
-            add_only_var(left, vars);
-            add_only_var(right, vars);
-        }
-        Instruction::Mul(left, right) => {
-            add_only_var(left, vars);
-            add_only_var(right, vars);
-        }
-        Instruction::Or(left, right) => {
-            add_only_var(left, vars);
-            add_only_var(right, vars);
-        }
+
         Instruction::Not(op) => {
             add_only_var(op, vars);
         }

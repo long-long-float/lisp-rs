@@ -367,6 +367,21 @@ pub fn generate_code(
                             todo!()
                         }
                     }
+                    Div(left, right) => {
+                        if specs.contains(&Spec::Multiplication) {
+                            let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
+                            let rs2 = get_register_from_operand(&mut ctx, &register_map, right)?;
+
+                            insts.push(R(RInstruction {
+                                op: RInstructionOp::Div,
+                                rs1,
+                                rs2,
+                                rd: result_reg,
+                            }));
+                        } else {
+                            todo!()
+                        }
+                    }
                     Or(left, right) => {
                         generate_code_bin_op(
                             &mut ctx,
