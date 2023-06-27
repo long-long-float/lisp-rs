@@ -17,6 +17,8 @@ pub enum Error {
     Type(String),
     #[error("Types {0} and {1} are not matched")]
     TypeNotMatched(Type, Type, TokenLocation, TokenLocation),
+    #[error("Compile error: {0}")]
+    CompileError(String),
 
     #[error("Undefined variable: `{0}` at {1}")]
     UndefinedVariable(String, &'static str),

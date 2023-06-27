@@ -279,7 +279,12 @@ pub fn compile(
         printlnuw("");
     }
 
-    let codes = riscv::code_generator::generate_code(func_with_reg_maps, &mut ir_ctx, opt)?;
+    let codes = riscv::code_generator::generate_code(
+        func_with_reg_maps,
+        &mut ir_ctx,
+        opt,
+        HashSet::from([riscv::Spec::Integer32, riscv::Spec::Multiplication]),
+    )?;
 
     let big_endian = true;
 

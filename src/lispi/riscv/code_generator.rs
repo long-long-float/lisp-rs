@@ -1,13 +1,18 @@
+use std::collections::HashSet;
+
 use anyhow::Result;
 use colored::*;
 use rustc_hash::FxHashMap;
 
 use crate::{bug, lispi::ir::register_allocation::RegisterMap};
 
-use super::super::{
-    cli_option::CliOption,
-    error::*,
-    ir::{basic_block as bb, instruction as i, register_allocation as ra, IrContext},
+use super::{
+    super::{
+        cli_option::CliOption,
+        error::*,
+        ir::{basic_block as bb, instruction as i, register_allocation as ra, IrContext},
+    },
+    Spec,
 };
 use super::{instruction::*, stack_frame::*};
 
@@ -180,7 +185,12 @@ pub fn generate_code(
     funcs: Vec<(bb::Function, ra::RegisterMap)>,
     ir_ctx: &mut IrContext,
     opt: &CliOption,
+    specs: HashSet<Spec>,
 ) -> Result<Codes> {
+    if !specs.contains(&Spec::Integer32) {
+        return Err(Error::CompileError("RV32I must be needed.".to_string()).into());
+    }
+
     fn load_argument(
         ctx: &mut Context,
         insts: &mut Vec<Instruction>,
@@ -342,7 +352,21 @@ pub fn generate_code(
                             rd: result_reg,
                         }));
                     }
-                    Mul(_, _) => todo!(),
+                    Mul(left, right) => {
+                        if specs.contains(&Spec::Multiplication) {
+                            let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
+                            let rs2 = get_register_from_operand(&mut ctx, &register_map, right)?;
+
+                            insts.push(R(RInstruction {
+                                op: RInstructionOp::Mul,
+                                rs1,
+                                rs2,
+                                rd: result_reg,
+                            }));
+                        } else {
+                            todo!()
+                        }
+                    }
                     Or(left, right) => {
                         generate_code_bin_op(
                             &mut ctx,
