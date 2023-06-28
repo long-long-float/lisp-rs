@@ -7,11 +7,10 @@ use crossterm::terminal;
 use crossterm::ExecutableCommand;
 use lisp_rs::lispi::interpret_with_env;
 use std::collections::VecDeque;
-use std::fs::File;
-use std::io::{self, stdout, BufRead};
-use std::path::Path;
+use std::io::stdout;
 
 use lisp_rs::lispi::cli_option::CliOption;
+use lisp_rs::lispi::common::read_lines;
 use lisp_rs::lispi::error::ErrorWithLocation;
 use lisp_rs::lispi::*;
 use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e, opt};
@@ -198,21 +197,6 @@ fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn read_lines<P>(filename: P) -> Result<Vec<String>, Error>
-where
-    P: AsRef<Path>,
-{
-    if let Ok(file) = File::open(filename) {
-        let lines = io::BufReader::new(file)
-            .lines()
-            .filter_map(|line| line.ok())
-            .collect::<Vec<String>>();
-        Ok(lines)
-    } else {
-        Err(Error::Io("Cannot open source file".to_string()))
-    }
 }
 
 /// Show an error as human readable format (like rustc)

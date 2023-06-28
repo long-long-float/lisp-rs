@@ -86,6 +86,12 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
                     }
                 )
             }
+            // TODO: Restrict "include" to top-level only
+            "include" => {
+                match_special_args!(args, ast_pat!(Ast::String(path), _loc), {
+                    Ok(Ast::Include(path.clone()))
+                })
+            }
             "define" => {
                 match_special_args!(args, ast_pat!(Ast::Symbol(id), _loc), init, {
                     Ok(Ast::Define(Define {

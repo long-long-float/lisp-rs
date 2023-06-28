@@ -746,7 +746,7 @@ fn collect_constraints_from_ast(
                 ctx,
             )
         }
-        Ast::Continue(_) | Ast::DefineMacro(_) => Ok((ast, Vec::new())),
+        Ast::Continue(_) | Ast::DefineMacro(_) | Ast::Include(_) => Ok((ast, Vec::new())),
     }
 }
 
@@ -899,6 +899,7 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
         | Ast::Symbol(_)
         | Ast::SymbolWithType(_, _)
         | Ast::DefineMacro(_)
+        | Ast::Include(_)
         | Ast::Continue(_) => ast.with_new_type(new_ty),
 
         Ast::Define(def) => ast.with_new_ast_and_type(

@@ -203,6 +203,7 @@ fn optimize_tail_recursion(
             | Ast::Char(_)
             | Ast::String(_)
             | Ast::Nil
+            | Ast::Include(_)
             | Ast::DefineMacro(_)
             | Ast::Define(_)
             | Ast::Lambda(_)
@@ -249,6 +250,7 @@ fn optimize_tail_recursion(
             | Ast::Char(_)
             | Ast::String(_)
             | Ast::Nil
+            | Ast::Include(_)
             | Ast::DefineMacro(_)
             | Ast::Define(_)
             | Ast::Lambda(_)

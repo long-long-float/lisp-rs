@@ -251,6 +251,7 @@ impl From<&Ast> for Value {
             Ast::Nil => Value::nil(),
             // These must be converted in eval_ast.
             Ast::Lambda(_)
+            | Ast::Include(_)
             | Ast::DefineMacro(_)
             | Ast::Define(_)
             | Ast::Assign(_)

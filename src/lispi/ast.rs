@@ -22,6 +22,7 @@ pub enum Ast {
     Nil,
 
     // Special forms
+    Include(String),
     DefineMacro(DefineMacro),
     Define(Define),
     Lambda(Lambda),
@@ -239,6 +240,7 @@ impl AnnotatedAst {
             | Ast::Char(_)
             | Ast::String(_)
             | Ast::Nil
+            | Ast::Include(_)
             | Ast::Continue(_) => ast,
             Ast::List(vs) => {
                 let vs = vs
@@ -393,7 +395,8 @@ impl AnnotatedAst {
             | Ast::Boolean(_)
             | Ast::Char(_)
             | Ast::String(_)
-            | Ast::Nil => {}
+            | Ast::Nil
+            | Ast::Include(_) => {}
             Ast::List(vs) => {
                 for v in vs {
                     func(v, ctx)?;
@@ -514,6 +517,7 @@ impl Display for AnnotatedAst {
             Ast::Char(v) => write!(f, "'{}'", v),
             Ast::String(v) => write!(f, "\"{}\"", v),
             Ast::Nil => write!(f, "()"),
+            Ast::Include(path) => write!(f, "(include \"{}\")", path),
             Ast::DefineMacro(DefineMacro { id, args, body }) => {
                 write!(f, "(define-macro {} (", id)?;
                 write_values(f, args)?;

@@ -5,8 +5,10 @@ pub mod ir;
 pub mod opt;
 
 pub mod ast;
+pub mod common;
 pub mod environment;
 pub mod evaluator;
+pub mod include_expander;
 pub mod macro_expander;
 pub mod parser;
 pub mod riscv;
@@ -31,8 +33,8 @@ use anyhow::Result;
 use crate::lispi::ast::dump_asts;
 use crate::lispi::cli_option::CliOption;
 use crate::lispi::{
-    environment as env, evaluator as e, ir::instruction as i, macro_expander as m, parser as p,
-    tokenizer as t, typer as ty,
+    environment as env, evaluator as e, include_expander as ie, ir::instruction as i,
+    macro_expander as me, parser as p, tokenizer as t, typer as ty,
 };
 
 use self::console::printlnuw;
@@ -93,6 +95,7 @@ impl std::fmt::Display for TokenLocation {
 /// A range in file, `[begin, end)`.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct LocationRange {
+    // TODO: Set the path of the file where a token located in.
     pub begin: Location,
     pub end: Location,
 }
@@ -143,7 +146,14 @@ pub fn frontend(
         println!();
     }
 
-    let program = m::expand_macros(program)?;
+    let program = ie::expand_includes(program)?;
+    let program = me::expand_macros(program)?;
+
+    if opt.dump {
+        println!("{}", "Preprocessed AST:".red());
+        dump_asts(&program);
+        println!();
+    }
 
     let mut env = env::Environment::default();
     let mut ty_env = env::Environment::default();
@@ -389,7 +399,7 @@ pub fn interpret_with_env(
 ) -> Result<Vec<(e::Value, ty::Type)>> {
     let tokens = t::tokenize(program)?;
     let program = p::parse_with_env(tokens)?;
-    let program = m::expand_macros(program)?;
+    let program = me::expand_macros(program)?;
     let program = ty::check_and_inference_type(program, ty_env)?;
     let program = opt::tail_recursion::optimize(program)?;
     e::eval_program(&program, env)

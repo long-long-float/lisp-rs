@@ -411,7 +411,10 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         Ast::Char(_) => todo!(),
         Ast::String(_) => todo!(),
         Ast::Nil => todo!(),
-        Ast::DefineMacro(_) => todo!(),
+        Ast::Include(_) => todo!(),
+        Ast::DefineMacro(_) => {
+            // Do nothing
+        }
         Ast::Define(Define { id, init }) => {
             let inst = compile_and_add(*init, ctx)?;
 
