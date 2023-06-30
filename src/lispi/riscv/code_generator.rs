@@ -104,8 +104,19 @@ fn load_operand_to(
             insts.push(Instruction::mv(rd, reg));
         }
         i::Operand::Immediate(imm) => {
-            let imm: Immediate = imm.into();
-            load_immediate(insts, imm, rd);
+            use i::Immediate::*;
+            match imm {
+                Integer(_) | Boolean(_) => {
+                    let imm: Immediate = imm.into();
+                    load_immediate(insts, imm, rd);
+                }
+                Label(_) => {
+                    // Replace this label to the real address.
+                    // To load large addresses (larger than 12bits), we reserve for two instructions, lui and addi.
+                    insts.push(Instruction::nop());
+                    insts.push(Instruction::li(rd, Immediate::new(0, 0)));
+                }
+            }
         }
     }
 }
