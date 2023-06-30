@@ -319,20 +319,20 @@ pub fn create_interference_graph(
                 prev_all_in_outs = FxHashMap::from_iter(all_in_outs.clone());
             }
 
-            if opt.dump {
-                for bb_id in &func.basic_blocks {
-                    let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
+            // if opt.dump {
+            //     for bb_id in &func.basic_blocks {
+            //         let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
 
-                    println!("{}:", bb.label);
+            //         println!("{}:", bb.label);
 
-                    for (idx, (ins, outs)) in all_in_outs_result[bb_id].iter().enumerate() {
-                        println!("  {}:", idx);
-                        println!("    in: {}", ins.iter().join(", "));
-                        println!("    out: {}", outs.iter().join(", "));
-                    }
-                }
-                println!();
-            }
+            //         for (idx, (ins, outs)) in all_in_outs_result[bb_id].iter().enumerate() {
+            //             println!("  {}:", idx);
+            //             println!("    in: {}", ins.iter().join(", "));
+            //             println!("    out: {}", outs.iter().join(", "));
+            //         }
+            //     }
+            //     println!();
+            // }
 
             //
             // Build interference graph
@@ -386,10 +386,6 @@ pub fn create_interference_graph(
                         }
                     }
                 }
-            }
-
-            if opt.dump {
-                println!("{}", inter_graph);
             }
 
             // A vector of (IGID, connected IGIDs).
