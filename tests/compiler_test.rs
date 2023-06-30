@@ -247,6 +247,20 @@ x
 
     #[test]
     #[named]
+    fn function_pass_lambda() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define call (lambda (fun x) (fun x)))
+(call (lambda (x) (+ x x)) 21)
+"#,
+        )
+        .run();
+        assert_eq!(Some(42), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
     fn function_call_directly() {
         let registers = compile(function_name!(), "((lambda (x) (+ x x)) 5)").run();
         assert_eq!(Some(10), registers["x10"].as_i64());
