@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::ops;
 
 use crate::lispi::ir::instruction as i;
 
@@ -39,7 +40,7 @@ impl Instruction {
     pub fn ret() -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Jalr,
-            imm: Immediate::new(0, XLEN),
+            imm: Immediate::new(0),
             rs1: Register::ra(),
             rd: Register::zero(),
         })
@@ -49,7 +50,7 @@ impl Instruction {
     pub fn nop() -> Instruction {
         Instruction::I(IInstruction {
             op: IInstructionOp::Addi,
-            imm: Immediate::new(0, XLEN),
+            imm: Immediate::new(0),
             rs1: Register::zero(),
             rd: Register::zero(),
         })
@@ -134,7 +135,7 @@ pub struct IInstruction {
 impl IInstruction {
     pub fn is_nop(&self) -> bool {
         self.op == IInstructionOp::Addi
-            && self.imm.value == 0
+            && self.imm.value() == 0
             && self.rs1.is_zero()
             && self.rd.is_zero()
     }
@@ -257,12 +258,12 @@ impl GenerateCode for IInstruction {
         use IInstructionOp::*;
 
         assert!(
-            (self.imm.value & !0xfff) == 0,
+            (self.imm.value() & !0xfff) == 0,
             "Immediate of IInstruction must be under 0x1000. But the value is 0x{:x}.",
-            self.imm.value
+            self.imm.value()
         );
 
-        let imm = (self.imm.value as u32) & 0xfff;
+        let imm = (self.imm.value() as u32) & 0xfff;
         let rs1 = self.rs1.as_int();
 
         let (funct3, opcode) = match self.op {
@@ -289,7 +290,7 @@ impl GenerateCode for IInstruction {
 
         match self.op {
             Ori | Addi | Jalr | Xori | Slti => {
-                let mut imm = self.imm.value;
+                let mut imm = self.imm.value();
                 if imm >> 11 & 1 == 1 {
                     // sign extension
                     imm |= 0xffff_f000u32 as i32;
@@ -319,7 +320,7 @@ impl GenerateCode for SInstruction {
         let rs1 = self.rs1.as_int();
         let rs2 = self.rs2.as_int();
 
-        let imm = self.imm.value as u32;
+        let imm = self.imm.uvalue();
         let imm1 = (imm >> 5) & 0b111_1111;
         let imm2 = imm & 0b1_1111;
 
@@ -379,7 +380,7 @@ impl GenerateCode for UInstruction {
     fn generate_code(&self) -> RegisterType {
         use UInstructionOp::*;
 
-        let imm = self.imm.value as u32 & 0xfffff000;
+        let imm = self.imm.uvalue() & 0xfffff000;
         let rd = self.rd.as_int();
 
         let opcode = match self.op {
@@ -394,7 +395,7 @@ impl GenerateCode for UInstruction {
 
         match self.op {
             Lui => {
-                let imm = self.imm.value as u32 & 0xfffff000;
+                let imm = self.imm.uvalue() & 0xfffff000;
                 format!("lui {}, {}", self.rd, imm >> 12)
             }
         }
@@ -444,7 +445,7 @@ impl RelAddress {
     fn value(&self) -> RegisterType {
         match self {
             RelAddress::Label(_) => unimplemented!(),
-            RelAddress::Immediate(imm) => imm.value as RegisterType,
+            RelAddress::Immediate(imm) => imm.uvalue(),
         }
     }
 }
@@ -453,7 +454,7 @@ impl Display for RelAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RelAddress::Label(label) => write!(f, "{}", label),
-            RelAddress::Immediate(imm) => write!(f, "{}", imm.value),
+            RelAddress::Immediate(imm) => write!(f, "{}", imm.value()),
         }
     }
 }
@@ -553,26 +554,44 @@ impl Display for Register {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct Immediate {
-    pub value: i32,
-    /// Length in bits
-    pub len: u8,
+pub enum Immediate {
+    Value(i32),
 }
 
 impl Immediate {
-    pub fn new(value: i32, len: u8) -> Immediate {
-        Immediate { value, len }
+    pub fn new(value: i32) -> Immediate {
+        Immediate::Value(value)
+    }
+
+    pub fn value(&self) -> i32 {
+        match self {
+            Immediate::Value(value) => *value,
+        }
+    }
+
+    pub fn uvalue(&self) -> u32 {
+        self.value() as u32
     }
 
     /// Create an immediate for I-instruction.
     pub fn for_i(value: i32) -> Self {
-        Self::new(value & 0xfff, 12)
+        Self::new(value & 0xfff)
+    }
+}
+
+impl ops::MulAssign<i32> for Immediate {
+    fn mul_assign(&mut self, rhs: i32) {
+        match self {
+            Immediate::Value(value) => {
+                *value *= rhs;
+            }
+        }
     }
 }
 
 impl Display for Immediate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "{}", self.value())
     }
 }
 
@@ -580,8 +599,8 @@ impl From<i::Immediate> for Immediate {
     fn from(imm: i::Immediate) -> Self {
         use i::Immediate::*;
         match imm {
-            Integer(v) => Immediate::new(v, XLEN),
-            Boolean(v) => Immediate::new(v as i32, 1),
+            Integer(v) => Immediate::new(v),
+            Boolean(v) => Immediate::new(v as i32),
             Label(_) => todo!(),
         }
     }

@@ -114,7 +114,7 @@ fn load_operand_to(
                     // Replace this label to the real address.
                     // To load large addresses (larger than 12bits), we reserve for two instructions, lui and addi.
                     insts.push(Instruction::nop());
-                    insts.push(Instruction::li(rd, Immediate::new(0, 0)));
+                    insts.push(Instruction::li(rd, Immediate::new(0)));
                 }
             }
         }
@@ -124,16 +124,17 @@ fn load_operand_to(
 fn load_immediate(insts: &mut Vec<Instruction>, imm: Immediate, rd: Register) {
     let mut last_set_bit = -1;
     for i in (0..=31).rev() {
-        if imm.value & (1 << i) != 0 {
+        if imm.value() & (1 << i) != 0 {
             last_set_bit = i;
             break;
         }
     }
     if last_set_bit >= 12 {
         // Large integer
-        let bot = imm.value & 0xfff;
+        let bot = imm.value() & 0xfff;
         let top = if (bot >> 11 & 1) == 1 {
-            Immediate::new(imm.value + 0x1000, imm.len)
+            println!("{:x}", imm.value());
+            Immediate::new(imm.value().wrapping_add(0x1000))
         } else {
             imm
         };
@@ -224,7 +225,7 @@ pub fn generate_code(
     // Initialize specific registers
     load_immediate(
         &mut insts,
-        Immediate::new(0x80000000u32 as i32, XLEN),
+        Immediate::new(0x80000000u32 as i32),
         Register::sp(),
     );
 
@@ -299,10 +300,10 @@ pub fn generate_code(
                         if fun.name == "main" {
                             // syscall EXIT on rv32emu
                             // insts.push(Instruction::li(Register::a(0), Immediate::new(0, XLEN)));
-                            insts.push(Instruction::li(Register::a(7), Immediate::new(93, XLEN)));
+                            insts.push(Instruction::li(Register::a(7), Immediate::new(93)));
                             insts.push(I(IInstruction {
                                 op: IInstructionOp::Ecall,
-                                imm: Immediate::new(0, XLEN),
+                                imm: Immediate::new(0),
                                 rs1: Register::zero(),
                                 rd: Register::zero(),
                             }));
@@ -325,7 +326,7 @@ pub fn generate_code(
                                 }));
                             }
                             i::Operand::Immediate(count) => {
-                                let mut count = Immediate::from(count).value;
+                                let mut count = Immediate::from(count).value() as i32;
 
                                 // TODO: Multiply sizeof(ty)
                                 count = -count * 4;
@@ -409,8 +410,7 @@ pub fn generate_code(
                         let op = get_register_from_operand(&mut ctx, &register_map, op)?;
                         insts.push(I(IInstruction {
                             op: IInstructionOp::Xori,
-                            // imm: Immediate::new(0xfffu32 as i32, XLEN),
-                            imm: Immediate::new(0x1u32 as i32, XLEN),
+                            imm: Immediate::new(0x1),
                             rs1: op,
                             rd: result_reg,
                         }))
@@ -437,7 +437,7 @@ pub fn generate_code(
 
                         insts.push(S(SInstruction {
                             op: SInstructionOp::Sw,
-                            imm: Immediate::new(0, XLEN),
+                            imm: Immediate::new(0),
                             rs1,
                             rs2,
                         }))
@@ -449,7 +449,7 @@ pub fn generate_code(
                         };
 
                         let mut index = Immediate::from(index);
-                        index.value *= 4; // TODO: Use sizeof(ty)
+                        index *= 4; // TODO: Use sizeof(ty)
 
                         insts.push(I(IInstruction {
                             op: IInstructionOp::Lw,
@@ -471,7 +471,7 @@ pub fn generate_code(
                         };
 
                         let mut index = Immediate::from(index);
-                        index.value *= 4; // TODO: Use sizeof(ty)
+                        index *= 4; // TODO: Use sizeof(ty)
 
                         insts.push(S(SInstruction {
                             op: SInstructionOp::Sw,
@@ -556,7 +556,7 @@ pub fn generate_code(
 
                     J(JInstruction {
                         op,
-                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4, 20)),
+                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4)),
                         rd,
                     })
                 }
@@ -570,7 +570,7 @@ pub fn generate_code(
 
                     SB(SBInstruction {
                         op,
-                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4, 12)),
+                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4)),
                         rs1,
                         rs2,
                     })

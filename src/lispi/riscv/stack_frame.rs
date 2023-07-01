@@ -39,7 +39,7 @@ impl<'a> StackFrame<'a> {
             insts.push(Instruction::sw(
                 reg.clone(),
                 Register::sp(),
-                Immediate::new(i as i32 * 4, XLEN),
+                Immediate::new(i as i32 * 4),
             ));
         }
 
@@ -63,7 +63,7 @@ impl<'a> StackFrame<'a> {
             insts.push(Instruction::lw(
                 reg.clone(),
                 Register::s(1),
-                Immediate::new(i as i32 * 4, XLEN),
+                Immediate::new(i as i32 * 4),
             ));
         }
 
@@ -93,7 +93,7 @@ impl<'a> StackFrame<'a> {
             save.push(Instruction::sw(
                 reg.clone(),
                 Register::s(1),
-                Immediate::new((i as i32 + 3) * 4, XLEN),
+                Immediate::new((i as i32 + 3) * 4),
             ));
         }
 
@@ -102,7 +102,7 @@ impl<'a> StackFrame<'a> {
             restore.push(Instruction::lw(
                 reg,
                 Register::s(1),
-                Immediate::new((i as i32 + 3) * 4, XLEN),
+                Immediate::new((i as i32 + 3) * 4),
             ));
         }
 
