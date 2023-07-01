@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 use colored::*;
+use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
 use crate::{bug, lispi::ir::register_allocation::RegisterMap};
@@ -114,7 +115,7 @@ fn load_operand_to(
                     // Replace this label to the real address.
                     // To load large addresses (larger than 12bits), we reserve for two instructions, lui and addi.
                     insts.push(Instruction::nop());
-                    insts.push(Instruction::li(rd, Immediate::new(0)));
+                    insts.push(Instruction::li(rd, imm.into()));
                 }
             }
         }
@@ -191,6 +192,42 @@ fn generate_code_bin_op(
     insts.push(inst);
 
     Ok(())
+}
+
+fn replace_label(imm: Immediate, ctx: &Context) -> Immediate {
+    match imm {
+        Immediate::Value(_) => imm,
+        Immediate::Label(label) => {
+            let addr = ctx.label_addrs.get(&label.name).unwrap();
+            Immediate::new(*addr)
+        }
+    }
+}
+
+fn replace_labels(inst: Instruction, ctx: &Context) -> Instruction {
+    use Instruction::*;
+    match inst {
+        R(_) => inst,
+        I(IInstruction { op, imm, rs1, rd }) => I(IInstruction {
+            op,
+            imm: replace_label(imm, ctx),
+            rs1,
+            rd,
+        }),
+        S(SInstruction { op, imm, rs1, rs2 }) => S(SInstruction {
+            op,
+            imm: replace_label(imm, ctx),
+            rs1,
+            rs2,
+        }),
+        J(_) => inst,
+        U(UInstruction { op, imm, rd }) => U(UInstruction {
+            op,
+            imm: replace_label(imm, ctx),
+            rd,
+        }),
+        SB(_) => inst,
+    }
 }
 
 pub fn generate_code(
@@ -326,7 +363,7 @@ pub fn generate_code(
                                 }));
                             }
                             i::Operand::Immediate(count) => {
-                                let mut count = Immediate::from(count).value() as i32;
+                                let mut count = Immediate::from(count).value();
 
                                 // TODO: Multiply sizeof(ty)
                                 count = -count * 4;
@@ -512,14 +549,24 @@ pub fn generate_code(
                             load_argument(&mut ctx, &mut insts, &register_map, arg);
                         }
 
-                        if let i::Operand::Immediate(i::Immediate::Label(label)) = fun {
-                            insts.push(J(JInstruction {
-                                op: JInstructionOp::Jal,
-                                imm: RelAddress::Label(label),
-                                rd: Register::ra(),
-                            }));
-                        } else {
-                            todo!()
+                        match fun {
+                            i::Operand::Variable(_) => {
+                                let fun = get_register_from_operand(&mut ctx, &register_map, fun)?;
+                                insts.push(I(IInstruction {
+                                    op: IInstructionOp::Jalr,
+                                    imm: Immediate::new(0),
+                                    rs1: fun,
+                                    rd: Register::ra(),
+                                }));
+                            }
+                            i::Operand::Immediate(i::Immediate::Label(label)) => {
+                                insts.push(J(JInstruction {
+                                    op: JInstructionOp::Jal,
+                                    imm: RelAddress::Label(label),
+                                    rd: Register::ra(),
+                                }));
+                            }
+                            _ => todo!(),
                         }
 
                         insts.push(Instruction::mv(result_reg, Register::a(0)));
@@ -540,6 +587,11 @@ pub fn generate_code(
     }
 
     // Resolving label addresses
+
+    let insts = insts
+        .into_iter()
+        .map(|inst| replace_labels(inst, &ctx))
+        .collect_vec();
 
     let insts = insts
         .into_iter()
@@ -578,7 +630,7 @@ pub fn generate_code(
                 _ => inst,
             }
         })
-        .collect::<Vec<Instruction>>();
+        .collect_vec();
 
     if opt.dump {
         dump_instructions(&mut ctx, &insts);

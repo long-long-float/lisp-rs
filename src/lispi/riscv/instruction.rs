@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::ops;
 
-use crate::lispi::ir::instruction as i;
+use crate::lispi::ir::instruction::{self as i, Label};
 
 type RegisterType = u32;
 pub const XLEN: u8 = 32;
@@ -556,6 +556,7 @@ impl Display for Register {
 #[derive(Clone, PartialEq, Debug)]
 pub enum Immediate {
     Value(i32),
+    Label(Label),
 }
 
 impl Immediate {
@@ -566,6 +567,7 @@ impl Immediate {
     pub fn value(&self) -> i32 {
         match self {
             Immediate::Value(value) => *value,
+            Immediate::Label(_) => todo!(),
         }
     }
 
@@ -585,6 +587,7 @@ impl ops::MulAssign<i32> for Immediate {
             Immediate::Value(value) => {
                 *value *= rhs;
             }
+            Immediate::Label(_) => todo!(),
         }
     }
 }
@@ -601,7 +604,7 @@ impl From<i::Immediate> for Immediate {
         match imm {
             Integer(v) => Immediate::new(v),
             Boolean(v) => Immediate::new(v as i32),
-            Label(_) => todo!(),
+            Label(label) => Immediate::Label(label),
         }
     }
 }
