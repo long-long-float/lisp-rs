@@ -199,7 +199,7 @@ fn replace_label(imm: Immediate, ctx: &Context) -> Immediate {
         Immediate::Value(_) => imm,
         Immediate::Label(label) => {
             let addr = ctx.label_addrs.get(&label.name).unwrap();
-            Immediate::new(*addr)
+            Immediate::new(*addr * 4)
         }
     }
 }
