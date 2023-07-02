@@ -386,4 +386,19 @@ sum
         .run();
         assert_eq!(Some(2), registers["x10"].as_i64());
     }
+
+    #[test]
+    #[named]
+    fn array_set_1() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define ary (array 1 2 3))
+(array->set ary 1 99)
+(array->get ary 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some(99), registers["x10"].as_i64());
+    }
 }

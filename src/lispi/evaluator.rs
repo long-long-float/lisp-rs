@@ -1034,6 +1034,33 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
             })
         },
     );
+    insert_function(
+        env,
+        ty_env,
+        s("array->set"),
+        Type::for_all(|tv| {
+            Type::function(
+                vec![Type::Array(Box::new(tv.clone())), Type::Int, tv.clone()],
+                Type::Nil,
+            )
+        }),
+        |args| {
+            match_call_args!(args, Value::List(_vs), Value::Integer(_idx), _value, {
+                todo!()
+                // We cannot implement this function bacause 'vs' is immutable.
+                // let idx = *idx as usize;
+                // if idx < vs.len() {
+                //     vs[idx] = value.clone();
+                //     Ok(Value::nil())
+                // } else {
+                //     // TODO: Annotate the location
+                //     Err(Error::Eval("out of range".to_string())
+                //         .with_null_location()
+                //         .into())
+                // }
+            })
+        },
+    );
 
     insert_function(
         env,

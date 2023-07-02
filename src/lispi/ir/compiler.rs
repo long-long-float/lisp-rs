@@ -282,6 +282,26 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             ast_ty,
                         );
                     }
+                    "array->set" => {
+                        let ary = args[0].result.clone().into();
+                        let index = args[1].result.clone().into();
+                        let value = args[2].result.clone().into();
+
+                        let index = add_instr(ctx, I::Add(index, 1.into()), t::Type::None)
+                            .result
+                            .into();
+
+                        add_instr(
+                            ctx,
+                            I::StoreElement {
+                                addr: ary,
+                                ty: Type::I32,
+                                index,
+                                value,
+                            },
+                            ast_ty,
+                        );
+                    }
                     "array->len" => {
                         let ary = args[0].result.clone().into();
                         add_instr(
