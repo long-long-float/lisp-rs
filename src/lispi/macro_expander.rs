@@ -178,6 +178,7 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
                 body,
             })
         }
+        Ast::As(expr, ty) => Ast::As(Box::new(expand_macros_ast(*expr, menv)?), ty),
         Ast::Symbol(_)
         | Ast::SymbolWithType(_, _)
         | Ast::Quoted(_)

@@ -261,6 +261,7 @@ impl From<&Ast> for Value {
             | Ast::Loop(_)
             | Ast::ListLiteral(_)
             | Ast::ArrayLiteral(_)
+            | Ast::As(_, _)
             | Ast::Cond(_) => Value::nil(),
 
             Ast::Continue(v) => Value::Continue(v.clone()),

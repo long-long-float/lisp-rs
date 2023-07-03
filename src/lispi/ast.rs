@@ -33,6 +33,7 @@ pub enum Ast {
     Begin(Begin),
     ListLiteral(Vec<AnnotatedAst>),
     ArrayLiteral(Vec<AnnotatedAst>),
+    As(Box<AnnotatedAst>, SymbolValue),
 
     /// For optimizing tail recursion
     Loop(Loop),
@@ -377,6 +378,7 @@ impl AnnotatedAst {
                     .collect::<Result<Vec<_>>>()?;
                 Ast::ArrayLiteral(vs)
             }
+            Ast::As(v, ty) => Ast::As(Box::new(func(*v, ctx)?), ty),
         };
 
         Ok(AnnotatedAst { ast, location, ty })
@@ -476,6 +478,7 @@ impl AnnotatedAst {
                     func(v, ctx)?;
                 }
             }
+            Ast::As(v, ty) => func(v, ctx)?,
         }
 
         Ok(())
@@ -630,6 +633,9 @@ impl Display for AnnotatedAst {
                     write!(f, "{} ", update)?;
                 }
                 write!(f, ")")
+            }
+            Ast::As(value, ty) => {
+                write!(f, "(as {} {})", value, ty)
             }
         }?;
 

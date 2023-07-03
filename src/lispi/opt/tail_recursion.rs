@@ -128,6 +128,10 @@ fn optimize_tail_recursion(
 
                 Some(ast.clone().with_new_ast(Ast::IfExpr(if_expr)))
             }
+            Ast::As(expr, ty) => Some(ast.clone().with_new_ast(Ast::As(
+                Box::new(_optimize_tail_recursion(func_name, locals, &expr)?),
+                ty.to_owned(),
+            ))),
             Ast::Let(Let {
                 sequential,
                 proc_id,
@@ -230,6 +234,7 @@ fn optimize_tail_recursion(
                         .map(|else_ast| includes_symbol(sym, &else_ast.ast))
                         .unwrap_or(false)
             }
+            Ast::As(expr, _) => includes_symbol(sym, &expr.ast),
             Ast::Let(Let { inits, body, .. }) => {
                 inits.iter().any(|(_k, v)| includes_symbol(sym, &v.ast))
                     | body.iter().any(|b| includes_symbol(sym, &b.ast))

@@ -70,6 +70,11 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
     {
         let name = name.as_str();
         match name {
+            "as" => {
+                match_special_args!(args, expr, ast_pat!(Ast::Symbol(ty), _loc), {
+                    Ok(Ast::As(Box::new(expr.clone()), ty.clone()))
+                })
+            }
             "define-macro" => {
                 match_special_args_with_rest!(
                     args,

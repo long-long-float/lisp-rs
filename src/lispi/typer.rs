@@ -592,6 +592,17 @@ fn collect_constraints_from_ast(
                 ct,
             ))
         }
+        Ast::As(expr, str_ty) => {
+            let (expr, ct) = collect_constraints_from_ast(*expr.clone(), ctx)?;
+            let Some(ty) = ctx.env.find_var(str_ty) else {
+                return Err(Error::UndefinedVariable(str_ty.to_owned(), "typing").into())
+            };
+            let str_ty = str_ty.to_owned();
+            Ok((
+                ast.with_new_ast_and_type(Ast::As(Box::new(expr), str_ty), ty),
+                ct,
+            ))
+        }
         Ast::Cond(Cond { clauses }) => {
             let mut ct = Vec::new();
             let clauses = clauses
@@ -974,6 +985,9 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
                 })
                 .collect();
             ast.with_new_ast_and_type(Ast::Cond(Cond { clauses }), new_ty)
+        }
+        Ast::As(expr, ty) => {
+            ast.with_new_ast_and_type(Ast::As(Box::new(replace_ast(*expr, assign)), ty), new_ty)
         }
         Ast::Begin(Begin { body }) => {
             let body = replace_asts(body, assign);

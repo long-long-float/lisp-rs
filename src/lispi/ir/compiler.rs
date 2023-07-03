@@ -428,7 +428,9 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 ast_ty,
             );
         }
-        Ast::Char(_) => todo!(),
+        Ast::Char(v) => {
+            add_instr(ctx, I::Operand((v as i32).into()), ast_ty);
+        }
         Ast::String(_) => todo!(),
         Ast::Nil => todo!(),
         Ast::Include(_) => todo!(),
@@ -518,6 +520,9 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             } else {
                 add_instr(ctx, I::Operand(Operand::Variable(then_res.result)), ast_ty);
             }
+        }
+        Ast::As(expr, _) => {
+            compile_and_add(*expr, ctx)?;
         }
         Ast::Cond(_) => todo!(),
         Ast::Let(Let {

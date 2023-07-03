@@ -401,4 +401,11 @@ sum
         .run();
         assert_eq!(Some(99), registers["x10"].as_i64());
     }
+
+    #[test]
+    #[named]
+    fn as_char_to_int() {
+        let registers = compile(function_name!(), "(as #\\0 int)").run();
+        assert_eq!(Some(0x30), registers["x10"].as_i64());
+    }
 }
