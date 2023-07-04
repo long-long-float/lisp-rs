@@ -448,7 +448,13 @@ fn collect_constraints_from_ast(
         Ast::Float(_) => Ok((ast.with_new_type(Type::Float), Vec::new())),
         Ast::Boolean(_) => Ok((ast.with_new_type(Type::Boolean), Vec::new())),
         Ast::Char(_) => Ok((ast.with_new_type(Type::Char), Vec::new())),
-        Ast::String(_) => Ok((ast.with_new_type(Type::String), Vec::new())),
+        Ast::String(_) => {
+            // Ok((ast.with_new_type(Type::String), Vec::new()))
+            Ok((
+                ast.with_new_type(Type::Array(Box::new(Type::Char))),
+                Vec::new(),
+            ))
+        }
         Ast::Nil => Ok((ast.with_new_type(Type::Nil), Vec::new())),
         Ast::Symbol(id) | Ast::SymbolWithType(id, _) => {
             let ty = find_var(id, &ast.location, ctx)?;

@@ -330,6 +330,53 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
     }
 }
 
+fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> Result<()> {
+    use Instruction as I;
+
+    let ary = Operand::Variable(
+        add_instr(
+            ctx,
+            I::Alloca {
+                ty: Type::I32,
+                count: (vs.len() as i32 + 1).into(),
+            },
+            ast_ty.clone(),
+        )
+        .result,
+    );
+
+    let len = add_instr(ctx, I::Operand((vs.len() as i32).into()), t::Type::Nil).result;
+
+    add_instr(
+        ctx,
+        I::StoreElement {
+            addr: ary.clone(),
+            ty: Type::I32, // TODO: Set the element type
+            index: 0.into(),
+            value: len.into(),
+        },
+        t::Type::Nil,
+    );
+
+    for (idx, v) in vs.into_iter().enumerate() {
+        let value = Operand::Variable(compile_and_add(v, ctx)?.result);
+        add_instr(
+            ctx,
+            I::StoreElement {
+                addr: ary.clone(),
+                ty: Type::I32, // TODO: Set the element type
+                index: (idx as i32 + 1).into(),
+                value,
+            },
+            t::Type::Nil,
+        );
+    }
+
+    add_instr(ctx, I::Operand(ary), ast_ty);
+
+    Ok(())
+}
+
 fn compile_lambda(
     name: String,
     args: Vec<String>,
@@ -390,7 +437,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
 
     let AnnotatedAst {
         ast,
-        location: _,
+        location,
         ty: ast_ty,
     } = ast;
 
@@ -431,7 +478,18 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         Ast::Char(v) => {
             add_instr(ctx, I::Operand((v as i32).into()), ast_ty);
         }
-        Ast::String(_) => todo!(),
+        Ast::String(value) => {
+            // TODO: Place in text region
+            let values = value
+                .chars()
+                .map(|ch| AnnotatedAst {
+                    ast: Ast::Char(ch),
+                    location,
+                    ty: t::Type::Char,
+                })
+                .collect_vec();
+            compile_array_literal(values, ast_ty, ctx)?;
+        }
         Ast::Nil => todo!(),
         Ast::Include(_) => todo!(),
         Ast::DefineMacro(_) => {
@@ -597,48 +655,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             }
         }
         Ast::ListLiteral(_) => todo!(),
-        Ast::ArrayLiteral(vs) => {
-            let ary = Operand::Variable(
-                add_instr(
-                    ctx,
-                    I::Alloca {
-                        ty: Type::I32,
-                        count: (vs.len() as i32 + 1).into(),
-                    },
-                    ast_ty.clone(),
-                )
-                .result,
-            );
-
-            let len = add_instr(ctx, I::Operand((vs.len() as i32).into()), t::Type::Nil).result;
-
-            add_instr(
-                ctx,
-                I::StoreElement {
-                    addr: ary.clone(),
-                    ty: Type::I32, // TODO: Set the element type
-                    index: 0.into(),
-                    value: len.into(),
-                },
-                t::Type::Nil,
-            );
-
-            for (idx, v) in vs.into_iter().enumerate() {
-                let value = Operand::Variable(compile_and_add(v, ctx)?.result);
-                add_instr(
-                    ctx,
-                    I::StoreElement {
-                        addr: ary.clone(),
-                        ty: Type::I32, // TODO: Set the element type
-                        index: (idx as i32 + 1).into(),
-                        value,
-                    },
-                    t::Type::Nil,
-                );
-            }
-
-            add_instr(ctx, I::Operand(ary), ast_ty);
-        }
+        Ast::ArrayLiteral(vs) => compile_array_literal(vs, ast_ty, ctx)?,
         Ast::Loop(Loop { inits, label, body }) => {
             ctx.loop_updates_map.insert(label.clone(), Vec::new());
 
