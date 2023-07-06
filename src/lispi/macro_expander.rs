@@ -189,7 +189,8 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
         | Ast::String(_)
         | Ast::Nil
         | Ast::Continue(_)
-        | Ast::Include(_) => ast,
+        | Ast::Include(_)
+        | Ast::DefineStruct(_) => ast,
     };
     Ok(AnnotatedAst {
         ast: result,

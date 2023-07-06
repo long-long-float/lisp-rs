@@ -209,6 +209,7 @@ fn optimize_tail_recursion(
             | Ast::Nil
             | Ast::Include(_)
             | Ast::DefineMacro(_)
+            | Ast::DefineStruct(_)
             | Ast::Define(_)
             | Ast::Lambda(_)
             | Ast::Continue(_) => Some(ast.clone()),
@@ -257,6 +258,7 @@ fn optimize_tail_recursion(
             | Ast::Nil
             | Ast::Include(_)
             | Ast::DefineMacro(_)
+            | Ast::DefineStruct(_)
             | Ast::Define(_)
             | Ast::Lambda(_)
             | Ast::Continue(_) => false,

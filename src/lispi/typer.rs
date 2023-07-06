@@ -292,8 +292,33 @@ impl TypeAssignment {
 }
 
 struct Context {
+    /// Relations between variables and corresponding types.
     env: TypeEnv,
+    /// Relations between type names and types.
+    type_env: TypeEnv,
     tv_gen: UniqueGenerator,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        fn register_type(env: &mut Environment<Type>, name: &str, ty: Type) {
+            env.insert_var(name.to_owned(), ty);
+        }
+
+        let mut type_env = TypeEnv::default();
+
+        register_type(&mut type_env, "int", Type::Int);
+        register_type(&mut type_env, "float", Type::Float);
+        register_type(&mut type_env, "bool", Type::Boolean);
+        register_type(&mut type_env, "char", Type::Char);
+        register_type(&mut type_env, "string", Type::String);
+
+        Self {
+            env: TypeEnv::default(),
+            type_env,
+            tv_gen: UniqueGenerator::default(),
+        }
+    }
 }
 
 impl Context {
@@ -478,6 +503,7 @@ fn collect_constraints_from_ast(
             });
             Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
         }
+        Ast::DefineStruct(DefineStruct { name, fields }) => todo!(),
         Ast::Lambda(Lambda {
             args,
             arg_types: orig_arg_types,
@@ -487,7 +513,7 @@ fn collect_constraints_from_ast(
                 .iter()
                 .map(|ty| {
                     if let Some(ty) = ty {
-                        ctx.env.find_var(ty).map(Box::new).ok_or_else(|| {
+                        ctx.type_env.find_var(ty).map(Box::new).ok_or_else(|| {
                             Error::Type(format!("The type {} is not defined.", ty))
                                 .with_null_location()
                                 .into()
@@ -600,7 +626,7 @@ fn collect_constraints_from_ast(
         }
         Ast::As(expr, str_ty) => {
             let (expr, ct) = collect_constraints_from_ast(*expr.clone(), ctx)?;
-            let Some(ty) = ctx.env.find_var(str_ty) else {
+            let Some(ty) = ctx.type_env.find_var(str_ty) else {
                 return Err(Error::UndefinedVariable(str_ty.to_owned(), "typing").into())
             };
             let str_ty = str_ty.to_owned();
@@ -916,6 +942,7 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
         | Ast::Symbol(_)
         | Ast::SymbolWithType(_, _)
         | Ast::DefineMacro(_)
+        | Ast::DefineStruct(_)
         | Ast::Include(_)
         | Ast::Continue(_) => ast.with_new_type(new_ty),
 
@@ -1025,26 +1052,12 @@ fn replace_asts(asts: Program, assign: &TypeAssignment) -> Program {
 }
 
 pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Result<Program> {
-    fn register_type(env: &mut Environment<Type>, name: &str, ty: Type) {
-        env.insert_var(name.to_owned(), ty);
-    }
-
-    let mut ty_env = TypeEnv::default();
-
-    register_type(&mut ty_env, "int", Type::Int);
-    register_type(&mut ty_env, "float", Type::Float);
-    register_type(&mut ty_env, "bool", Type::Boolean);
-    register_type(&mut ty_env, "char", Type::Char);
-    register_type(&mut ty_env, "string", Type::String);
+    let mut ctx = Context::default();
 
     for (id, ty) in &env.current_local().variables {
-        ty_env.insert_var(id.clone(), ty.clone());
+        ctx.env.insert_var(id.clone(), ty.clone());
     }
 
-    let mut ctx = Context {
-        env: ty_env,
-        tv_gen: UniqueGenerator::default(),
-    };
     let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
     // for c in &constraints {
     //     println!("{} = {}", c.left, c.right);

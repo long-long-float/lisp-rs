@@ -254,6 +254,7 @@ impl From<&Ast> for Value {
             | Ast::Include(_)
             | Ast::DefineMacro(_)
             | Ast::Define(_)
+            | Ast::DefineStruct(_)
             | Ast::Assign(_)
             | Ast::IfExpr(_)
             | Ast::Let(_)

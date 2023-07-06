@@ -34,6 +34,7 @@ pub enum Ast {
     ListLiteral(Vec<AnnotatedAst>),
     ArrayLiteral(Vec<AnnotatedAst>),
     As(Box<AnnotatedAst>, SymbolValue),
+    DefineStruct(DefineStruct),
 
     /// For optimizing tail recursion
     Loop(Loop),
@@ -193,6 +194,18 @@ pub struct Continue {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct DefineStruct {
+    pub name: String,
+    pub fields: Vec<StructField>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct StructField {
+    pub name: String,
+    pub ty: SymbolValue,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct AnnotatedAst {
     pub ast: Ast,
     pub location: TokenLocation,
@@ -242,7 +255,7 @@ impl AnnotatedAst {
             | Ast::String(_)
             | Ast::Nil
             | Ast::Include(_)
-            | Ast::Continue(_) => ast,
+            | Ast::DefineStruct(_) => ast,
             Ast::List(vs) => {
                 let vs = vs
                     .iter()
@@ -364,6 +377,13 @@ impl AnnotatedAst {
                     .collect::<Result<Vec<_>>>()?;
                 Ast::Loop(Loop { inits, label, body })
             }
+            Ast::Continue(Continue { label, updates, .. }) => {
+                let updates = updates
+                    .into_iter()
+                    .map(|up| func(up, ctx))
+                    .collect::<Result<Vec<_>>>()?;
+                Ast::Continue(Continue { label, updates })
+            }
             Ast::ListLiteral(vs) => {
                 let vs = vs
                     .into_iter()
@@ -398,7 +418,8 @@ impl AnnotatedAst {
             | Ast::Char(_)
             | Ast::String(_)
             | Ast::Nil
-            | Ast::Include(_) => {}
+            | Ast::Include(_)
+            | Ast::DefineStruct(_) => {}
             Ast::List(vs) => {
                 for v in vs {
                     func(v, ctx)?;
@@ -478,7 +499,7 @@ impl AnnotatedAst {
                     func(v, ctx)?;
                 }
             }
-            Ast::As(v, ty) => func(v, ctx)?,
+            Ast::As(v, _ty) => func(v, ctx)?,
         }
 
         Ok(())
@@ -636,6 +657,13 @@ impl Display for AnnotatedAst {
             }
             Ast::As(value, ty) => {
                 write!(f, "(as {} {})", value, ty)
+            }
+            Ast::DefineStruct(DefineStruct { name, fields }) => {
+                write!(f, "(struct {}", name)?;
+                for field in fields {
+                    write!(f, "  [{} {}]", field.name, field.ty)?;
+                }
+                write!(f, ")")
             }
         }?;
 

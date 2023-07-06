@@ -495,6 +495,9 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         Ast::DefineMacro(_) => {
             // Do nothing
         }
+        Ast::DefineStruct(_) => {
+            // Do nothing
+        }
         Ast::Define(Define { id, init }) => {
             let inst = compile_and_add(*init, ctx)?;
 
