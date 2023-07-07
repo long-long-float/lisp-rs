@@ -1,4 +1,5 @@
 use anyhow::Result;
+use itertools::Itertools;
 
 use super::{
     ast::*, environment::*, error::*, parser::*, unique_generator::UniqueGenerator, SymbolValue,
@@ -32,6 +33,10 @@ pub enum Type {
     Function {
         args: Vec<Box<Type>>,
         result: Box<Type>,
+    },
+    Struct {
+        name: String,
+        fields: Vec<TStructField>,
     },
     Any,
 
@@ -97,8 +102,11 @@ impl Type {
 
             Type::Composite { name: _, inner } => inner.iter().any(|i| i.has_free_var(tv)),
             Type::Function { args, result } => {
-                args.iter().any(|arg| arg.has_free_var(tv)) | result.has_free_var(tv)
+                args.iter().any(|arg| arg.has_free_var(tv)) || result.has_free_var(tv)
             }
+            Type::Struct { name: _, fields } => fields
+                .iter()
+                .any(|TStructField { name: _, ty }| ty.has_free_var(tv)),
             Type::Variable(ttv) => ttv == tv,
             Type::ForAll { tv: ttv, ty } => tv != ttv && ty.has_free_var(tv),
         }
@@ -135,6 +143,16 @@ impl Type {
                     .collect();
                 let result = Box::new(result.replace(assign));
                 Type::Function { args, result }
+            }
+            Type::Struct { name, fields } => {
+                let fields = fields
+                    .into_iter()
+                    .map(|TStructField { name, ty }| TStructField {
+                        name,
+                        ty: Box::new(ty.replace(assign)),
+                    })
+                    .collect_vec();
+                Type::Struct { name, fields }
             }
             Type::Variable(ref tv) => {
                 if tv == &assign.left {
@@ -207,6 +225,13 @@ impl std::fmt::Display for Type {
                     .join(", ");
                 write!(f, "({}) -> {}", args, *result)
             }
+            Type::Struct { name, fields } => {
+                let fields = fields
+                    .iter()
+                    .map(|t| format!("{}: {}", t.name, t.ty))
+                    .join(", ");
+                write!(f, "{} {{{}}}", name, fields)
+            }
             Type::Any => write!(f, "any"),
             Type::Variable(v) => write!(f, "{}", v.name),
             Type::ForAll { tv, ty } => write!(f, "∀{}. {}", tv.name, ty),
@@ -214,6 +239,12 @@ impl std::fmt::Display for Type {
             Type::None => write!(f, "(none)"),
         }
     }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct TStructField {
+    name: String,
+    ty: Box<Type>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -325,6 +356,14 @@ impl Context {
     fn gen_tv(&mut self) -> Type {
         Type::Variable(TypeVariable {
             name: format!("T{}", self.tv_gen.gen()),
+        })
+    }
+
+    fn find_type(&mut self, ty: &String) -> Result<Type> {
+        self.type_env.find_var(ty).ok_or_else(|| {
+            Error::Type(format!("The type {} is not defined.", ty))
+                .with_null_location()
+                .into()
         })
     }
 }
@@ -503,7 +542,30 @@ fn collect_constraints_from_ast(
             });
             Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
         }
-        Ast::DefineStruct(DefineStruct { name, fields }) => todo!(),
+        Ast::DefineStruct(DefineStruct { name, fields }) => {
+            let fields = fields
+                .iter()
+                .map(|StructField { name, ty }| {
+                    Ok(TStructField {
+                        name: name.to_owned(),
+                        ty: ctx.find_type(ty).map(Box::new)?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            ctx.type_env.insert_var(
+                name.to_owned(),
+                Type::Struct {
+                    name: name.to_owned(),
+                    fields,
+                },
+            );
+
+            // TODO: Define following functions
+            // * Constructor
+            // * Field accessor
+
+            Ok((ast, Vec::new()))
+        }
         Ast::Lambda(Lambda {
             args,
             arg_types: orig_arg_types,
@@ -513,11 +575,7 @@ fn collect_constraints_from_ast(
                 .iter()
                 .map(|ty| {
                     if let Some(ty) = ty {
-                        ctx.type_env.find_var(ty).map(Box::new).ok_or_else(|| {
-                            Error::Type(format!("The type {} is not defined.", ty))
-                                .with_null_location()
-                                .into()
-                        })
+                        ctx.find_type(ty).map(Box::new)
                     } else {
                         Ok(Box::new(ctx.gen_tv()))
                     }

@@ -91,6 +91,38 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
                     }
                 )
             }
+            "struct" => {
+                match_special_args_with_rest!(args, fields, ast_pat!(Ast::Symbol(name), _loc), {
+                    let fields = fields
+                        .iter()
+                        .map(|field| {
+                            if let ast_pat!(Ast::List(field)) = field {
+                                match_special_args!(
+                                    field,
+                                    ast_pat!(Ast::Symbol(name)),
+                                    ast_pat!(Ast::Symbol(ty)),
+                                    {
+                                        Ok(StructField {
+                                            name: name.to_owned(),
+                                            ty: ty.to_owned(),
+                                        })
+                                    }
+                                )
+                            } else {
+                                let err = Error::Eval(
+                                    "'struct' is formed as (struct id [id type] ...)".to_string(),
+                                )
+                                .with_location(location);
+                                Err(err.into())
+                            }
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    Ok(Ast::DefineStruct(DefineStruct {
+                        name: name.clone(),
+                        fields,
+                    }))
+                })
+            }
             // TODO: Restrict "include" to top-level only
             "include" => {
                 match_special_args!(args, ast_pat!(Ast::String(path), _loc), {
