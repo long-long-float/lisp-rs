@@ -552,17 +552,25 @@ fn collect_constraints_from_ast(
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
-            ctx.type_env.insert_var(
-                name.to_owned(),
-                Type::Struct {
-                    name: name.to_owned(),
-                    fields,
-                },
-            );
+            let struct_type = Type::Struct {
+                name: name.to_owned(),
+                fields: fields.clone(),
+            };
+            ctx.type_env
+                .insert_var(name.to_owned(), struct_type.clone());
 
-            // TODO: Define following functions
-            // * Constructor
-            // * Field accessor
+            // Define constructor
+            {
+                let args_types = fields.iter().map(|f| *f.ty.clone()).collect_vec();
+                let ctor_type = Type::function(args_types, struct_type.clone());
+                ctx.env.insert_var(name.to_owned(), ctor_type);
+            }
+
+            // Define field accessors
+            for TStructField { name: fname, ty } in fields {
+                let acc_type = Type::function(vec![struct_type.clone()], *ty);
+                ctx.env.insert_var(format!("{}->{}", name, fname), acc_type);
+            }
 
             Ok((ast, Vec::new()))
         }
