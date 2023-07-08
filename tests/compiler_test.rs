@@ -408,4 +408,21 @@ sum
         let registers = compile(function_name!(), "(as #\\0 int)").run();
         assert_eq!(Some(0x30), registers["x10"].as_i64());
     }
+
+    #[test]
+    #[named]
+    fn struct_get_one_field() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(struct Point
+    [x int]
+    [y int])
+(define pos (Point 10 20))
+(Point->x pos)
+"#,
+        )
+        .run();
+        assert_eq!(Some(10), registers["x10"].as_i64());
+    }
 }
