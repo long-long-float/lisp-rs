@@ -273,6 +273,13 @@ fn tokenize_single<'a>(
                 succ(program, line, loc);
                 ret.with_location(begin, *loc)
             }
+            '\\' => {
+                succ(program, line, loc);
+                let ch = current_char(line, loc)?;
+                succ(program, line, loc);
+
+                Token::CharLiteral(ch).with_location(begin, *loc)
+            }
             ';' => {
                 move_to_next_line(program, line, loc);
                 return Ok(None);
@@ -415,5 +422,12 @@ mod tests {
         assert_eq!(tok("-test"), Token::Identifier("-test".to_string()));
         assert_eq!(tok("+"), Token::Identifier("+".to_string()));
         assert_eq!(tok("-"), Token::Identifier("-".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_char() {
+        assert_eq!(tok("#\\a"), Token::CharLiteral('a'));
+        assert_eq!(tok("#\\あ"), Token::CharLiteral('あ'));
+        assert_eq!(tok("\\a"), Token::CharLiteral('a'));
     }
 }
