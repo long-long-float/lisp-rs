@@ -232,6 +232,12 @@ pub struct TStructField {
     pub ty: Box<Type>,
 }
 
+impl TStructField {
+    pub fn accessor_name(&self, struct_name: &String) -> String {
+        format!("{}->{}", struct_name, self.name)
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct TypeWithLocation {
     pub ty: Type,

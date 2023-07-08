@@ -1015,24 +1015,63 @@ pub fn compile(
 
     let mut ctx = Context::new(&mut ir_ctx.bb_arena, t::StructDefinitions::default());
 
+    for (name, def) in &struct_defs {
+        ctx.func_labels.insert_var(
+            name.to_owned(),
+            Label {
+                name: name.to_owned(),
+            },
+        );
+
+        for field in &def.fields {
+            let name = field.accessor_name(name);
+
+            ctx.func_labels.insert_var(
+                name.to_owned(),
+                Label {
+                    name: name.to_owned(),
+                },
+            );
+        }
+    }
+
+    compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
+
     for (name, def) in struct_defs {
         {
             let bb = ctx.new_bb(name.to_owned());
             ctx.add_bb(bb);
 
-            let ptr = add_instr(
-                &mut ctx,
-                Instruction::Alloca {
-                    ty: Type::I32,
-                    count: (def.fields.len() as i32).into(),
-                },
-                t::Type::None,
+            let ptr = Operand::Variable(
+                add_instr(
+                    &mut ctx,
+                    Instruction::Alloca {
+                        ty: Type::I32,
+                        count: (def.fields.len() as i32).into(),
+                    },
+                    t::Type::None,
+                )
+                .result,
             );
-            add_instr(
-                &mut ctx,
-                Instruction::Ret(Operand::Variable(ptr.result)),
-                t::Type::None,
-            );
+
+            for (idx, field) in def.fields.iter().enumerate() {
+                let value = Operand::Variable(Variable {
+                    name: field.name.clone(),
+                });
+
+                add_instr(
+                    &mut ctx,
+                    Instruction::StoreElement {
+                        addr: ptr.clone(),
+                        ty: Type::I32,
+                        index: (idx as i32).into(),
+                        value,
+                    },
+                    t::Type::None,
+                );
+            }
+
+            add_instr(&mut ctx, Instruction::Ret(ptr), t::Type::None);
 
             let args = def
                 .fields
@@ -1042,17 +1081,10 @@ pub fn compile(
             let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
 
             result.push(ctor);
-
-            ctx.func_labels.insert_var(
-                name.to_owned(),
-                Label {
-                    name: name.to_owned(),
-                },
-            );
         }
 
         for (idx, field) in def.fields.iter().enumerate() {
-            let name = format!("{}->{}", name, field.name);
+            let name = field.accessor_name(&name);
 
             let bb = ctx.new_bb(name.to_owned());
             ctx.add_bb(bb);
@@ -1082,17 +1114,8 @@ pub fn compile(
             let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
 
             result.push(ctor);
-
-            ctx.func_labels.insert_var(
-                name.to_owned(),
-                Label {
-                    name: name.to_owned(),
-                },
-            );
         }
     }
-
-    compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
 
     let fun_vars = ctx.funcs.current_local().variables.clone();
     for (_, fun) in fun_vars {
