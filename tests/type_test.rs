@@ -19,7 +19,7 @@ fn typing(program: &str) -> Result<Type, Error> {
 
     let result = frontend(lines, &opt, &opt::Optimize::all());
     match result {
-        Ok((asts, _)) => Ok(asts.last().unwrap().ty.clone()),
+        Ok((asts, _, _)) => Ok(asts.last().unwrap().ty.clone()),
         Err(err) => {
             if let Some(err) = err.downcast_ref::<ErrorWithLocation>() {
                 Err(err.err.clone())

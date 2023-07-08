@@ -127,7 +127,7 @@ pub fn frontend(
     program: Vec<String>,
     opt: &CliOption,
     applied_opts: &HashSet<opt::Optimize>,
-) -> Result<(Program, Environment<Value>)> {
+) -> Result<(Program, Environment<Value>, ty::StructDefinitions)> {
     let tokens = t::tokenize(program)?;
 
     if opt.dump {
@@ -161,7 +161,7 @@ pub fn frontend(
     e::init_env(&mut env, &mut ty_env);
     // sym_table.dump();
 
-    let program = ty::check_and_inference_type(program, &ty_env)?;
+    let (program, struct_defs) = ty::check_and_inference_type(program, &ty_env)?;
     // for ast in &program {
     //     println!("{}", ast);
     // }
@@ -177,7 +177,7 @@ pub fn frontend(
         dump_asts(&program);
         println!();
     }
-    Ok((program, env))
+    Ok((program, env, struct_defs))
 }
 
 /// Run the program as following steps.
@@ -190,7 +190,7 @@ pub fn frontend(
 ///
 /// Functions of each steps return Result to express errors.
 pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value, ty::Type)>> {
-    let (program, mut env) = frontend(program, opt, &opt::Optimize::all())?;
+    let (program, mut env, _struct_defs) = frontend(program, opt, &opt::Optimize::all())?;
     e::eval_program(&program, &mut env)
 }
 
@@ -199,11 +199,11 @@ pub fn compile(
     opt: &CliOption,
     applied_opts: HashSet<opt::Optimize>,
 ) -> Result<()> {
-    let (program, mut _env) = frontend(program, opt, &applied_opts)?;
+    let (program, mut _env, struct_defs) = frontend(program, opt, &applied_opts)?;
 
     let mut ir_ctx = ir::IrContext::default();
 
-    let funcs = ir::compiler::compile(program, &mut ir_ctx, opt)?;
+    let funcs = ir::compiler::compile(program, &mut ir_ctx, struct_defs, opt)?;
 
     if opt.dump {
         printlnuw(&"Raw IR instructions:".red());
@@ -400,7 +400,7 @@ pub fn interpret_with_env(
     let tokens = t::tokenize(program)?;
     let program = p::parse_with_env(tokens)?;
     let program = me::expand_macros(program)?;
-    let program = ty::check_and_inference_type(program, ty_env)?;
+    let (program, _struct_defs) = ty::check_and_inference_type(program, ty_env)?;
     let program = opt::tail_recursion::optimize(program)?;
     e::eval_program(&program, env)
 }

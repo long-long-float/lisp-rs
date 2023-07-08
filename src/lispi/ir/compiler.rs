@@ -59,11 +59,13 @@ struct Context<'a> {
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
 
+    struct_defs: t::StructDefinitions,
+
     basic_blocks: Vec<Id<BasicBlock>>,
 }
 
 impl<'a> Context<'a> {
-    fn new(arena: &'a mut Arena<BasicBlock>) -> Self {
+    fn new(arena: &'a mut Arena<BasicBlock>, struct_defs: t::StructDefinitions) -> Self {
         let mut preludes = e::Env::default();
         e::init_env(&mut preludes, &mut Environment::default());
 
@@ -82,6 +84,7 @@ impl<'a> Context<'a> {
             loop_label_map: FxHashMap::default(),
             loop_updates_map: FxHashMap::default(),
             assigned_map: FxHashMap::default(),
+            struct_defs,
         }
     }
 
@@ -998,14 +1001,96 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
         .collect()
 }
 
-pub fn compile(asts: Program, ir_ctx: &mut IrContext, _opt: &CliOption) -> Result<Functions> {
+pub fn compile(
+    asts: Program,
+    ir_ctx: &mut IrContext,
+    struct_defs: t::StructDefinitions,
+    _opt: &CliOption,
+) -> Result<Functions> {
     let mut result = Vec::new();
 
     let main_bb = ir_ctx
         .bb_arena
         .alloc(BasicBlock::new("main".to_string(), None));
 
-    let mut ctx = Context::new(&mut ir_ctx.bb_arena);
+    let mut ctx = Context::new(&mut ir_ctx.bb_arena, t::StructDefinitions::default());
+
+    for (name, def) in struct_defs {
+        {
+            let bb = ctx.new_bb(name.to_owned());
+            ctx.add_bb(bb);
+
+            let ptr = add_instr(
+                &mut ctx,
+                Instruction::Alloca {
+                    ty: Type::I32,
+                    count: (def.fields.len() as i32).into(),
+                },
+                t::Type::None,
+            );
+            add_instr(
+                &mut ctx,
+                Instruction::Ret(Operand::Variable(ptr.result)),
+                t::Type::None,
+            );
+
+            let args = def
+                .fields
+                .iter()
+                .map(|field| (field.name.clone(), *field.ty.clone()))
+                .collect_vec();
+            let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
+
+            result.push(ctor);
+
+            ctx.func_labels.insert_var(
+                name.to_owned(),
+                Label {
+                    name: name.to_owned(),
+                },
+            );
+        }
+
+        for (idx, field) in def.fields.iter().enumerate() {
+            let name = format!("{}->{}", name, field.name);
+
+            let bb = ctx.new_bb(name.to_owned());
+            ctx.add_bb(bb);
+
+            let arg0_name = "obj".to_string();
+
+            let obj = Operand::Variable(Variable {
+                name: arg0_name.clone(),
+            });
+
+            let val = add_instr(
+                &mut ctx,
+                Instruction::LoadElement {
+                    addr: obj,
+                    ty: Type::I32,
+                    index: (idx as i32).into(),
+                },
+                t::Type::None,
+            );
+            add_instr(
+                &mut ctx,
+                Instruction::Ret(Operand::Variable(val.result)),
+                t::Type::None,
+            );
+
+            let args = vec![(arg0_name, t::Type::None)];
+            let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
+
+            result.push(ctor);
+
+            ctx.func_labels.insert_var(
+                name.to_owned(),
+                Label {
+                    name: name.to_owned(),
+                },
+            );
+        }
+    }
 
     compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
 

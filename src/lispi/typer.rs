@@ -1,5 +1,6 @@
 use anyhow::Result;
 use itertools::Itertools;
+use rustc_hash::FxHashMap;
 
 use super::{
     ast::*, environment::*, error::*, parser::*, unique_generator::UniqueGenerator, SymbolValue,
@@ -36,7 +37,6 @@ pub enum Type {
     },
     Struct {
         name: String,
-        fields: Vec<TStructField>,
     },
     Any,
 
@@ -96,6 +96,7 @@ impl Type {
             | Type::Any
             | Type::Scala(_)
             | Type::Symbol
+            | Type::Struct { .. }
             | Type::None => false,
 
             Type::List(e) | Type::Array(e) => e.has_free_var(tv),
@@ -104,9 +105,6 @@ impl Type {
             Type::Function { args, result } => {
                 args.iter().any(|arg| arg.has_free_var(tv)) || result.has_free_var(tv)
             }
-            Type::Struct { name: _, fields } => fields
-                .iter()
-                .any(|TStructField { name: _, ty }| ty.has_free_var(tv)),
             Type::Variable(ttv) => ttv == tv,
             Type::ForAll { tv: ttv, ty } => tv != ttv && ty.has_free_var(tv),
         }
@@ -124,6 +122,7 @@ impl Type {
             | Type::Any
             | Type::Scala(_)
             | Type::Symbol
+            | Type::Struct { .. }
             | Type::None => self,
 
             Type::List(e) => Type::List(Box::new(e.replace(assign))),
@@ -143,16 +142,6 @@ impl Type {
                     .collect();
                 let result = Box::new(result.replace(assign));
                 Type::Function { args, result }
-            }
-            Type::Struct { name, fields } => {
-                let fields = fields
-                    .into_iter()
-                    .map(|TStructField { name, ty }| TStructField {
-                        name,
-                        ty: Box::new(ty.replace(assign)),
-                    })
-                    .collect_vec();
-                Type::Struct { name, fields }
             }
             Type::Variable(ref tv) => {
                 if tv == &assign.left {
@@ -225,12 +214,8 @@ impl std::fmt::Display for Type {
                     .join(", ");
                 write!(f, "({}) -> {}", args, *result)
             }
-            Type::Struct { name, fields } => {
-                let fields = fields
-                    .iter()
-                    .map(|t| format!("{}: {}", t.name, t.ty))
-                    .join(", ");
-                write!(f, "{} {{{}}}", name, fields)
+            Type::Struct { name } => {
+                write!(f, "{}", name)
             }
             Type::Any => write!(f, "any"),
             Type::Variable(v) => write!(f, "{}", v.name),
@@ -243,8 +228,8 @@ impl std::fmt::Display for Type {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct TStructField {
-    name: String,
-    ty: Box<Type>,
+    pub name: String,
+    pub ty: Box<Type>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -322,11 +307,20 @@ impl TypeAssignment {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct StructDefinition {
+    pub name: String,
+    pub fields: Vec<TStructField>,
+}
+
+pub type StructDefinitions = FxHashMap<String, StructDefinition>;
+
 struct Context {
     /// Relations between variables and corresponding types.
     env: TypeEnv,
     /// Relations between type names and types.
     type_env: TypeEnv,
+    struct_defs: StructDefinitions,
     tv_gen: UniqueGenerator,
 }
 
@@ -347,6 +341,7 @@ impl Default for Context {
         Self {
             env: TypeEnv::default(),
             type_env,
+            struct_defs: FxHashMap::default(),
             tv_gen: UniqueGenerator::default(),
         }
     }
@@ -554,10 +549,17 @@ fn collect_constraints_from_ast(
                 .collect::<Result<Vec<_>>>()?;
             let struct_type = Type::Struct {
                 name: name.to_owned(),
-                fields: fields.clone(),
             };
             ctx.type_env
                 .insert_var(name.to_owned(), struct_type.clone());
+
+            ctx.struct_defs.insert(
+                name.to_owned(),
+                StructDefinition {
+                    name: name.to_owned(),
+                    fields: fields.clone(),
+                },
+            );
 
             // Define constructor
             {
@@ -1117,7 +1119,10 @@ fn replace_asts(asts: Program, assign: &TypeAssignment) -> Program {
         .collect()
 }
 
-pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Result<Program> {
+pub fn check_and_inference_type(
+    asts: Program,
+    env: &Environment<Type>,
+) -> Result<(Program, StructDefinitions)> {
     let mut ctx = Context::default();
 
     for (id, ty) in &env.current_local().variables {
@@ -1125,17 +1130,24 @@ pub fn check_and_inference_type(asts: Program, env: &Environment<Type>) -> Resul
     }
 
     let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
-    // for c in &constraints {
-    //     println!("{} = {}", c.left, c.right);
-    // }
-
     let assigns = unify(constraints)?;
     let mut asts = asts;
     for assign in &assigns {
-        // println!("{} => {}", assign.left.name, assign.right);
-
         asts = replace_asts(asts, assign);
     }
 
-    Ok(asts)
+    // Replace types for ctx.struct_defs
+    let skeys = ctx.struct_defs.keys().map(|s| s.to_owned()).collect_vec();
+    for name in skeys {
+        let def = ctx.struct_defs.get_mut(&name).unwrap();
+        for field in def.fields.iter_mut() {
+            let mut new_ty = *field.ty.clone();
+            for assign in &assigns {
+                new_ty = new_ty.replace(assign);
+            }
+            field.ty = Box::new(new_ty);
+        }
+    }
+
+    Ok((asts, ctx.struct_defs))
 }
