@@ -411,7 +411,7 @@ sum
 
     #[test]
     #[named]
-    fn struct_get_one_field() {
+    fn struct_get_1st_field() {
         let registers = compile(
             function_name!(),
             r#"
@@ -424,5 +424,40 @@ sum
         )
         .run();
         assert_eq!(Some(10), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn struct_get_2nd_field() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(struct Point
+    [x int]
+    [y int])
+(define pos (Point 10 20))
+(Point->y pos)
+"#,
+        )
+        .run();
+        assert_eq!(Some(20), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn struct_get_3rd_field_mixed_types() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(struct ABC
+    [a char]
+    [b int]
+    [c char])
+(define abc (ABC \a 0xb \c))
+(ABC->c abc)
+"#,
+        )
+        .run();
+        assert_eq!(Some(0x63), registers["x10"].as_i64());
     }
 }
