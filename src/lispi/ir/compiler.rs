@@ -1015,29 +1015,55 @@ pub fn compile(
 
     let mut ctx = Context::new(&mut ir_ctx.bb_arena, t::StructDefinitions::default());
 
-    for (name, def) in &struct_defs {
+    let mut predefined_funcs = Vec::new();
+
+    /*{
+        let name = "write";
+        let bb = ctx.new_bb(name.to_owned());
+        ctx.add_bb(bb);
+
+        let ptr =
+            Operand::Variable(add_instr(&mut ctx, Instruction::Add((), ()), t::Type::None).result);
+
+        for (idx, field) in def.fields.iter().enumerate() {
+            let value = Operand::Variable(Variable {
+                name: field.name.clone(),
+            });
+
+            add_instr(
+                &mut ctx,
+                Instruction::StoreElement {
+                    addr: ptr.clone(),
+                    ty: Type::I32,
+                    index: (idx as i32).into(),
+                    value,
+                },
+                t::Type::None,
+            );
+        }
+
+        add_instr(&mut ctx, Instruction::Ret(ptr), t::Type::None);
+
+        let args = def
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), *field.ty.clone()))
+            .collect_vec();
+        let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
+
+        ctx.basic_blocks.clear();
+
+        predefined_funcs.push(ctor);
+
         ctx.func_labels.insert_var(
             name.to_owned(),
             Label {
                 name: name.to_owned(),
             },
         );
+    }*/
 
-        for field in &def.fields {
-            let name = field.accessor_name(name);
-
-            ctx.func_labels.insert_var(
-                name.to_owned(),
-                Label {
-                    name: name.to_owned(),
-                },
-            );
-        }
-    }
-
-    compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
-
-    for (name, def) in struct_defs {
+    for (name, def) in &struct_defs {
         {
             let bb = ctx.new_bb(name.to_owned());
             ctx.add_bb(bb);
@@ -1080,7 +1106,16 @@ pub fn compile(
                 .collect_vec();
             let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
 
-            result.push(ctor);
+            ctx.basic_blocks.clear();
+
+            predefined_funcs.push(ctor);
+
+            ctx.func_labels.insert_var(
+                name.to_owned(),
+                Label {
+                    name: name.to_owned(),
+                },
+            );
         }
 
         for (idx, field) in def.fields.iter().enumerate() {
@@ -1113,9 +1148,20 @@ pub fn compile(
             let args = vec![(arg0_name, t::Type::None)];
             let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
 
-            result.push(ctor);
+            ctx.basic_blocks.clear();
+
+            predefined_funcs.push(ctor);
+
+            ctx.func_labels.insert_var(
+                name.to_owned(),
+                Label {
+                    name: name.to_owned(),
+                },
+            );
         }
     }
+
+    compile_main_function(asts, &mut result, main_bb, &mut ctx)?;
 
     let fun_vars = ctx.funcs.current_local().variables.clone();
     for (_, fun) in fun_vars {
@@ -1143,6 +1189,8 @@ pub fn compile(
             result.push(fun);
         }
     }
+
+    result.append(&mut predefined_funcs);
 
     bb::build_connections_between_bbs(ctx.arena, &result);
 
