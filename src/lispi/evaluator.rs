@@ -1042,7 +1042,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         s("array->set"),
         Type::for_all(|tv| {
             Type::function(
-                vec![Type::Array(Box::new(tv.clone())), Type::Int, tv.clone()],
+                vec![Type::Array(Box::new(tv.clone())), Type::Int, tv],
                 Type::Nil,
             )
         }),
@@ -1072,6 +1072,18 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         |_| {
             newlineuw();
             Ok(Value::List(vec![]))
+        },
+    );
+    insert_function(
+        env,
+        ty_env,
+        s("write"),
+        Type::function(vec![Type::string()], Type::Nil),
+        |args| {
+            match_call_args!(args, Value::String(str), {
+                printuw(str);
+                Ok(Value::nil())
+            })
         },
     );
     insert_function(

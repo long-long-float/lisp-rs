@@ -56,6 +56,10 @@ impl Type {
         Type::List(Box::new(Type::Any))
     }
 
+    pub fn string() -> Type {
+        Type::Array(Box::new(Type::Char))
+    }
+
     pub fn function(args: Vec<Type>, result: Type) -> Type {
         Type::Function {
             args: args.iter().map(|a| Box::new(a.clone())).collect(),

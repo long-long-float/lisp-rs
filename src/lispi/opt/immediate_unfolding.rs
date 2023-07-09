@@ -96,6 +96,7 @@ pub fn optimize(
                     | I::Alloca { .. }
                     | I::Jump(_, _)
                     | I::Call { .. }
+                    | I::SysCall { .. }
                     | I::Phi(_)
                     | I::Label(_)
                     | I::Nop => Some(inst),

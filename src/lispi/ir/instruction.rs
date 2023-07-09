@@ -57,6 +57,11 @@ pub enum Instruction {
         fun: Operand,
         args: Vec<Operand>,
     },
+    /// Calls a system function. Note that args depend on the target environment strongly.
+    SysCall {
+        number: Operand,
+        args: Vec<Operand>,
+    },
     Phi(Vec<(Operand, Label)>),
 
     Operand(Operand),
@@ -201,6 +206,15 @@ impl Instruction {
 
                 I::Call { fun, args }
             }
+            I::SysCall { number, args } => {
+                let number = replace_var(replace_var_map, number);
+                let args = args
+                    .into_iter()
+                    .map(|arg| replace_var(replace_var_map, arg))
+                    .collect();
+
+                I::SysCall { number, args }
+            }
 
             I::Ret(op) => I::Ret(replace_var(replace_var_map, op)),
 
@@ -277,6 +291,14 @@ impl Display for Instruction {
                 for arg in args {
                     write!(f, ", {}", arg)?;
                 }
+                Ok(())
+            }
+            SysCall { number, args } => {
+                write!(f, "syscall {}", number)?;
+                for arg in args {
+                    write!(f, ", {}", arg)?;
+                }
+
                 Ok(())
             }
             Phi(nodes) => {
@@ -364,6 +386,7 @@ impl Display for AnnotatedInstrDisplay<'_> {
             | LoadElement { .. }
             | Cmp(_, _, _)
             | Call { .. }
+            | SysCall { .. }
             | Operand(_)
             | Phi(_) => {
                 write!(f, "  {}:{} = {}", result, ty, inst)?;

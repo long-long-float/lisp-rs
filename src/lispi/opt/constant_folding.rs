@@ -94,6 +94,11 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                     args.iter()
                         .for_each(|arg| register_as_used(&mut used_vars, arg));
                 }
+                Instruction::SysCall { number, args } => {
+                    register_as_used(&mut used_vars, number);
+                    args.iter()
+                        .for_each(|arg| register_as_used(&mut used_vars, arg));
+                }
 
                 Instruction::Phi(_) => { /* Variables added in front. */ }
 
@@ -363,6 +368,11 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
                     let args = args.into_iter().map(|arg| fold_imm(ctx, arg)).collect();
 
                     Some(I::Call { fun, args })
+                }
+                I::SysCall { number, args } => {
+                    let number = fold_imm(ctx, number);
+                    let args = args.into_iter().map(|arg| fold_imm(ctx, arg)).collect();
+                    Some(I::SysCall { number, args })
                 }
                 I::Ret(op) => Some(I::Ret(fold_imm(ctx, op))),
 

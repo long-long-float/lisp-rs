@@ -211,6 +211,12 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
                 add_only_var(arg, vars);
             }
         }
+        Instruction::SysCall { number, args } => {
+            add_only_var(number, vars);
+            for arg in args {
+                add_only_var(arg, vars);
+            }
+        }
         Instruction::Phi(nodes) => {
             for (op, _) in nodes {
                 add_only_var(op, vars);
@@ -225,7 +231,7 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
 pub fn create_interference_graph(
     funcs: Functions,
     ir_ctx: &mut IrContext,
-    opt: &CliOption,
+    _opt: &CliOption,
 ) -> Result<Vec<(Function, RegisterMap)>> {
     // TODO: Take the number from outside
     let num_of_registers = 7;

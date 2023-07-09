@@ -1017,43 +1017,61 @@ pub fn compile(
 
     let mut predefined_funcs = Vec::new();
 
-    /*{
+    {
         let name = "write";
         let bb = ctx.new_bb(name.to_owned());
         ctx.add_bb(bb);
 
-        let ptr =
-            Operand::Variable(add_instr(&mut ctx, Instruction::Add((), ()), t::Type::None).result);
+        let arg0_name = "str".to_string();
+        let arg0 = Operand::Variable(Variable {
+            name: arg0_name.clone(),
+        });
 
-        for (idx, field) in def.fields.iter().enumerate() {
-            let value = Operand::Variable(Variable {
-                name: field.name.clone(),
-            });
-
+        let data = Operand::Variable(
             add_instr(
                 &mut ctx,
-                Instruction::StoreElement {
-                    addr: ptr.clone(),
-                    ty: Type::I32,
-                    index: (idx as i32).into(),
-                    value,
+                Instruction::Call {
+                    fun: Operand::Immediate(Immediate::Label(Label {
+                        name: "array->data".to_string(),
+                    })),
+                    args: vec![arg0.clone()],
                 },
-                t::Type::None,
-            );
-        }
+                t::Type::Nil,
+            )
+            .result,
+        );
 
-        add_instr(&mut ctx, Instruction::Ret(ptr), t::Type::None);
+        let len = Operand::Variable(
+            add_instr(
+                &mut ctx,
+                Instruction::Call {
+                    fun: Operand::Immediate(Immediate::Label(Label {
+                        name: "array->len".to_string(),
+                    })),
+                    args: vec![arg0],
+                },
+                t::Type::Nil,
+            )
+            .result,
+        );
 
-        let args = def
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), *field.ty.clone()))
-            .collect_vec();
-        let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
+        add_instr(
+            &mut ctx,
+            Instruction::SysCall {
+                number: 64.into(),
+                args: vec![1.into(), data, len],
+            },
+            t::Type::Nil,
+        );
+
+        add_instr(&mut ctx, Instruction::Ret(0.into()), t::Type::None);
+
+        let args = vec![(arg0_name, t::Type::String)];
+        let write = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
 
         ctx.basic_blocks.clear();
 
-        predefined_funcs.push(ctor);
+        predefined_funcs.push(write);
 
         ctx.func_labels.insert_var(
             name.to_owned(),
@@ -1061,7 +1079,7 @@ pub fn compile(
                 name: name.to_owned(),
             },
         );
-    }*/
+    }
 
     for (name, def) in &struct_defs {
         {

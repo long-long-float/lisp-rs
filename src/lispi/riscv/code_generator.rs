@@ -573,6 +573,34 @@ pub fn generate_code(
 
                         insts.append(&mut restore);
                     }
+                    SysCall { number, args } => {
+                        let (mut save, mut restore) =
+                            frame.generate_insts_for_call(args.len(), &result_reg);
+
+                        insts.append(&mut save);
+
+                        ctx.arg_count = 0;
+                        for arg in args {
+                            load_argument(&mut ctx, &mut insts, &register_map, arg);
+                        }
+
+                        load_operand_to(
+                            &mut ctx,
+                            &mut insts,
+                            &register_map,
+                            number,
+                            Register::a(7),
+                        );
+
+                        insts.push(Instruction::I(IInstruction {
+                            op: IInstructionOp::Ecall,
+                            imm: Immediate::new(0),
+                            rs1: Register::zero(),
+                            rd: Register::zero(),
+                        }));
+
+                        insts.append(&mut restore);
+                    }
                     Phi(_nodes) => {}
                     Operand(op) => {
                         load_operand_to(&mut ctx, &mut insts, &register_map, op, result_reg);
