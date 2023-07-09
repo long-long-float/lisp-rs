@@ -82,7 +82,7 @@ impl Instruction {
         use Instruction::*;
 
         match self {
-            Store(_, _) | StoreElement { .. } | Call { .. } => false,
+            Store(_, _) | StoreElement { .. } | Call { .. } | SysCall { .. } => false,
             _ => !self.is_terminal(),
         }
     }

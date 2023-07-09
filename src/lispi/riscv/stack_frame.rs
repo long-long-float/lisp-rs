@@ -23,9 +23,11 @@ impl<'a> StackFrame<'a> {
     }
 
     pub fn generate_fun_header(&self) -> Vec<Instruction> {
+        let num_of_used_a_register = 8;
         let frame_size = 4
-            * (self.callee_saved_registers.len() + self.register_map.values().unique().count())
-                as i32;
+            * (self.callee_saved_registers.len()
+                + self.register_map.values().unique().count()
+                + num_of_used_a_register) as i32;
 
         let mut insts = Vec::new();
 

@@ -317,6 +317,10 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             ast_ty,
                         );
                     }
+                    "array->data" => {
+                        let ary = args[0].result.clone().into();
+                        add_instr(ctx, I::Add(ary, 4.into()), ast_ty);
+                    }
                     "not" => {
                         let value = args[0].result.clone();
                         add_instr(ctx, I::Not(Operand::Variable(value)), ast_ty);
@@ -1027,16 +1031,40 @@ pub fn compile(
             name: arg0_name.clone(),
         });
 
+        // TODO: Call these function
+        // let data = Operand::Variable(
+        //     add_instr(
+        //         &mut ctx,
+        //         Instruction::Call {
+        //             fun: Operand::Immediate(Immediate::Label(Label {
+        //                 name: "array->data".to_string(),
+        //             })),
+        //             args: vec![arg0.clone()],
+        //         },
+        //         t::Type::Nil,
+        //     )
+        //     .result,
+        // );
+        //
+        // let len = Operand::Variable(
+        //     add_instr(
+        //         &mut ctx,
+        //         Instruction::Call {
+        //             fun: Operand::Immediate(Immediate::Label(Label {
+        //                 name: "array->len".to_string(),
+        //             })),
+        //             args: vec![arg0],
+        //         },
+        //         t::Type::Nil,
+        //     )
+        //     .result,
+        // );
+
         let data = Operand::Variable(
             add_instr(
                 &mut ctx,
-                Instruction::Call {
-                    fun: Operand::Immediate(Immediate::Label(Label {
-                        name: "array->data".to_string(),
-                    })),
-                    args: vec![arg0.clone()],
-                },
-                t::Type::Nil,
+                Instruction::Add(arg0.clone(), 4.into()),
+                t::Type::None,
             )
             .result,
         );
@@ -1044,27 +1072,29 @@ pub fn compile(
         let len = Operand::Variable(
             add_instr(
                 &mut ctx,
-                Instruction::Call {
-                    fun: Operand::Immediate(Immediate::Label(Label {
-                        name: "array->len".to_string(),
-                    })),
-                    args: vec![arg0],
+                Instruction::LoadElement {
+                    addr: arg0,
+                    ty: Type::I32,
+                    index: 0.into(),
+                },
+                t::Type::Int,
+            )
+            .result,
+        );
+
+        let ret = Operand::Variable(
+            add_instr(
+                &mut ctx,
+                Instruction::SysCall {
+                    number: 64.into(),
+                    args: vec![1.into(), data, len],
                 },
                 t::Type::Nil,
             )
             .result,
         );
 
-        add_instr(
-            &mut ctx,
-            Instruction::SysCall {
-                number: 64.into(),
-                args: vec![1.into(), data, len],
-            },
-            t::Type::Nil,
-        );
-
-        add_instr(&mut ctx, Instruction::Ret(0.into()), t::Type::None);
+        add_instr(&mut ctx, Instruction::Ret(ret), t::Type::None);
 
         let args = vec![(arg0_name, t::Type::String)];
         let write = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);

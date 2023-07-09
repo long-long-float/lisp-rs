@@ -1049,7 +1049,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         |args| {
             match_call_args!(args, Value::List(_vs), Value::Integer(_idx), _value, {
                 todo!()
-                // We cannot implement this function bacause 'vs' is immutable.
+                // We cannot implement this function because 'vs' is immutable.
                 // let idx = *idx as usize;
                 // if idx < vs.len() {
                 //     vs[idx] = value.clone();
