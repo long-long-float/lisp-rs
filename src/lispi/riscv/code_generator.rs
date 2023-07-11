@@ -485,12 +485,9 @@ pub fn generate_code(
                             panic!("index must be an immediate");
                         };
 
-                        let mut index = Immediate::from(index);
-                        index *= 4; // TODO: Use sizeof(ty)
-
                         insts.push(I(IInstruction {
                             op: IInstructionOp::Lw,
-                            imm: index,
+                            imm: index.into(),
                             rs1: addr,
                             rd: result_reg,
                         }))
@@ -507,12 +504,9 @@ pub fn generate_code(
                             panic!("index must be an immediate");
                         };
 
-                        let mut index = Immediate::from(index);
-                        index *= 4; // TODO: Use sizeof(ty)
-
                         insts.push(S(SInstruction {
                             op: SInstructionOp::Sw,
-                            imm: index,
+                            imm: index.into(),
                             rs1: addr,
                             rs2: value,
                         }))

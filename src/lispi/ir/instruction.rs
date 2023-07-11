@@ -12,6 +12,16 @@ pub enum Type {
     I32,
 }
 
+impl Type {
+    /// Return data size in bytes
+    pub fn size(&self) -> usize {
+        use Type::*;
+        match self {
+            I32 => 4,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum Instruction {
     Branch {
@@ -41,11 +51,13 @@ pub enum Instruction {
     Shift(ShiftOperator, Operand, Operand),
     /// addr, value
     Store(Operand, Operand),
+    /// Load the data whose size is ty from addr + index (in bytes).
     LoadElement {
         addr: Operand,
         ty: Type,
         index: Operand,
     },
+    /// Store value whose size is ty to addr + index (in bytes).
     StoreElement {
         addr: Operand,
         ty: Type,
@@ -439,6 +451,12 @@ impl From<Variable> for Operand {
 impl From<i32> for Operand {
     fn from(value: i32) -> Self {
         Operand::Immediate(Immediate::Integer(value))
+    }
+}
+
+impl From<usize> for Operand {
+    fn from(value: usize) -> Self {
+        Self::from(value as i32)
     }
 }
 

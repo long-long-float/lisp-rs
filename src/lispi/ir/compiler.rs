@@ -271,9 +271,14 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let ary = args[0].result.clone().into();
                         let index = args[1].result.clone().into();
 
-                        let index = add_instr(ctx, I::Add(index, 1.into()), t::Type::None)
-                            .result
-                            .into();
+                        let index =
+                            add_instr(ctx, I::Mul(index, Type::I32.size().into()), t::Type::None)
+                                .result
+                                .into();
+                        let index =
+                            add_instr(ctx, I::Add(index, Type::I32.size().into()), t::Type::None)
+                                .result
+                                .into();
 
                         add_instr(
                             ctx,
@@ -290,9 +295,14 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let index = args[1].result.clone().into();
                         let value = args[2].result.clone().into();
 
-                        let index = add_instr(ctx, I::Add(index, 1.into()), t::Type::None)
-                            .result
-                            .into();
+                        let index =
+                            add_instr(ctx, I::Mul(index, Type::I32.size().into()), t::Type::None)
+                                .result
+                                .into();
+                        let index =
+                            add_instr(ctx, I::Add(index, Type::I32.size().into()), t::Type::None)
+                                .result
+                                .into();
 
                         add_instr(
                             ctx,
@@ -319,7 +329,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                     }
                     "array->data" => {
                         let ary = args[0].result.clone().into();
-                        add_instr(ctx, I::Add(ary, 4.into()), ast_ty);
+                        add_instr(ctx, I::Add(ary, Type::I32.size().into()), ast_ty);
                     }
                     "not" => {
                         let value = args[0].result.clone();
@@ -345,7 +355,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
             ctx,
             I::Alloca {
                 ty: Type::I32,
-                count: (vs.len() as i32 + 1).into(),
+                count: (vs.len() + 1).into(),
             },
             ast_ty.clone(),
         )
@@ -358,7 +368,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
         ctx,
         I::StoreElement {
             addr: ary.clone(),
-            ty: Type::I32, // TODO: Set the element type
+            ty: Type::I32,
             index: 0.into(),
             value: len.into(),
         },
@@ -372,7 +382,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
             I::StoreElement {
                 addr: ary.clone(),
                 ty: Type::I32, // TODO: Set the element type
-                index: (idx as i32 + 1).into(),
+                index: ((idx + 1) * Type::I32.size()).into(),
                 value,
             },
             t::Type::Nil,
@@ -1063,7 +1073,7 @@ pub fn compile(
         let data = Operand::Variable(
             add_instr(
                 &mut ctx,
-                Instruction::Add(arg0.clone(), 4.into()),
+                Instruction::Add(arg0.clone(), Type::I32.size().into()),
                 t::Type::None,
             )
             .result,
@@ -1121,7 +1131,7 @@ pub fn compile(
                     &mut ctx,
                     Instruction::Alloca {
                         ty: Type::I32,
-                        count: (def.fields.len() as i32).into(),
+                        count: def.fields.len().into(),
                     },
                     t::Type::None,
                 )
@@ -1138,7 +1148,7 @@ pub fn compile(
                     Instruction::StoreElement {
                         addr: ptr.clone(),
                         ty: Type::I32,
-                        index: (idx as i32).into(),
+                        index: (idx * Type::I32.size()).into(),
                         value,
                     },
                     t::Type::None,
@@ -1183,7 +1193,7 @@ pub fn compile(
                 Instruction::LoadElement {
                     addr: obj,
                     ty: Type::I32,
-                    index: (idx as i32).into(),
+                    index: (idx * Type::I32.size()).into(),
                 },
                 t::Type::None,
             );
