@@ -293,6 +293,9 @@ fn tokenize_single<'a>(
 
                 let value = take_while(program, line, loc, |c| c != '"');
                 let value = value.join("");
+                let value = value.replace("\\r", "\r");
+                let value = value.replace("\\n", "\n");
+                let value = value.replace("\\t", "\t");
 
                 take_expected(program, line, loc, '"')?;
 
