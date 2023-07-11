@@ -88,6 +88,13 @@ impl Type {
         }
     }
 
+    pub fn element_type(&self) -> Option<Type> {
+        match self {
+            Type::List(et) | Type::Array(et) => Some(*et.clone()),
+            _ => None,
+        }
+    }
+
     fn has_free_var(&self, tv: &TypeVariable) -> bool {
         match self {
             Type::Numeric

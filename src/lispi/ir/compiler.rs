@@ -271,8 +271,10 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let ary = args[0].result.clone().into();
                         let index = args[1].result.clone().into();
 
+                        let elem_type = Type::from(args[0].ty.element_type().unwrap());
+
                         let index =
-                            add_instr(ctx, I::Mul(index, Type::I32.size().into()), t::Type::None)
+                            add_instr(ctx, I::Mul(index, elem_type.size().into()), t::Type::None)
                                 .result
                                 .into();
                         let index =
@@ -295,8 +297,10 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let index = args[1].result.clone().into();
                         let value = args[2].result.clone().into();
 
+                        let elem_type = Type::from(args[0].ty.element_type().unwrap());
+
                         let index =
-                            add_instr(ctx, I::Mul(index, Type::I32.size().into()), t::Type::None)
+                            add_instr(ctx, I::Mul(index, elem_type.size().into()), t::Type::None)
                                 .result
                                 .into();
                         let index =
@@ -350,12 +354,17 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
 fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> Result<()> {
     use Instruction as I;
 
+    let elem_type = vs
+        .first()
+        .map(|elem| elem.ty.clone().into())
+        .unwrap_or(Type::I32);
+
     let ary = Operand::Variable(
         add_instr(
             ctx,
             I::Alloca {
                 ty: Type::I32,
-                count: (vs.len() + 1).into(),
+                count: (Type::I32.size() + vs.len() * elem_type.size()).into(),
             },
             ast_ty.clone(),
         )
@@ -381,8 +390,8 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
             ctx,
             I::StoreElement {
                 addr: ary.clone(),
-                ty: Type::I32, // TODO: Set the element type
-                index: ((idx + 1) * Type::I32.size()).into(),
+                ty: elem_type.clone(),
+                index: (Type::I32.size() + (idx * elem_type.size())).into(),
                 value,
             },
             t::Type::Nil,
@@ -1131,7 +1140,7 @@ pub fn compile(
                     &mut ctx,
                     Instruction::Alloca {
                         ty: Type::I32,
-                        count: def.fields.len().into(),
+                        count: (def.fields.len() * Type::I32.size()).into(),
                     },
                     t::Type::None,
                 )

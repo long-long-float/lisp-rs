@@ -10,6 +10,7 @@ use super::{basic_block::BasicBlock, tag::Tag};
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
     I32,
+    Char,
 }
 
 impl Type {
@@ -18,6 +19,19 @@ impl Type {
         use Type::*;
         match self {
             I32 => 4,
+            Char => 1,
+        }
+    }
+}
+
+impl From<t::Type> for Type {
+    fn from(ty: t::Type) -> Self {
+        use t::Type as tt;
+
+        match ty {
+            tt::Int => Type::I32,
+            tt::Char => Type::Char,
+            _ => Type::I32,
         }
     }
 }
@@ -35,9 +49,10 @@ pub enum Instruction {
     Jump(Label, Id<BasicBlock>),
     Ret(Operand),
 
-    /// It allocates `sizeof(ty) * count` on the stack frame.
+    /// It allocates count (in bytes) on the stack frame.
     /// Allocated memory is released when the function returns.
     Alloca {
+        /// TODO: Remove this
         ty: Type,
         count: Operand,
     },

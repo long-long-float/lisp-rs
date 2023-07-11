@@ -165,6 +165,8 @@ pub struct SInstruction {
 pub enum SInstructionOp {
     /// Store Word
     Sw,
+    /// Store Byte
+    Sb,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -326,6 +328,7 @@ impl GenerateCode for SInstruction {
 
         let (funct3, opcode) = match self.op {
             Sw => (0b010, 0b0100011),
+            Sb => (0b000, 0b0100011),
         };
 
         (imm1 << 24) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm2 << 7) | opcode
@@ -334,11 +337,12 @@ impl GenerateCode for SInstruction {
     fn generate_asm(&self) -> String {
         use SInstructionOp::*;
 
-        match self.op {
-            Sw => {
-                format!("sw {}, {}({})", self.rs2, self.imm, self.rs1)
-            }
-        }
+        let name = match self.op {
+            Sw => "sw",
+            Sb => "sb",
+        };
+
+        format!("{} {}, {}({})", name, self.rs2, self.imm, self.rs1)
     }
 }
 

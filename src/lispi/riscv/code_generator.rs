@@ -358,20 +358,16 @@ pub fn generate_code(
                                 insts.push(Instruction::R(RInstruction {
                                     op: RInstructionOp::Sub,
                                     rs1: Register::sp(),
-                                    rs2: count, // TODO: Multiply sizeof(ty)
+                                    rs2: count,
                                     rd: Register::sp(),
                                 }));
                             }
                             i::Operand::Immediate(count) => {
-                                let mut count = Immediate::from(count).value();
-
-                                // TODO: Multiply sizeof(ty)
-                                count = -count * 4;
-
+                                let count = Immediate::from(count).value();
                                 insts.push(Instruction::addi(
                                     Register::sp(),
                                     Register::sp(),
-                                    count,
+                                    -count,
                                 ));
                             }
                         }
@@ -494,7 +490,7 @@ pub fn generate_code(
                     }
                     StoreElement {
                         addr,
-                        ty: _,
+                        ty,
                         index,
                         value,
                     } => {
@@ -504,8 +500,13 @@ pub fn generate_code(
                             panic!("index must be an immediate");
                         };
 
+                        let op = match ty {
+                            i::Type::I32 => SInstructionOp::Sw,
+                            i::Type::Char => SInstructionOp::Sb,
+                        };
+
                         insts.push(S(SInstruction {
-                            op: SInstructionOp::Sw,
+                            op,
                             imm: index.into(),
                             rs1: addr,
                             rs2: value,
