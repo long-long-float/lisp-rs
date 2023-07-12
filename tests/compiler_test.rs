@@ -2,12 +2,13 @@
 mod compiler_test {
     use colored::Colorize;
     use core::time;
+    use itertools::Itertools;
     use serde_json::Value;
     use std::collections::HashSet;
     use std::fs::{create_dir, File};
     use std::io::Write;
     use std::path::Path;
-    use std::process::{Command, Stdio};
+    use std::process::{Command, Output, Stdio};
     use std::str;
     use std::{env, thread};
 
@@ -34,6 +35,22 @@ mod compiler_test {
         }
 
         fn run(self) -> Value {
+            let output = self.internal_run(true);
+            serde_json::from_slice(&output.stdout).unwrap()
+        }
+
+        fn run_raw_output(self) -> String {
+            let output = self.internal_run(false);
+            let output = String::from_utf8(output.stdout)
+                .unwrap()
+                .chars()
+                .rev()
+                .skip_while(|c| c == &'\0')
+                .join("");
+            output.chars().rev().join("")
+        }
+
+        fn internal_run(self, dump_registers: bool) -> Output {
             let Self {
                 name,
                 program,
@@ -64,8 +81,14 @@ mod compiler_test {
             assert!(Path::new("out.bin").exists());
             assert!(Path::new("out.elf").exists());
 
+            let mut args = vec!["--quiet"];
+            if dump_registers {
+                args.append(&mut vec!["--dump-registers", "-"]);
+            }
+            args.push("out.elf");
+
             let mut child = Command::new("./rv32emu/build/rv32emu")
-                .args(["--dump-registers", "-", "--quiet", "out.elf"])
+                .args(args)
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("Failed to spawn rv32emu.");
@@ -97,7 +120,7 @@ mod compiler_test {
                 println!("{}", str::from_utf8(&output.stdout).unwrap_or(""));
             }
 
-            serde_json::from_slice(&output.stdout).unwrap()
+            output
         }
     }
 
@@ -178,6 +201,13 @@ mod compiler_test {
         assert_eq!(Some(1), registers["x10"].as_i64());
 
         // TODO: Test about logical/arithmetic shift
+    }
+
+    #[test]
+    #[named]
+    fn write_string() {
+        let output = compile(function_name!(), r#"(write "Hello\n")"#).run_raw_output();
+        assert_eq!("Hello\n", output);
     }
 
     #[test]
