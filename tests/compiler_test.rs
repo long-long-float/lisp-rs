@@ -434,9 +434,38 @@ sum
 
     #[test]
     #[named]
+    fn array_get_1_char() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define ary "01234"))
+(array->get ary 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some('1' as i64), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn array_set_1_char() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define ary "01234")
+(array->set ary 1 'X')
+(array->get ary 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some('X' as i64), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
     fn as_char_to_int() {
         let registers = compile(function_name!(), "(as #\\0 int)").run();
-        assert_eq!(Some(0x30), registers["x10"].as_i64());
+        assert_eq!(Some('0' as i64), registers["x10"].as_i64());
     }
 
     #[test]
@@ -488,6 +517,6 @@ sum
 "#,
         )
         .run();
-        assert_eq!(Some(0x63), registers["x10"].as_i64());
+        assert_eq!(Some('c' as i64), registers["x10"].as_i64());
     }
 }
