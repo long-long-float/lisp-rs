@@ -147,7 +147,10 @@ pub enum IInstructionOp {
     Addi,
     Jalr,
     Ecall,
+    /// Load Word
     Lw,
+    /// Load Byte
+    Lb,
     Xori,
     /// Set Less Than Immediate
     Slti,
@@ -274,6 +277,7 @@ impl GenerateCode for IInstruction {
             Jalr => (0b000, 0b1100111),
             Ecall => (0b000, 0b1110011),
             Lw => (0b010, 0b0000011),
+            Lb => (0b000, 0b0000011),
             Xori => (0b100, 0b0010011),
             Slti => (0b010, 0b0010011),
         };
@@ -310,6 +314,9 @@ impl GenerateCode for IInstruction {
             Ecall => "ecall".to_string(),
             Lw => {
                 format!("lw {}, {}({})", self.rd, self.imm, self.rs1)
+            }
+            Lb => {
+                format!("lb {}, {}({})", self.rd, self.imm, self.rs1)
             }
         }
     }

@@ -286,7 +286,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             ctx,
                             I::LoadElement {
                                 addr: ary,
-                                ty: Type::I32,
+                                ty: elem_type,
                                 index,
                             },
                             ast_ty,
@@ -312,7 +312,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             ctx,
                             I::StoreElement {
                                 addr: ary,
-                                ty: Type::I32,
+                                ty: elem_type,
                                 index,
                                 value,
                             },

@@ -475,14 +475,19 @@ pub fn generate_code(
                             rs2,
                         }))
                     }
-                    LoadElement { addr, ty: _, index } => {
+                    LoadElement { addr, ty, index } => {
                         let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
                         let i::Operand::Immediate(index) = index else {
                             panic!("index must be an immediate");
                         };
 
+                        let op = match ty {
+                            i::Type::I32 => IInstructionOp::Lw,
+                            i::Type::Char => IInstructionOp::Lb,
+                        };
+
                         insts.push(I(IInstruction {
-                            op: IInstructionOp::Lw,
+                            op,
                             imm: index.into(),
                             rs1: addr,
                             rd: result_reg,

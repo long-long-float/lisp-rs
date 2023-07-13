@@ -438,7 +438,7 @@ sum
         let registers = compile(
             function_name!(),
             r#"
-(define ary "01234"))
+(define ary "01234")
 (array->get ary 1)
 "#,
         )
@@ -453,7 +453,7 @@ sum
             function_name!(),
             r#"
 (define ary "01234")
-(array->set ary 1 'X')
+(array->set ary 1 \X)
 (array->get ary 1)
 "#,
         )
