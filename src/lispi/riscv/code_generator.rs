@@ -77,7 +77,7 @@ fn get_register_from_operand(
             if let Some(reg) = register_map.get(&var) {
                 Ok(Register::t(*reg as u32))
             } else if let Some(reg) = ctx.arg_reg_map.get(&var.name) {
-                Ok(reg.clone())
+                Ok(*reg)
             } else {
                 Err(bug!(format!(
                     "A register corresponded to a variable {} is not defined.",
@@ -142,10 +142,10 @@ fn load_immediate(insts: &mut Vec<Instruction>, imm: Immediate, rd: Register) {
         insts.push(Instruction::U(UInstruction {
             op: UInstructionOp::Lui,
             imm: top,
-            rd: rd.clone(),
+            rd,
         }));
         if bot > 0 {
-            insts.push(Instruction::addi(rd.clone(), rd, bot));
+            insts.push(Instruction::addi(rd, rd, bot));
         }
     } else {
         insts.push(Instruction::li(rd, imm));

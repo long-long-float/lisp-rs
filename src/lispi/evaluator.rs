@@ -1011,7 +1011,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("array->len"),
-        Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv.clone()))], Type::Int)),
+        Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv))], Type::Int)),
         |args| {
             match_call_args!(args, Value::List(vs), {
                 Ok(Value::Integer(vs.len() as i32))

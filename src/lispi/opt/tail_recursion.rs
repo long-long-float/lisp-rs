@@ -129,7 +129,7 @@ fn optimize_tail_recursion(
                 Some(ast.clone().with_new_ast(Ast::IfExpr(if_expr)))
             }
             Ast::As(expr, ty) => Some(ast.clone().with_new_ast(Ast::As(
-                Box::new(_optimize_tail_recursion(func_name, locals, &expr)?),
+                Box::new(_optimize_tail_recursion(func_name, locals, expr)?),
                 ty.to_owned(),
             ))),
             Ast::Let(Let {

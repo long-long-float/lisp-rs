@@ -39,7 +39,7 @@ impl<'a> StackFrame<'a> {
 
         for (i, reg) in self.callee_saved_registers.iter().enumerate() {
             insts.push(Instruction::sw(
-                reg.clone(),
+                *reg,
                 Register::sp(),
                 Immediate::new(i as i32 * 4),
             ));
@@ -63,7 +63,7 @@ impl<'a> StackFrame<'a> {
 
         for (i, reg) in self.callee_saved_registers.iter().enumerate() {
             insts.push(Instruction::lw(
-                reg.clone(),
+                *reg,
                 Register::s(1),
                 Immediate::new(i as i32 * 4),
             ));
@@ -93,7 +93,7 @@ impl<'a> StackFrame<'a> {
         // Save caller-saved registers for temporary and function arguments registers now
         for (i, reg) in used_regs.iter().enumerate() {
             save.push(Instruction::sw(
-                reg.clone(),
+                *reg,
                 Register::s(1),
                 Immediate::new((i as i32 + 3) * 4),
             ));

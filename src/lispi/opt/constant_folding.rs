@@ -155,8 +155,8 @@ where
     F1: Fn(i32, i32) -> i32,
     F2: Fn(Operand, Operand) -> Instruction,
 {
-    let folded_left = fold_imm(ctx, left.clone());
-    let folded_right = fold_imm(ctx, right.clone());
+    let folded_left = fold_imm(ctx, left);
+    let folded_right = fold_imm(ctx, right);
 
     if let (
         Operand::Immediate(Immediate::Integer(left)),
@@ -186,8 +186,8 @@ where
     F1: Fn(bool, bool) -> bool,
     F2: Fn(Operand, Operand) -> Instruction,
 {
-    let folded_left = fold_imm(ctx, left.clone());
-    let folded_right = fold_imm(ctx, right.clone());
+    let folded_left = fold_imm(ctx, left);
+    let folded_right = fold_imm(ctx, right);
 
     if let (
         Operand::Immediate(Immediate::Boolean(left)),

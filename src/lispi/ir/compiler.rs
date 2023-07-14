@@ -1186,7 +1186,7 @@ pub fn compile(
         }
 
         for (idx, field) in def.fields.iter().enumerate() {
-            let name = field.accessor_name(&name);
+            let name = field.accessor_name(name);
 
             let bb = ctx.new_bb(name.to_owned());
             ctx.add_bb(bb);
