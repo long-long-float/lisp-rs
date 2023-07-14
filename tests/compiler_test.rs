@@ -419,6 +419,41 @@ sum
 
     #[test]
     #[named]
+    fn array_get_by_variable() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define f (lambda (i)
+    (define ary (array 1 2 3))
+    (array->get ary i)
+    ))
+(f 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some(2), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn array_set_by_variable() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define f (lambda (i)
+    (define ary (array 1 2 3))
+    (array->set ary i 99)
+    (array->get ary i)
+    ))
+(f 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some(99), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
     fn array_set_1() {
         let registers = compile(
             function_name!(),

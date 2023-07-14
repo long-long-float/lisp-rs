@@ -477,8 +477,15 @@ pub fn generate_code(
                     }
                     LoadElement { addr, ty, index } => {
                         let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
-                        let i::Operand::Immediate(index) = index else {
-                            panic!("index must be an immediate");
+                        let index = match index {
+                            i::Operand::Immediate(index) => index.into(),
+                            _ => {
+                                let index =
+                                    get_register_from_operand(&mut ctx, &register_map, index)?;
+                                insts.push(Instruction::add(addr, addr, index));
+
+                                Immediate::Value(0)
+                            }
                         };
 
                         let op = match ty {
@@ -488,7 +495,7 @@ pub fn generate_code(
 
                         insts.push(I(IInstruction {
                             op,
-                            imm: index.into(),
+                            imm: index,
                             rs1: addr,
                             rd: result_reg,
                         }))
@@ -499,10 +506,18 @@ pub fn generate_code(
                         index,
                         value,
                     } => {
-                        let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
+                        let addr: Register =
+                            get_register_from_operand(&mut ctx, &register_map, addr)?;
                         let value = get_register_from_operand(&mut ctx, &register_map, value)?;
-                        let i::Operand::Immediate(index) = index else {
-                            panic!("index must be an immediate");
+                        let index = match index {
+                            i::Operand::Immediate(index) => index.into(),
+                            _ => {
+                                let index =
+                                    get_register_from_operand(&mut ctx, &register_map, index)?;
+                                insts.push(Instruction::add(addr, addr, index));
+
+                                Immediate::Value(0)
+                            }
                         };
 
                         let op = match ty {
@@ -512,7 +527,7 @@ pub fn generate_code(
 
                         insts.push(S(SInstruction {
                             op,
-                            imm: index.into(),
+                            imm: index,
                             rs1: addr,
                             rs2: value,
                         }))

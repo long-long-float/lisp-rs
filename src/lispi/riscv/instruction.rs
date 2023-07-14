@@ -86,6 +86,15 @@ impl Instruction {
             imm: Immediate::for_i(imm),
         })
     }
+
+    pub fn add(rd: Register, rs1: Register, rs2: Register) -> Instruction {
+        Instruction::R(RInstruction {
+            op: RInstructionOp::Add,
+            rs1,
+            rs2,
+            rd,
+        })
+    }
 }
 
 impl Display for Instruction {
@@ -470,7 +479,7 @@ impl Display for RelAddress {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Register {
     Integer(u32),
     #[allow(dead_code)]
