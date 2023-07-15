@@ -212,6 +212,21 @@ mod compiler_test {
 
     #[test]
     #[named]
+    fn write_string_3times() {
+        let output = compile(
+            function_name!(),
+            r#"
+(write "Hello\n")
+(write "Hello\n")
+(write "Hello\n")
+"#,
+        )
+        .run_raw_output();
+        assert_eq!("Hello\nHello\nHello\n", output);
+    }
+
+    #[test]
+    #[named]
     fn variables() {
         let registers = compile(
             function_name!(),
