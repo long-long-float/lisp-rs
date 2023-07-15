@@ -8,6 +8,7 @@ use crossterm::ExecutableCommand;
 use lisp_rs::lispi::interpret_with_env;
 use std::collections::VecDeque;
 use std::io::stdout;
+use std::process::exit;
 
 use lisp_rs::lispi::cli_option::CliOption;
 use lisp_rs::lispi::common::read_lines;
@@ -34,7 +35,10 @@ fn main() -> Result<()> {
             let result = compile(lines.clone(), &cli, applied_opts);
             match result {
                 Ok(_) => {}
-                Err(err) => show_error(err, filename, lines),
+                Err(err) => {
+                    show_error(err, filename, lines);
+                    exit(1);
+                }
             }
         } else {
             let result = interpret(lines.clone(), &cli);
@@ -44,7 +48,10 @@ fn main() -> Result<()> {
                         println!("{}: {}", result, ty);
                     }
                 }
-                Err(err) => show_error(err, filename, lines),
+                Err(err) => {
+                    show_error(err, filename, lines);
+                    exit(1);
+                }
             }
         }
     } else {
