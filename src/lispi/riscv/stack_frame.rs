@@ -1,11 +1,40 @@
+//! Stack frame
+//!
+//! ```text
+//!   Higher
+//!
+//!   Caller frame
+//! ========================= FP
+//!   Saved Registers
+//! * Used registers
+//!   * aX for arguments
+//!   * tX
+//! * fp(s0)
+//! * ra
+//! -------------------------
+//!   Local Variables
+//! ========================= SP
+//!   Callee frame
+//!
+//!   Lower
+//! ```
+//!
+
 use itertools::Itertools;
+use rustc_hash::FxHashMap;
 
 use super::instruction::*;
-use crate::lispi::ir::register_allocation::RegisterMap;
+use crate::lispi::ir::{instruction::Variable, register_allocation::RegisterMap};
 
 pub struct StackFrame<'a> {
     register_map: &'a RegisterMap,
     callee_saved_registers: Vec<Register>,
+
+    num_of_used_a_register: usize,
+
+    /// Size of the region for local variable in bytes
+    local_var_size: usize,
+    local_var_map: FxHashMap<Variable, usize>,
 }
 
 impl<'a> StackFrame<'a> {
@@ -19,15 +48,35 @@ impl<'a> StackFrame<'a> {
                 Register::fp(),
                 Register::s(1),
             ],
+            num_of_used_a_register: 10,
+            local_var_size: 16,
+            local_var_map: FxHashMap::default(),
         }
     }
 
+    /// TODO: Manage local variable statically
+    pub fn allocate_local_var(&mut self, var: &Variable) -> usize {
+        assert!(self.local_var_map.len() < self.local_var_size * 4);
+
+        let idx = (self.callee_saved_registers.len()
+            + self.register_map.values().unique().count()
+            + self.num_of_used_a_register
+            + self.local_var_map.len())
+            * 4;
+        self.local_var_map.insert(var.clone(), idx);
+        idx
+    }
+
+    pub fn get_local_var(&self, var: &Variable) -> Option<usize> {
+        self.local_var_map.get(var).copied()
+    }
+
     pub fn generate_fun_header(&self) -> Vec<Instruction> {
-        let num_of_used_a_register = 8;
         let frame_size = 4
             * (self.callee_saved_registers.len()
                 + self.register_map.values().unique().count()
-                + num_of_used_a_register) as i32;
+                + self.num_of_used_a_register
+                + self.local_var_size) as i32;
 
         let mut insts = Vec::new();
 

@@ -5,7 +5,10 @@ use colored::*;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
-use crate::{bug, lispi::ir::register_allocation::RegisterMap};
+use crate::{
+    bug,
+    lispi::ir::{register_allocation::RegisterMap, tag::Tag},
+};
 
 use super::{
     super::{
@@ -267,7 +270,7 @@ pub fn generate_code(
     );
 
     for (fun, register_map) in funcs {
-        let frame = StackFrame::new(&register_map);
+        let mut frame = StackFrame::new(&register_map);
 
         ctx.reset_on_fun();
 
@@ -288,7 +291,7 @@ pub fn generate_code(
                 result,
                 inst,
                 ty: _,
-                tags: _,
+                tags,
             } in bb.insts.clone()
             {
                 use i::Instruction::*;
@@ -363,12 +366,20 @@ pub fn generate_code(
                                 }));
                             }
                             i::Operand::Immediate(count) => {
-                                let count = Immediate::from(count).value();
-                                insts.push(Instruction::addi(
-                                    Register::sp(),
-                                    Register::sp(),
-                                    -count,
-                                ));
+                                let has_dont_alloc_tag = tags
+                                    .iter()
+                                    .any(|t| t.is_match_with(&Tag::DontAllocateRegister));
+
+                                if has_dont_alloc_tag {
+                                    frame.allocate_local_var(&result);
+                                } else {
+                                    let count = Immediate::from(count).value();
+                                    insts.push(Instruction::addi(
+                                        Register::sp(),
+                                        Register::sp(),
+                                        -count,
+                                    ));
+                                }
                             }
                         }
 
@@ -476,16 +487,10 @@ pub fn generate_code(
                         }))
                     }
                     LoadElement { addr, ty, index } => {
-                        let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
-                        let index = match index {
-                            i::Operand::Immediate(index) => index.into(),
-                            _ => {
-                                let index =
-                                    get_register_from_operand(&mut ctx, &register_map, index)?;
-                                insts.push(Instruction::add(addr, addr, index));
-
-                                Immediate::Value(0)
-                            }
+                        let local_idx = if let i::Operand::Variable(addr) = &addr {
+                            frame.get_local_var(addr)
+                        } else {
+                            None
                         };
 
                         let op = match ty {
@@ -493,12 +498,33 @@ pub fn generate_code(
                             i::Type::Char => IInstructionOp::Lb,
                         };
 
-                        insts.push(I(IInstruction {
-                            op,
-                            imm: index,
-                            rs1: addr,
-                            rd: result_reg,
-                        }))
+                        if let Some(local_idx) = local_idx {
+                            insts.push(I(IInstruction {
+                                op,
+                                imm: Immediate::new(local_idx as i32),
+                                rs1: Register::fp(),
+                                rd: result_reg,
+                            }))
+                        } else {
+                            let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
+                            let index = match index {
+                                i::Operand::Immediate(index) => index.into(),
+                                _ => {
+                                    let index =
+                                        get_register_from_operand(&mut ctx, &register_map, index)?;
+                                    insts.push(Instruction::add(addr, addr, index));
+
+                                    Immediate::Value(0)
+                                }
+                            };
+
+                            insts.push(I(IInstruction {
+                                op,
+                                imm: index,
+                                rs1: addr,
+                                rd: result_reg,
+                            }))
+                        }
                     }
                     StoreElement {
                         addr,
@@ -506,31 +532,46 @@ pub fn generate_code(
                         index,
                         value,
                     } => {
-                        let addr: Register =
-                            get_register_from_operand(&mut ctx, &register_map, addr)?;
-                        let value = get_register_from_operand(&mut ctx, &register_map, value)?;
-                        let index = match index {
-                            i::Operand::Immediate(index) => index.into(),
-                            _ => {
-                                let index =
-                                    get_register_from_operand(&mut ctx, &register_map, index)?;
-                                insts.push(Instruction::add(addr, addr, index));
-
-                                Immediate::Value(0)
-                            }
+                        let local_idx = if let i::Operand::Variable(addr) = &addr {
+                            frame.get_local_var(addr)
+                        } else {
+                            None
                         };
+
+                        let value = get_register_from_operand(&mut ctx, &register_map, value)?;
 
                         let op = match ty {
                             i::Type::I32 => SInstructionOp::Sw,
                             i::Type::Char => SInstructionOp::Sb,
                         };
 
-                        insts.push(S(SInstruction {
-                            op,
-                            imm: index,
-                            rs1: addr,
-                            rs2: value,
-                        }))
+                        if let Some(local_idx) = local_idx {
+                            insts.push(S(SInstruction {
+                                op,
+                                imm: Immediate::new(local_idx as i32),
+                                rs1: Register::fp(),
+                                rs2: value,
+                            }))
+                        } else {
+                            let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
+                            let index = match index {
+                                i::Operand::Immediate(index) => index.into(),
+                                _ => {
+                                    let index =
+                                        get_register_from_operand(&mut ctx, &register_map, index)?;
+                                    insts.push(Instruction::add(addr, addr, index));
+
+                                    Immediate::Value(0)
+                                }
+                            };
+
+                            insts.push(S(SInstruction {
+                                op,
+                                imm: index,
+                                rs1: addr,
+                                rs2: value,
+                            }))
+                        }
                     }
                     Cmp(op, left, right) => {
                         use i::CmpOperator::*;
