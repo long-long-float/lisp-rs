@@ -372,6 +372,14 @@ impl AnnotatedInstr {
         }
     }
 
+    pub fn with_tags(self, tags: Vec<Tag>) -> Self {
+        Self { tags, ..self }
+    }
+
+    pub fn has_tag(&self, tag: Tag) -> bool {
+        self.tags.iter().any(|t| t.is_match_with(&tag))
+    }
+
     pub fn display(&self, colored: bool) -> AnnotatedInstrDisplay {
         AnnotatedInstrDisplay {
             instr: self,
@@ -514,6 +522,14 @@ impl Display for Label {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Variable {
     pub name: String,
+}
+
+impl Variable {
+    pub fn empty() -> Variable {
+        Variable {
+            name: "".to_string(),
+        }
+    }
 }
 
 impl Display for Variable {

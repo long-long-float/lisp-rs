@@ -9,18 +9,18 @@ use crate::{
     bug,
     lispi::{
         cli_option::CliOption,
+        error::Error,
         ir::{
             basic_block::{BasicBlock, Function, Functions},
-            instruction::Operand,
+            instruction::{AnnotatedInstr, Instruction, Operand, Type, Variable},
+            IrContext,
         },
+        ty,
+        unique_generator::UniqueGenerator,
     },
 };
 
-use super::{
-    super::error::Error,
-    instruction::{Instruction, Variable},
-    IrContext,
-};
+use super::tag::Tag;
 
 pub type RegisterMap = FxHashMap<Variable, usize>;
 
@@ -234,14 +234,24 @@ type AllInOuts<'a> = FxHashMap<Id<BasicBlock>, Vec<(VariableSet<'a>, VariableSet
 fn calculate_lifetime<'a>(func: &Function, ir_ctx: &'a IrContext) -> AllInOuts<'a> {
     let mut def_uses = FxHashMap::default();
 
+    let mut exclude_vars = Vec::new();
+
     for bb_id in &func.basic_blocks {
         let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
 
         let mut def_uses_bb = Vec::new();
 
         for annot_inst in &bb.insts {
+            if annot_inst.has_tag(Tag::DontAllocateRegister) {
+                exclude_vars.push(&annot_inst.result);
+            }
+
             let mut used_vars = Vec::new();
             get_vars(&annot_inst.inst, &mut used_vars);
+            let used_vars = used_vars
+                .into_iter()
+                .filter(|uv| !exclude_vars.iter().any(|v| v == uv))
+                .collect_vec();
 
             let mut def_vars = FxHashSet::default();
             if !annot_inst.inst.is_terminal() {
@@ -377,6 +387,76 @@ fn build_inference_graph(
     inter_graph
 }
 
+fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext) {
+    let ptr_var = Variable {
+        name: format!("{}-ptr", spilled_var.name),
+    };
+    let mut gen = UniqueGenerator::default();
+
+    for bb in fun.basic_blocks.iter() {
+        let mut result = Vec::new();
+
+        let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
+
+        for AnnotatedInstr {
+            result: var,
+            inst,
+            ty,
+            tags: _,
+        } in bb.insts.clone().into_iter()
+        {
+            let mut replace_var_map = FxHashMap::default();
+            // TODO: Allocate the globally unique name.
+            let new_var = Variable {
+                name: format!("{}-{}", spilled_var.name, gen.gen()),
+            };
+            replace_var_map.insert(spilled_var.clone(), new_var.clone());
+            let replaced_inst = inst.clone().replace_var(&replace_var_map);
+            if replaced_inst != inst {
+                result.push(AnnotatedInstr::new(
+                    new_var,
+                    Instruction::LoadElement {
+                        addr: ptr_var.clone().into(),
+                        // TODO: Adjust type
+                        ty: Type::I32,
+                        index: 0.into(),
+                    },
+                    ty::Type::Nil,
+                ));
+            }
+            result.push(AnnotatedInstr::new(var.clone(), replaced_inst, ty));
+
+            if &var == spilled_var {
+                result.push(
+                    AnnotatedInstr::new(
+                        ptr_var.clone(),
+                        Instruction::Alloca {
+                            // TODO: Adjust type
+                            ty: Type::I32,
+                            count: 1.into(),
+                        },
+                        ty::Type::Nil,
+                    )
+                    .with_tags(vec![Tag::DontAllocateRegister]),
+                );
+                result.push(AnnotatedInstr::new(
+                    Variable::empty(),
+                    Instruction::StoreElement {
+                        addr: ptr_var.clone().into(),
+                        // TODO: Adjust type
+                        ty: Type::I32,
+                        index: 0.into(),
+                        value: spilled_var.clone().into(),
+                    },
+                    ty::Type::Nil,
+                ));
+            }
+        }
+
+        bb.insts = result;
+    }
+}
+
 pub fn create_interference_graph(
     funcs: Functions,
     ir_ctx: &mut IrContext,
@@ -388,7 +468,7 @@ pub fn create_interference_graph(
     funcs
         .into_iter()
         .map(|func| {
-            for _ in 0..100 {
+            for _ in 0..2 {
                 let all_in_outs = calculate_lifetime(&func, ir_ctx);
 
                 let mut inter_graph = build_inference_graph(&func, &all_in_outs, ir_ctx);
@@ -445,6 +525,10 @@ pub fn create_interference_graph(
 
                     return Ok((func, result));
                 } else {
+                    for sv in spill_list {
+                        spill_variable(sv, &func, ir_ctx);
+                    }
+                    func.dump(&ir_ctx.bb_arena);
                 }
             }
 
