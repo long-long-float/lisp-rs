@@ -484,31 +484,97 @@ sum
 
     #[test]
     #[named]
-    fn array_get_1_char() {
+    fn string_len() {
         let registers = compile(
             function_name!(),
             r#"
-(define ary "01234")
-(array->get ary 1)
+(define str "Hello")
+(array->len str)
 "#,
         )
         .run();
-        assert_eq!(Some('1' as i64), registers["x10"].as_i64());
+        assert_eq!(Some(5), registers["x10"].as_i64());
     }
 
     #[test]
     #[named]
-    fn array_set_1_char() {
+    fn string_in_function() {
         let registers = compile(
             function_name!(),
             r#"
-(define ary "01234")
-(array->set ary 1 \X)
-(array->get ary 1)
+(define f (lambda () 
+    (define str "Hello")
+    (array->get str 1)))
+(define g (lambda () (f)))
+(g)
 "#,
         )
         .run();
-        assert_eq!(Some('X' as i64), registers["x10"].as_i64());
+        assert_eq!(Some('e' as i64), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn string_get_1() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define str "Hello")
+(array->get str 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some('e' as i64), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn string_get_by_variable() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define f (lambda (i)
+    (define str "Hello")
+    (array->get str i)
+    ))
+(f 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some('e' as i64), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn string_set_by_variable() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define f (lambda (i)
+    (define str "Hello")
+    (array->set str i \x)
+    (array->get str i)
+    ))
+(f 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some('x' as i64), registers["x10"].as_i64());
+    }
+
+    #[test]
+    #[named]
+    fn string_set_1() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(define str "Hello")
+(array->set str 1 \x)
+(array->get str 1)
+"#,
+        )
+        .run();
+        assert_eq!(Some('x' as i64), registers["x10"].as_i64());
     }
 
     #[test]
