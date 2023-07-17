@@ -373,7 +373,9 @@ pub fn generate_code(
                                 if has_dont_alloc_tag {
                                     frame.allocate_local_var(&result);
                                 } else {
-                                    let count = Immediate::from(count).value();
+                                    let count = (Immediate::from(count).value() as f32 / 4.0).ceil()
+                                        as i32
+                                        * 4;
                                     insts.push(Instruction::addi(
                                         Register::sp(),
                                         Register::sp(),
