@@ -19,6 +19,7 @@ pub mod unique_generator;
 
 pub mod cli_option;
 
+use itertools::Itertools;
 use object::elf::*;
 use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Sym, Writer};
 use object::write::StreamingBuffer;
@@ -272,7 +273,7 @@ pub fn compile(
     }
 
     if opt.dump {
-        ir::basic_block::dump_bbs_as_dot(&mut ir_ctx.bb_arena, &funcs, "cfg.gv")?;
+        ir::basic_block::dump_functions_as_dot(&mut ir_ctx.bb_arena, &funcs, "cfg.gv")?;
     }
 
     let func_with_reg_maps =
@@ -287,6 +288,12 @@ pub fn compile(
             }
         }
         printlnuw("");
+
+        ir::basic_block::dump_functions(
+            &mut ir_ctx.bb_arena,
+            &func_with_reg_maps.iter().map(|(f, _)| f).collect_vec(),
+            "ir.txt",
+        )?;
     }
 
     let codes = riscv::code_generator::generate_code(

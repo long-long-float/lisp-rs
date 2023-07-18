@@ -1,6 +1,6 @@
 use anyhow::Result;
 use itertools::Itertools;
-use std::{collections::VecDeque, fs::File, io::Write, path::Path};
+use std::{collections::VecDeque, fmt::Display, fs::File, io::Write, path::Path};
 
 use id_arena::{Arena, Id};
 use rustc_hash::FxHashSet;
@@ -111,25 +111,48 @@ impl Function {
     }
 
     pub fn dump(&self, arena: &Arena<BasicBlock>) {
-        print!("function {} (", self.name);
-        for (id, ty) in &self.args {
-            print!("%{}: {}, ", id, ty);
-        }
-        print!(") (");
-        for id in &self.free_vars {
-            print!("%{}, ", id);
-        }
-        println!("): {} {{", self.ty);
+        print!("{}", self.display(true, arena));
+    }
 
-        for bb in &self.basic_blocks {
-            let bb = arena.get(*bb).unwrap();
-            println!("  {}:", bb.label);
+    pub fn display<'a>(&'a self, colored: bool, arena: &'a Arena<BasicBlock>) -> FunctionDisplay {
+        FunctionDisplay {
+            func: self,
+            colored,
+            arena,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FunctionDisplay<'a> {
+    func: &'a Function,
+    colored: bool,
+    arena: &'a Arena<BasicBlock>,
+}
+
+impl Display for FunctionDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "function {} (", self.func.name)?;
+        for (id, ty) in &self.func.args {
+            write!(f, "%{}: {}, ", id, ty)?;
+        }
+        write!(f, ") (")?;
+        for id in &self.func.free_vars {
+            write!(f, "%{}, ", id)?;
+        }
+        writeln!(f, "): {} {{", self.func.ty)?;
+
+        for bb in &self.func.basic_blocks {
+            let bb = self.arena.get(*bb).unwrap();
+            writeln!(f, "  {}:", bb.label)?;
             for inst in &bb.insts {
-                println!("  {}", inst.display(true));
+                writeln!(f, "  {}", inst.display(self.colored))?;
             }
         }
 
-        println!("}}");
+        writeln!(f, "}}")?;
+
+        Ok(())
     }
 }
 
@@ -185,7 +208,27 @@ pub fn build_connections_between_bbs(arena: &mut Arena<BasicBlock>, funcs: &[Fun
     }
 }
 
-pub fn dump_bbs_as_dot<P>(arena: &mut Arena<BasicBlock>, funcs: &[Function], path: P) -> Result<()>
+pub fn dump_functions<P>(arena: &mut Arena<BasicBlock>, funcs: &[&Function], path: P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    let mut out = File::create(path)?;
+
+    for func in funcs {
+        writeln!(out, "# {}", func.name)?;
+
+        let contents = func.display(false, arena).to_string();
+        writeln!(out, "{}", contents)?;
+    }
+
+    Ok(())
+}
+
+pub fn dump_functions_as_dot<P>(
+    arena: &mut Arena<BasicBlock>,
+    funcs: &[Function],
+    path: P,
+) -> Result<()>
 where
     P: AsRef<Path>,
 {
