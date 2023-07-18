@@ -635,4 +635,29 @@ sum
         .run();
         assert_eq!(Some('c' as i64), registers["x10"].as_i64());
     }
+
+    #[test]
+    #[named]
+    fn complex_program_array_sum() {
+        let registers = compile(
+            function_name!(),
+            r#"
+(include "library/prelude.scm")
+
+(fn array->sum (ary) (begin
+    (define sum 0)
+    (define len (- (array->len ary) 1))
+    (let loop ([i 0]) 
+        (set! sum (+ sum (array->get ary i)))
+        (if (< i len)
+            (loop (+ i 1))))
+    sum))
+
+(define ary (array 1 2 3))
+(array->sum ary)
+"#,
+        )
+        .run();
+        assert_eq!(Some(6), registers["x10"].as_i64());
+    }
 }
