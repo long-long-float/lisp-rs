@@ -393,6 +393,8 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
     };
     let mut gen = UniqueGenerator::default();
 
+    let mut already_spilled = false;
+
     for bb in fun.basic_blocks.iter() {
         let mut result = Vec::new();
 
@@ -402,7 +404,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
             result: var,
             inst,
             ty,
-            tags: _,
+            tags,
         } in bb.insts.clone().into_iter()
         {
             let mut replace_var_map = FxHashMap::default();
@@ -424,21 +426,26 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                     ty::Type::Nil,
                 ));
             }
-            result.push(AnnotatedInstr::new(var.clone(), replaced_inst, ty));
+            result.push(AnnotatedInstr::new(var.clone(), replaced_inst, ty).with_tags(tags));
 
             if &var == spilled_var {
-                result.push(
-                    AnnotatedInstr::new(
-                        ptr_var.clone(),
-                        Instruction::Alloca {
-                            // TODO: Adjust type
-                            ty: Type::I32,
-                            count: 1.into(),
-                        },
-                        ty::Type::Nil,
-                    )
-                    .with_tags(vec![Tag::DontAllocateRegister]),
-                );
+                if !already_spilled {
+                    result.push(
+                        AnnotatedInstr::new(
+                            ptr_var.clone(),
+                            Instruction::Alloca {
+                                // TODO: Adjust type
+                                ty: Type::I32,
+                                count: 1.into(),
+                            },
+                            ty::Type::Nil,
+                        )
+                        .with_tags(vec![Tag::DontAllocateRegister]),
+                    );
+
+                    already_spilled = true;
+                }
+
                 result.push(AnnotatedInstr::new(
                     Variable::empty(),
                     Instruction::StoreElement {
@@ -468,7 +475,7 @@ pub fn create_interference_graph(
     funcs
         .into_iter()
         .map(|func| {
-            for _ in 0..2 {
+            for _ in 0..3 {
                 let all_in_outs = calculate_lifetime(&func, ir_ctx);
 
                 let mut inter_graph = build_inference_graph(&func, &all_in_outs, ir_ctx);
