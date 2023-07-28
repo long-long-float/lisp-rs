@@ -339,6 +339,17 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let value = args[0].result.clone();
                         add_instr(ctx, I::Not(Operand::Variable(value)), ast_ty);
                     }
+                    "syscall0" => {
+                        let value = args[0].result.clone();
+                        add_instr(
+                            ctx,
+                            I::SysCall {
+                                number: value.into(),
+                                args: Vec::new(),
+                            },
+                            ast_ty,
+                        );
+                    }
                     _ => compile_apply_lambda(fun_ast.clone(), args, ast_ty, ctx)?,
                 }
                 Ok(())
