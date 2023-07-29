@@ -51,9 +51,9 @@ impl Context {
 type Code = u32;
 type Codes = Vec<Code>;
 
-fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
+fn dump_instructions(ctx: &mut Context, insts: &[InstrWithIr]) {
     println!("{}", "RISC-V Instructions:".red());
-    for (addr, inst) in insts.iter().enumerate() {
+    for (addr, (inst, ir)) in insts.iter().enumerate() {
         let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
             if *laddr == addr as i32 {
                 Some(label)
@@ -64,6 +64,10 @@ fn dump_instructions(ctx: &mut Context, insts: &[Instruction]) {
         if let Some(label) = label {
             let addr = format!("; 0x{:x}", addr * 4);
             println!("{}: {}", label, addr.dimmed());
+        }
+        if let Some(ir) = ir {
+            let ir = format!("; {}", ir);
+            println!("  {}", ir.dimmed());
         }
         println!("  {}", inst);
     }
@@ -97,7 +101,7 @@ fn get_register_from_operand(
 
 fn load_operand_to(
     ctx: &mut Context,
-    insts: &mut Vec<Instruction>,
+    insts: &mut Vec<InstrWithIr>,
     register_map: &RegisterMap,
     op: i::Operand,
     rd: Register,
@@ -105,7 +109,7 @@ fn load_operand_to(
     match op {
         i::Operand::Variable(_) => {
             let reg = get_register_from_operand(ctx, register_map, op).unwrap();
-            insts.push(Instruction::mv(rd, reg));
+            insts.push(Instruction::mv(rd, reg).into());
         }
         i::Operand::Immediate(imm) => {
             use i::Immediate::*;
@@ -117,15 +121,15 @@ fn load_operand_to(
                 Label(_) => {
                     // Replace this label to the real address.
                     // To load large addresses (larger than 12bits), we reserve for two instructions, lui and addi.
-                    insts.push(Instruction::nop());
-                    insts.push(Instruction::li(rd, imm.into()));
+                    insts.push(Instruction::nop().into());
+                    insts.push(Instruction::li(rd, imm.into()).into());
                 }
             }
         }
     }
 }
 
-fn load_immediate(insts: &mut Vec<Instruction>, imm: Immediate, rd: Register) {
+fn load_immediate(insts: &mut Vec<InstrWithIr>, imm: Immediate, rd: Register) {
     let mut last_set_bit = -1;
     for i in (0..=31).rev() {
         if imm.value() & (1 << i) != 0 {
@@ -142,23 +146,26 @@ fn load_immediate(insts: &mut Vec<Instruction>, imm: Immediate, rd: Register) {
         } else {
             imm
         };
-        insts.push(Instruction::U(UInstruction {
-            op: UInstructionOp::Lui,
-            imm: top,
-            rd,
-        }));
+        insts.push(
+            Instruction::U(UInstruction {
+                op: UInstructionOp::Lui,
+                imm: top,
+                rd,
+            })
+            .into(),
+        );
         if bot > 0 {
-            insts.push(Instruction::addi(rd, rd, bot));
+            insts.push(Instruction::addi(rd, rd, bot).into());
         }
     } else {
-        insts.push(Instruction::li(rd, imm));
+        insts.push(Instruction::li(rd, imm).into());
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn generate_code_bin_op(
     ctx: &mut Context,
-    insts: &mut Vec<Instruction>,
+    insts: &mut Vec<InstrWithIr>,
     register_map: &RegisterMap,
     left: i::Operand,
     right: i::Operand,
@@ -192,7 +199,7 @@ fn generate_code_bin_op(
         }
     };
 
-    insts.push(inst);
+    insts.push(inst.into());
 
     Ok(())
 }
@@ -207,9 +214,11 @@ fn replace_label(imm: Immediate, ctx: &Context) -> Immediate {
     }
 }
 
-fn replace_labels(inst: Instruction, ctx: &Context) -> Instruction {
+fn replace_labels(inst: InstrWithIr, ctx: &Context) -> InstrWithIr {
     use Instruction::*;
-    match inst {
+
+    let (inst, ir) = inst;
+    let replaced = match inst {
         R(_) => inst,
         I(IInstruction { op, imm, rs1, rd }) => I(IInstruction {
             op,
@@ -230,7 +239,8 @@ fn replace_labels(inst: Instruction, ctx: &Context) -> Instruction {
             rd,
         }),
         SB(_) => inst,
-    }
+    };
+    (replaced, ir)
 }
 
 pub fn generate_code(
@@ -245,7 +255,7 @@ pub fn generate_code(
 
     fn load_argument(
         ctx: &mut Context,
-        insts: &mut Vec<Instruction>,
+        insts: &mut Vec<InstrWithIr>,
         register_map: &RegisterMap,
         op: i::Operand,
     ) {
@@ -253,14 +263,14 @@ pub fn generate_code(
         load_operand_to(ctx, insts, register_map, op, rd);
     }
 
-    fn add_label(ctx: &mut Context, insts: &mut Vec<Instruction>, label: String) {
+    fn add_label(ctx: &mut Context, insts: &mut Vec<InstrWithIr>, label: String) {
         ctx.label_addrs.insert(label, insts.len() as i32);
     }
 
     use Instruction::*;
 
     let mut ctx = Context::new();
-    let mut insts = Vec::new();
+    let mut insts: Vec<InstrWithIr> = Vec::new();
 
     // Initialize specific registers
     load_immediate(
@@ -306,6 +316,8 @@ pub fn generate_code(
                     Register::zero()
                 };
 
+                let ir = inst.to_string();
+
                 match inst {
                     Branch {
                         cond,
@@ -315,24 +327,33 @@ pub fn generate_code(
                         else_bb: _,
                     } => {
                         let cond = get_register_from_operand(&mut ctx, &register_map, cond)?;
-                        insts.push(SB(SBInstruction {
-                            op: SBInstructionOp::Bne,
-                            imm: RelAddress::Label(then_label),
-                            rs1: cond,
-                            rs2: Register::zero(),
-                        }));
-                        insts.push(J(JInstruction {
-                            op: JInstructionOp::Jal,
-                            imm: RelAddress::Label(else_label),
-                            rd: Register::zero(),
-                        }));
+                        insts.push((
+                            SB(SBInstruction {
+                                op: SBInstructionOp::Bne,
+                                imm: RelAddress::Label(then_label),
+                                rs1: cond,
+                                rs2: Register::zero(),
+                            }),
+                            Some(ir),
+                        ));
+                        insts.push(
+                            J(JInstruction {
+                                op: JInstructionOp::Jal,
+                                imm: RelAddress::Label(else_label),
+                                rd: Register::zero(),
+                            })
+                            .into(),
+                        );
                     }
                     Jump(label, _) => {
-                        insts.push(J(JInstruction {
-                            op: JInstructionOp::Jal,
-                            imm: RelAddress::Label(label),
-                            rd: Register::zero(),
-                        }));
+                        insts.push(
+                            J(JInstruction {
+                                op: JInstructionOp::Jal,
+                                imm: RelAddress::Label(label),
+                                rd: Register::zero(),
+                            })
+                            .into(),
+                        );
                     }
                     Ret(op) => {
                         load_operand_to(&mut ctx, &mut insts, &register_map, op, Register::a(0));
@@ -340,16 +361,19 @@ pub fn generate_code(
                         if fun.name == "main" {
                             // syscall EXIT on rv32emu
                             // insts.push(Instruction::li(Register::a(0), Immediate::new(0, XLEN)));
-                            insts.push(Instruction::li(Register::a(7), Immediate::new(93)));
-                            insts.push(I(IInstruction {
-                                op: IInstructionOp::Ecall,
-                                imm: Immediate::new(0),
-                                rs1: Register::zero(),
-                                rd: Register::zero(),
-                            }));
+                            insts.push(Instruction::li(Register::a(7), Immediate::new(93)).into());
+                            insts.push(
+                                I(IInstruction {
+                                    op: IInstructionOp::Ecall,
+                                    imm: Immediate::new(0),
+                                    rs1: Register::zero(),
+                                    rd: Register::zero(),
+                                })
+                                .into(),
+                            );
                         } else {
                             insts.append(&mut frame.generate_fun_footer());
-                            insts.push(Instruction::ret());
+                            insts.push(Instruction::ret().into());
                         }
                     }
                     Alloca { ty: _, count } => {
@@ -358,12 +382,15 @@ pub fn generate_code(
                                 let count =
                                     get_register_from_operand(&mut ctx, &register_map, count)?;
 
-                                insts.push(Instruction::R(RInstruction {
-                                    op: RInstructionOp::Sub,
-                                    rs1: Register::sp(),
-                                    rs2: count,
-                                    rd: Register::sp(),
-                                }));
+                                insts.push(
+                                    Instruction::R(RInstruction {
+                                        op: RInstructionOp::Sub,
+                                        rs1: Register::sp(),
+                                        rs2: count,
+                                        rd: Register::sp(),
+                                    })
+                                    .into(),
+                                );
                             }
                             i::Operand::Immediate(count) => {
                                 let has_dont_alloc_tag = tags
@@ -376,16 +403,15 @@ pub fn generate_code(
                                     let count = (Immediate::from(count).value() as f32 / 4.0).ceil()
                                         as i32
                                         * 4;
-                                    insts.push(Instruction::addi(
-                                        Register::sp(),
-                                        Register::sp(),
-                                        -count,
-                                    ));
+                                    insts.push(
+                                        Instruction::addi(Register::sp(), Register::sp(), -count)
+                                            .into(),
+                                    );
                                 }
                             }
                         }
 
-                        insts.push(Instruction::mv(result_reg, Register::sp()));
+                        insts.push(Instruction::mv(result_reg, Register::sp()).into());
                     }
                     Add(left, right) => {
                         generate_code_bin_op(
@@ -403,24 +429,30 @@ pub fn generate_code(
                         let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
                         let rs2 = get_register_from_operand(&mut ctx, &register_map, right)?;
 
-                        insts.push(R(RInstruction {
-                            op: RInstructionOp::Sub,
-                            rs1,
-                            rs2,
-                            rd: result_reg,
-                        }));
+                        insts.push(
+                            R(RInstruction {
+                                op: RInstructionOp::Sub,
+                                rs1,
+                                rs2,
+                                rd: result_reg,
+                            })
+                            .into(),
+                        );
                     }
                     Mul(left, right) => {
                         if specs.contains(&Spec::Multiplication) {
                             let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
                             let rs2 = get_register_from_operand(&mut ctx, &register_map, right)?;
 
-                            insts.push(R(RInstruction {
-                                op: RInstructionOp::Mul,
-                                rs1,
-                                rs2,
-                                rd: result_reg,
-                            }));
+                            insts.push(
+                                R(RInstruction {
+                                    op: RInstructionOp::Mul,
+                                    rs1,
+                                    rs2,
+                                    rd: result_reg,
+                                })
+                                .into(),
+                            );
                         } else {
                             todo!()
                         }
@@ -430,12 +462,15 @@ pub fn generate_code(
                             let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
                             let rs2 = get_register_from_operand(&mut ctx, &register_map, right)?;
 
-                            insts.push(R(RInstruction {
-                                op: RInstructionOp::Div,
-                                rs1,
-                                rs2,
-                                rd: result_reg,
-                            }));
+                            insts.push(
+                                R(RInstruction {
+                                    op: RInstructionOp::Div,
+                                    rs1,
+                                    rs2,
+                                    rd: result_reg,
+                                })
+                                .into(),
+                            );
                         } else {
                             todo!()
                         }
@@ -454,12 +489,15 @@ pub fn generate_code(
                     }
                     Not(op) => {
                         let op = get_register_from_operand(&mut ctx, &register_map, op)?;
-                        insts.push(I(IInstruction {
-                            op: IInstructionOp::Xori,
-                            imm: Immediate::new(0x1),
-                            rs1: op,
-                            rd: result_reg,
-                        }))
+                        insts.push(
+                            I(IInstruction {
+                                op: IInstructionOp::Xori,
+                                imm: Immediate::new(0x1),
+                                rs1: op,
+                                rd: result_reg,
+                            })
+                            .into(),
+                        )
                     }
                     Shift(op, left, right) => {
                         let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
@@ -470,23 +508,29 @@ pub fn generate_code(
                             i::ShiftOperator::LogicalRight => RInstructionOp::ShiftRight,
                         };
 
-                        insts.push(R(RInstruction {
-                            op,
-                            rs1,
-                            rs2,
-                            rd: result_reg,
-                        }))
+                        insts.push(
+                            R(RInstruction {
+                                op,
+                                rs1,
+                                rs2,
+                                rd: result_reg,
+                            })
+                            .into(),
+                        )
                     }
                     Store(addr, value) => {
                         let rs1 = get_register_from_operand(&mut ctx, &register_map, addr)?;
                         let rs2 = get_register_from_operand(&mut ctx, &register_map, value)?;
 
-                        insts.push(S(SInstruction {
-                            op: SInstructionOp::Sw,
-                            imm: Immediate::new(0),
-                            rs1,
-                            rs2,
-                        }))
+                        insts.push(
+                            S(SInstruction {
+                                op: SInstructionOp::Sw,
+                                imm: Immediate::new(0),
+                                rs1,
+                                rs2,
+                            })
+                            .into(),
+                        )
                     }
                     LoadElement { addr, ty, index } => {
                         let local_idx = if let i::Operand::Variable(addr) = &addr {
@@ -501,12 +545,15 @@ pub fn generate_code(
                         };
 
                         if let Some(local_idx) = local_idx {
-                            insts.push(I(IInstruction {
-                                op,
-                                imm: Immediate::new(local_idx as i32),
-                                rs1: Register::fp(),
-                                rd: result_reg,
-                            }))
+                            insts.push(
+                                I(IInstruction {
+                                    op,
+                                    imm: Immediate::new(local_idx as i32),
+                                    rs1: Register::fp(),
+                                    rd: result_reg,
+                                })
+                                .into(),
+                            )
                         } else {
                             let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
                             let index = match index {
@@ -514,18 +561,21 @@ pub fn generate_code(
                                 _ => {
                                     let index =
                                         get_register_from_operand(&mut ctx, &register_map, index)?;
-                                    insts.push(Instruction::add(addr, addr, index));
+                                    insts.push(Instruction::add(addr, addr, index).into());
 
                                     Immediate::Value(0)
                                 }
                             };
 
-                            insts.push(I(IInstruction {
-                                op,
-                                imm: index,
-                                rs1: addr,
-                                rd: result_reg,
-                            }))
+                            insts.push(
+                                I(IInstruction {
+                                    op,
+                                    imm: index,
+                                    rs1: addr,
+                                    rd: result_reg,
+                                })
+                                .into(),
+                            )
                         }
                     }
                     StoreElement {
@@ -548,12 +598,15 @@ pub fn generate_code(
                         };
 
                         if let Some(local_idx) = local_idx {
-                            insts.push(S(SInstruction {
-                                op,
-                                imm: Immediate::new(local_idx as i32),
-                                rs1: Register::fp(),
-                                rs2: value,
-                            }))
+                            insts.push(
+                                S(SInstruction {
+                                    op,
+                                    imm: Immediate::new(local_idx as i32),
+                                    rs1: Register::fp(),
+                                    rs2: value,
+                                })
+                                .into(),
+                            )
                         } else {
                             let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
                             let index = match index {
@@ -561,18 +614,21 @@ pub fn generate_code(
                                 _ => {
                                     let index =
                                         get_register_from_operand(&mut ctx, &register_map, index)?;
-                                    insts.push(Instruction::add(addr, addr, index));
+                                    insts.push(Instruction::add(addr, addr, index).into());
 
                                     Immediate::Value(0)
                                 }
                             };
 
-                            insts.push(S(SInstruction {
-                                op,
-                                imm: index,
-                                rs1: addr,
-                                rs2: value,
-                            }))
+                            insts.push(
+                                S(SInstruction {
+                                    op,
+                                    imm: index,
+                                    rs1: addr,
+                                    rs2: value,
+                                })
+                                .into(),
+                            )
                         }
                     }
                     Cmp(op, left, right) => {
@@ -610,24 +666,30 @@ pub fn generate_code(
                         match fun {
                             i::Operand::Variable(_) => {
                                 let fun = get_register_from_operand(&mut ctx, &register_map, fun)?;
-                                insts.push(I(IInstruction {
-                                    op: IInstructionOp::Jalr,
-                                    imm: Immediate::new(0),
-                                    rs1: fun,
-                                    rd: Register::ra(),
-                                }));
+                                insts.push(
+                                    I(IInstruction {
+                                        op: IInstructionOp::Jalr,
+                                        imm: Immediate::new(0),
+                                        rs1: fun,
+                                        rd: Register::ra(),
+                                    })
+                                    .into(),
+                                );
                             }
                             i::Operand::Immediate(i::Immediate::Label(label)) => {
-                                insts.push(J(JInstruction {
-                                    op: JInstructionOp::Jal,
-                                    imm: RelAddress::Label(label),
-                                    rd: Register::ra(),
-                                }));
+                                insts.push(
+                                    J(JInstruction {
+                                        op: JInstructionOp::Jal,
+                                        imm: RelAddress::Label(label),
+                                        rd: Register::ra(),
+                                    })
+                                    .into(),
+                                );
                             }
                             _ => todo!(),
                         }
 
-                        insts.push(Instruction::mv(result_reg, Register::a(0)));
+                        insts.push(Instruction::mv(result_reg, Register::a(0)).into());
 
                         insts.append(&mut restore);
                     }
@@ -650,12 +712,15 @@ pub fn generate_code(
                             Register::a(7),
                         );
 
-                        insts.push(Instruction::I(IInstruction {
-                            op: IInstructionOp::Ecall,
-                            imm: Immediate::new(0),
-                            rs1: Register::zero(),
-                            rd: Register::zero(),
-                        }));
+                        insts.push(
+                            Instruction::I(IInstruction {
+                                op: IInstructionOp::Ecall,
+                                imm: Immediate::new(0),
+                                rs1: Register::zero(),
+                                rd: Register::zero(),
+                            })
+                            .into(),
+                        );
 
                         insts.append(&mut restore);
                     }
@@ -682,9 +747,9 @@ pub fn generate_code(
     let insts = insts
         .into_iter()
         .enumerate()
-        .map(|(addr, inst)| {
+        .map(|(addr, (inst, ir))| {
             let addr = addr as i32;
-            match inst {
+            let inst = match inst {
                 J(JInstruction {
                     op: op @ JInstructionOp::Jal,
                     imm: RelAddress::Label(label),
@@ -714,7 +779,8 @@ pub fn generate_code(
                     })
                 }
                 _ => inst,
-            }
+            };
+            (inst, ir)
         })
         .collect_vec();
 
@@ -724,7 +790,7 @@ pub fn generate_code(
 
     let asm = insts
         .iter()
-        .map(|inst| match inst {
+        .map(|(inst, _)| match inst {
             R(ri) => ri.generate_asm(),
             I(ii) => ii.generate_asm(),
             S(si) => si.generate_asm(),
@@ -738,7 +804,7 @@ pub fn generate_code(
 
     let result = insts
         .into_iter()
-        .map(|inst| match inst {
+        .map(|(inst, _)| match inst {
             R(ri) => ri.generate_code(),
             I(ii) => ii.generate_code(),
             S(si) => si.generate_code(),

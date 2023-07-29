@@ -71,7 +71,7 @@ impl<'a> StackFrame<'a> {
         self.local_var_map.get(var).copied()
     }
 
-    pub fn generate_fun_header(&self) -> Vec<Instruction> {
+    pub fn generate_fun_header(&self) -> Vec<InstrWithIr> {
         let frame_size = 4
             * (self.callee_saved_registers.len()
                 + self.register_map.values().unique().count()
@@ -80,45 +80,29 @@ impl<'a> StackFrame<'a> {
 
         let mut insts = Vec::new();
 
-        insts.push(Instruction::addi(
-            Register::sp(),
-            Register::sp(),
-            -frame_size,
-        ));
+        insts.push(Instruction::addi(Register::sp(), Register::sp(), -frame_size).into());
 
         for (i, reg) in self.callee_saved_registers.iter().enumerate() {
-            insts.push(Instruction::sw(
-                *reg,
-                Register::sp(),
-                Immediate::new(i as i32 * 4),
-            ));
+            insts.push(Instruction::sw(*reg, Register::sp(), Immediate::new(i as i32 * 4)).into());
         }
 
-        insts.push(Instruction::addi(
-            Register::fp(),
-            Register::sp(),
-            frame_size,
-        ));
+        insts.push(Instruction::addi(Register::fp(), Register::sp(), frame_size).into());
 
-        insts.push(Instruction::mv(Register::s(1), Register::sp()));
+        insts.push(Instruction::mv(Register::s(1), Register::sp()).into());
 
         insts
     }
 
-    pub fn generate_fun_footer(&self) -> Vec<Instruction> {
+    pub fn generate_fun_footer(&self) -> Vec<InstrWithIr> {
         let mut insts = Vec::new();
 
-        insts.push(Instruction::mv(Register::t(0), Register::fp()));
+        insts.push(Instruction::mv(Register::t(0), Register::fp()).into());
 
         for (i, reg) in self.callee_saved_registers.iter().enumerate() {
-            insts.push(Instruction::lw(
-                *reg,
-                Register::s(1),
-                Immediate::new(i as i32 * 4),
-            ));
+            insts.push(Instruction::lw(*reg, Register::s(1), Immediate::new(i as i32 * 4)).into());
         }
 
-        insts.push(Instruction::mv(Register::sp(), Register::t(0)));
+        insts.push(Instruction::mv(Register::sp(), Register::t(0)).into());
 
         insts
     }
@@ -128,7 +112,7 @@ impl<'a> StackFrame<'a> {
         &self,
         args_count: usize,
         result_reg: &Register,
-    ) -> (Vec<Instruction>, Vec<Instruction>) {
+    ) -> (Vec<InstrWithIr>, Vec<InstrWithIr>) {
         let used_regs = self
             .register_map
             .values()
@@ -141,20 +125,16 @@ impl<'a> StackFrame<'a> {
         let mut save = Vec::new();
         // Save caller-saved registers for temporary and function arguments registers now
         for (i, reg) in used_regs.iter().enumerate() {
-            save.push(Instruction::sw(
-                *reg,
-                Register::s(1),
-                Immediate::new((i as i32 + 3) * 4),
-            ));
+            save.push(
+                Instruction::sw(*reg, Register::s(1), Immediate::new((i as i32 + 3) * 4)).into(),
+            );
         }
 
         let mut restore = Vec::new();
         for (i, reg) in used_regs.into_iter().enumerate() {
-            restore.push(Instruction::lw(
-                reg,
-                Register::s(1),
-                Immediate::new((i as i32 + 3) * 4),
-            ));
+            restore.push(
+                Instruction::lw(reg, Register::s(1), Immediate::new((i as i32 + 3) * 4)).into(),
+            );
         }
 
         (save, restore)

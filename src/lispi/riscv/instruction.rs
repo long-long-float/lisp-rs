@@ -111,6 +111,14 @@ impl Display for Instruction {
     }
 }
 
+pub type InstrWithIr = (Instruction, Option<String>);
+
+impl From<Instruction> for InstrWithIr {
+    fn from(inst: Instruction) -> Self {
+        (inst, None)
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct RInstruction {
     pub op: RInstructionOp,
