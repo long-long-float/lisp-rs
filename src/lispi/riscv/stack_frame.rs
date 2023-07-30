@@ -112,6 +112,7 @@ impl<'a> StackFrame<'a> {
         &self,
         args_count: usize,
         result_reg: &Register,
+        ir: Option<String>,
     ) -> (Vec<InstrWithIr>, Vec<InstrWithIr>) {
         let used_regs = self
             .register_map
@@ -125,9 +126,11 @@ impl<'a> StackFrame<'a> {
         let mut save = Vec::new();
         // Save caller-saved registers for temporary and function arguments registers now
         for (i, reg) in used_regs.iter().enumerate() {
-            save.push(
-                Instruction::sw(*reg, Register::s(1), Immediate::new((i as i32 + 3) * 4)).into(),
-            );
+            let ir = if i == 0 { ir.clone() } else { None };
+            save.push(InstrWithIr(
+                Instruction::sw(*reg, Register::s(1), Immediate::new((i as i32 + 3) * 4)),
+                ir,
+            ));
         }
 
         let mut restore = Vec::new();

@@ -17,6 +17,10 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    pub fn with_ir(self, ir: Option<String>) -> InstrWithIr {
+        InstrWithIr(self, ir)
+    }
+
     // Pseudo instructions
 
     pub fn mv(rd: Register, rs1: Register) -> Instruction {
@@ -111,11 +115,18 @@ impl Display for Instruction {
     }
 }
 
-pub type InstrWithIr = (Instruction, Option<String>);
+pub struct InstrWithIr(pub Instruction, pub Option<String>);
+
+impl InstrWithIr {
+    pub fn with_ir(self, ir: Option<String>) -> Self {
+        let Self(inst, _) = self;
+        Self(inst, ir)
+    }
+}
 
 impl From<Instruction> for InstrWithIr {
     fn from(inst: Instruction) -> Self {
-        (inst, None)
+        Self(inst, None)
     }
 }
 
