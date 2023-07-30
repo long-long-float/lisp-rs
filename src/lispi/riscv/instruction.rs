@@ -122,6 +122,10 @@ impl InstrWithIr {
         let Self(inst, _) = self;
         Self(inst, ir)
     }
+
+    pub fn set_ir(&mut self, ir: Option<String>) {
+        self.1 = ir;
+    }
 }
 
 impl From<Instruction> for InstrWithIr {

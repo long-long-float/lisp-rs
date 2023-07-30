@@ -105,28 +105,23 @@ fn load_operand_to(
     register_map: &RegisterMap,
     op: i::Operand,
     rd: Register,
-    ir: Option<String>,
 ) {
     match op {
         i::Operand::Variable(_) => {
             let reg = get_register_from_operand(ctx, register_map, op).unwrap();
-            insts.push(
-                InstrWithIr::from(Instruction::mv(rd, reg))
-                    .with_ir(ir)
-                    .into(),
-            );
+            insts.push(InstrWithIr::from(Instruction::mv(rd, reg)).into());
         }
         i::Operand::Immediate(imm) => {
             use i::Immediate::*;
             match imm {
                 Integer(_) | Boolean(_) => {
                     let imm: Immediate = imm.into();
-                    load_immediate(insts, imm, rd, ir);
+                    load_immediate(insts, imm, rd);
                 }
                 Label(_) => {
                     // Replace this label to the real address.
                     // To load large addresses (larger than 12bits), we reserve for two instructions, lui and addi.
-                    insts.push(InstrWithIr::from(Instruction::nop()).with_ir(ir));
+                    insts.push(InstrWithIr::from(Instruction::nop()).into());
                     insts.push(Instruction::li(rd, imm.into()).into());
                 }
             }
@@ -134,7 +129,7 @@ fn load_operand_to(
     }
 }
 
-fn load_immediate(insts: &mut Vec<InstrWithIr>, imm: Immediate, rd: Register, ir: Option<String>) {
+fn load_immediate(insts: &mut Vec<InstrWithIr>, imm: Immediate, rd: Register) {
     let mut last_set_bit = -1;
     for i in (0..=31).rev() {
         if imm.value() & (1 << i) != 0 {
@@ -157,13 +152,13 @@ fn load_immediate(insts: &mut Vec<InstrWithIr>, imm: Immediate, rd: Register, ir
                 imm: top,
                 rd,
             }))
-            .with_ir(ir),
+            .into(),
         );
         if bot > 0 {
             insts.push(Instruction::addi(rd, rd, bot).into());
         }
     } else {
-        insts.push(InstrWithIr::from(Instruction::li(rd, imm)).with_ir(ir));
+        insts.push(InstrWithIr::from(Instruction::li(rd, imm)).into());
     }
 }
 
@@ -263,10 +258,9 @@ pub fn generate_code(
         insts: &mut Vec<InstrWithIr>,
         register_map: &RegisterMap,
         op: i::Operand,
-        ir: Option<String>,
     ) {
         let rd = ctx.allocate_arg_reg();
-        load_operand_to(ctx, insts, register_map, op, rd, ir);
+        load_operand_to(ctx, insts, register_map, op, rd);
     }
 
     fn add_label(ctx: &mut Context, insts: &mut Vec<InstrWithIr>, label: String) {
@@ -283,7 +277,6 @@ pub fn generate_code(
         &mut insts,
         Immediate::new(0x80000000u32 as i32),
         Register::sp(),
-        None,
     );
 
     for (fun, register_map) in funcs {
@@ -324,6 +317,7 @@ pub fn generate_code(
                 };
 
                 let ir = Some(inst.to_string());
+                let ir_insertion_idx = insts.len();
 
                 match inst {
                     Branch {
@@ -341,7 +335,7 @@ pub fn generate_code(
                                 rs1: cond,
                                 rs2: Register::zero(),
                             }))
-                            .with_ir(ir),
+                            .into(),
                         );
                         insts.push(
                             J(JInstruction {
@@ -359,18 +353,11 @@ pub fn generate_code(
                                 imm: RelAddress::Label(label),
                                 rd: Register::zero(),
                             }))
-                            .with_ir(ir),
+                            .into(),
                         );
                     }
                     Ret(op) => {
-                        load_operand_to(
-                            &mut ctx,
-                            &mut insts,
-                            &register_map,
-                            op,
-                            Register::a(0),
-                            ir,
-                        );
+                        load_operand_to(&mut ctx, &mut insts, &register_map, op, Register::a(0));
 
                         if fun.name == "main" {
                             // syscall EXIT on rv32emu
@@ -450,7 +437,7 @@ pub fn generate_code(
                                 rs2,
                                 rd: result_reg,
                             })
-                            .with_ir(ir),
+                            .into(),
                         );
                     }
                     Mul(left, right) => {
@@ -465,7 +452,7 @@ pub fn generate_code(
                                     rs2,
                                     rd: result_reg,
                                 })
-                                .with_ir(ir),
+                                .into(),
                             );
                         } else {
                             todo!()
@@ -483,7 +470,7 @@ pub fn generate_code(
                                     rs2,
                                     rd: result_reg,
                                 })
-                                .with_ir(ir),
+                                .into(),
                             );
                         } else {
                             todo!()
@@ -510,7 +497,7 @@ pub fn generate_code(
                                 rs1: op,
                                 rd: result_reg,
                             })
-                            .with_ir(ir),
+                            .into(),
                         )
                     }
                     Shift(op, left, right) => {
@@ -529,7 +516,7 @@ pub fn generate_code(
                                 rs2,
                                 rd: result_reg,
                             })
-                            .with_ir(ir),
+                            .into(),
                         )
                     }
                     Store(addr, value) => {
@@ -543,7 +530,7 @@ pub fn generate_code(
                                 rs1,
                                 rs2,
                             })
-                            .with_ir(ir),
+                            .into(),
                         )
                     }
                     LoadElement { addr, ty, index } => {
@@ -566,7 +553,7 @@ pub fn generate_code(
                                     rs1: Register::fp(),
                                     rd: result_reg,
                                 })
-                                .with_ir(ir),
+                                .into(),
                             )
                         } else {
                             let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
@@ -575,7 +562,7 @@ pub fn generate_code(
                                 _ => {
                                     let index =
                                         get_register_from_operand(&mut ctx, &register_map, index)?;
-                                    insts.push(Instruction::add(addr, addr, index).with_ir(ir));
+                                    insts.push(Instruction::add(addr, addr, index).into());
 
                                     Immediate::Value(0)
                                 }
@@ -619,7 +606,7 @@ pub fn generate_code(
                                     rs1: Register::fp(),
                                     rs2: value,
                                 })
-                                .with_ir(ir),
+                                .into(),
                             )
                         } else {
                             let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
@@ -641,7 +628,7 @@ pub fn generate_code(
                                     rs1: addr,
                                     rs2: value,
                                 })
-                                .with_ir(ir),
+                                .into(),
                             )
                         }
                     }
@@ -668,13 +655,13 @@ pub fn generate_code(
                     }
                     Call { fun, args } => {
                         let (mut save, mut restore) =
-                            frame.generate_insts_for_call(args.len(), &result_reg, ir);
+                            frame.generate_insts_for_call(args.len(), &result_reg);
 
                         insts.append(&mut save);
 
                         ctx.arg_count = 0;
                         for arg in args {
-                            load_argument(&mut ctx, &mut insts, &register_map, arg, None);
+                            load_argument(&mut ctx, &mut insts, &register_map, arg);
                         }
 
                         match fun {
@@ -709,13 +696,13 @@ pub fn generate_code(
                     }
                     SysCall { number, args } => {
                         let (mut save, mut restore) =
-                            frame.generate_insts_for_call(args.len(), &result_reg, ir);
+                            frame.generate_insts_for_call(args.len(), &result_reg);
 
                         insts.append(&mut save);
 
                         ctx.arg_count = 0;
                         for arg in args {
-                            load_argument(&mut ctx, &mut insts, &register_map, arg, None);
+                            load_argument(&mut ctx, &mut insts, &register_map, arg);
                         }
 
                         load_operand_to(
@@ -724,7 +711,6 @@ pub fn generate_code(
                             &register_map,
                             number,
                             Register::a(7),
-                            None,
                         );
 
                         insts.push(
@@ -741,12 +727,16 @@ pub fn generate_code(
                     }
                     Phi(_nodes) => {}
                     Operand(op) => {
-                        load_operand_to(&mut ctx, &mut insts, &register_map, op, result_reg, ir);
+                        load_operand_to(&mut ctx, &mut insts, &register_map, op, result_reg);
                     }
                     Label(label) => {
                         add_label(&mut ctx, &mut insts, label.name);
                     }
                     Nop => {}
+                }
+
+                if let Some(head) = insts.get_mut(ir_insertion_idx) {
+                    head.set_ir(ir);
                 }
             }
         }
