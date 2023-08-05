@@ -370,7 +370,7 @@ impl GenerateCode for SInstruction {
             Sb => (0b000, 0b0100011),
         };
 
-        (imm1 << 24) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm2 << 7) | opcode
+        (imm1 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm2 << 7) | opcode
     }
 
     fn generate_asm(&self) -> String {
