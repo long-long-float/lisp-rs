@@ -39,6 +39,19 @@ mod compiler_test {
             serde_json::from_slice(&output.stdout).unwrap()
         }
 
+        fn run_a0(self) -> Option<i64> {
+            let output = self.run();
+            output["int_regs"]
+                .as_array()
+                .and_then(|regs| regs[10].as_object())
+                .and_then(|reg| reg["value"].as_i64())
+        }
+
+        /// Useful for negative values
+        fn run_a0_i32(self) -> Option<i32> {
+            self.run_a0().map(|v| v as i32)
+        }
+
         fn run_raw_output(self) -> String {
             let output = self.internal_run(false);
             let output = String::from_utf8(output.stdout)
@@ -145,60 +158,68 @@ mod compiler_test {
     #[test]
     #[named]
     fn just_return_42() {
-        let registers = compile(function_name!(), "42").run();
-        assert_eq!(Some(42), registers["x10"].as_i64());
+        let a0 = compile(function_name!(), "42").run_a0();
+        assert_eq!(Some(42), a0);
     }
 
     #[test]
     #[named]
     fn arith_add() {
-        let registers = compile(function_name!(), "(+ 1 2)").min_opts().run();
-        assert_eq!(Some(3), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(+ 1 2)").min_opts().run_a0_i32();
+        assert_eq!(Some(3), a0);
 
-        let registers = compile(function_name!(), "(+ 1 -2)").min_opts().run();
-        assert_eq!(Some(-1), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(+ 1 -2)")
+            .min_opts()
+            .run_a0_i32();
+        assert_eq!(Some(-1), a0);
     }
 
     #[test]
     #[named]
     fn arith_sub() {
-        let registers = compile(function_name!(), "(- 1 2)").min_opts().run();
-        assert_eq!(Some(-1), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(- 1 2)").min_opts().run_a0_i32();
+        assert_eq!(Some(-1), a0);
 
-        let registers = compile(function_name!(), "(- 1 -2)").min_opts().run();
-        assert_eq!(Some(3), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(- 1 -2)")
+            .min_opts()
+            .run_a0_i32();
+        assert_eq!(Some(3), a0);
     }
 
     #[test]
     #[named]
     fn arith_mul() {
-        let registers = compile(function_name!(), "(* 2 3)").min_opts().run();
-        assert_eq!(Some(6), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(* 2 3)").min_opts().run_a0_i32();
+        assert_eq!(Some(6), a0);
 
-        let registers = compile(function_name!(), "(* 2 -3)").min_opts().run();
-        assert_eq!(Some(-6), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(* 2 -3)")
+            .min_opts()
+            .run_a0_i32();
+        assert_eq!(Some(-6), a0);
     }
 
     #[test]
     #[named]
     fn arith_div() {
-        let registers = compile(function_name!(), "(/ 6 3)").min_opts().run();
-        assert_eq!(Some(2), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(/ 6 3)").min_opts().run_a0_i32();
+        assert_eq!(Some(2), a0);
 
-        let registers = compile(function_name!(), "(/ 5 3)").min_opts().run();
-        assert_eq!(Some(1), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(/ 5 3)").min_opts().run_a0_i32();
+        assert_eq!(Some(1), a0);
 
-        let registers = compile(function_name!(), "(/ 6 -3)").min_opts().run();
-        assert_eq!(Some(-2), registers["x10"].as_i32());
+        let a0 = compile(function_name!(), "(/ 6 -3)")
+            .min_opts()
+            .run_a0_i32();
+        assert_eq!(Some(-2), a0);
     }
 
     #[test]
     fn shift() {
-        let registers = compile("", "(<< 1 3)").min_opts().run();
-        assert_eq!(Some(8), registers["x10"].as_i64());
+        let a0 = compile("", "(<< 1 3)").min_opts().run_a0();
+        assert_eq!(Some(8), a0);
 
-        let registers = compile("", "(>> 8 3)").min_opts().run();
-        assert_eq!(Some(1), registers["x10"].as_i64());
+        let a0 = compile("", "(>> 8 3)").min_opts().run_a0();
+        assert_eq!(Some(1), a0);
 
         // TODO: Test about logical/arithmetic shift
     }
@@ -228,7 +249,7 @@ mod compiler_test {
     #[test]
     #[named]
     fn variables() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define x 10)
@@ -236,14 +257,14 @@ mod compiler_test {
 x
 "#,
         )
-        .run();
-        assert_eq!(Some(20), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(20), a0);
     }
 
     #[test]
     #[named]
     fn function_many_variables() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define f (lambda (x)
@@ -257,28 +278,28 @@ x
 (f 2)
 "#,
         )
-        .run();
-        assert_eq!(Some(128), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(128), a0);
     }
 
     #[test]
     #[named]
     fn function_simple_call() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define double (lambda (x) (+ x x)))
 (double 21)
 "#,
         )
-        .run();
-        assert_eq!(Some(42), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(42), a0);
     }
 
     #[test]
     #[named]
     fn function_call_rank2() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define f (lambda (x) (+ x x)))
@@ -286,35 +307,35 @@ x
 (g 4)
 "#,
         )
-        .run();
-        assert_eq!(Some(16), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(16), a0);
     }
 
     #[test]
     #[named]
     fn function_pass_lambda() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define call (lambda (fun x) (fun x)))
 (call (lambda (x) (+ x x)) 21)
 "#,
         )
-        .run();
-        assert_eq!(Some(42), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(42), a0);
     }
 
     #[test]
     #[named]
     fn function_call_directly() {
-        let registers = compile(function_name!(), "((lambda (x) (+ x x)) 5)").run();
-        assert_eq!(Some(10), registers["x10"].as_i64());
+        let a0 = compile(function_name!(), "((lambda (x) (+ x x)) 5)").run_a0();
+        assert_eq!(Some(10), a0);
     }
 
     #[test]
     #[named]
     fn let_recursive_function() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (let sum ([x 10]) 
@@ -323,56 +344,53 @@ x
     (+ x (sum (- x 1)))))
 "#,
         )
-        .run();
-        assert_eq!(Some(55), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(55), a0);
     }
 
     #[test]
     #[named]
     fn let_let_add() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (let* ([x 2] [y 3]) (+ x y))
 "#,
         )
-        .run();
-        assert_eq!(Some(5), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(5), a0);
     }
 
     #[test]
     #[named]
     fn load_large_positive_integer() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 2000000000
 "#,
         )
-        .run();
-        assert_eq!(Some(2000000000), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(2000000000), a0);
     }
 
     #[test]
     #[named]
     fn load_large_negative_integer() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 -2000000000
 "#,
         )
-        .run();
-        assert_eq!(
-            Some(-2000000000),
-            registers["x10"].as_i64().map(|i| i as i32)
-        );
+        .run_a0();
+        assert_eq!(Some(-2000000000), a0.map(|i| i as i32));
     }
 
     #[test]
     #[named]
     fn tail_recursion_sum_by_loop() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define sum 0)
@@ -383,28 +401,28 @@ x
 sum
 "#,
         )
-        .run();
-        assert_eq!(Some(55), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(55), a0);
     }
 
     #[test]
     #[named]
     fn array_len() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define ary (array 1 2 3))
 (array->len ary)
 "#,
         )
-        .run();
-        assert_eq!(Some(3), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(3), a0);
     }
 
     #[test]
     #[named]
     fn array_in_function() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define f (lambda () 
@@ -414,28 +432,28 @@ sum
 (g)
 "#,
         )
-        .run();
-        assert_eq!(Some(2), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(2), a0);
     }
 
     #[test]
     #[named]
     fn array_get_1() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define ary (array 1 2 3))
 (array->get ary 1)
 "#,
         )
-        .run();
-        assert_eq!(Some(2), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(2), a0);
     }
 
     #[test]
     #[named]
     fn array_get_by_variable() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define f (lambda (i)
@@ -445,14 +463,14 @@ sum
 (f 1)
 "#,
         )
-        .run();
-        assert_eq!(Some(2), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(2), a0);
     }
 
     #[test]
     #[named]
     fn array_set_by_variable() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define f (lambda (i)
@@ -463,14 +481,14 @@ sum
 (f 1)
 "#,
         )
-        .run();
-        assert_eq!(Some(99), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(99), a0);
     }
 
     #[test]
     #[named]
     fn array_set_1() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define ary (array 1 2 3))
@@ -478,28 +496,28 @@ sum
 (array->get ary 1)
 "#,
         )
-        .run();
-        assert_eq!(Some(99), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(99), a0);
     }
 
     #[test]
     #[named]
     fn string_len() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define str "Hello")
 (array->len str)
 "#,
         )
-        .run();
-        assert_eq!(Some(5), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(5), a0);
     }
 
     #[test]
     #[named]
     fn string_in_function() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define f (lambda () 
@@ -509,28 +527,28 @@ sum
 (g)
 "#,
         )
-        .run();
-        assert_eq!(Some('e' as i64), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some('e' as i64), a0);
     }
 
     #[test]
     #[named]
     fn string_get_1() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define str "Hello")
 (array->get str 1)
 "#,
         )
-        .run();
-        assert_eq!(Some('e' as i64), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some('e' as i64), a0);
     }
 
     #[test]
     #[named]
     fn string_get_by_variable() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define f (lambda (i)
@@ -540,14 +558,14 @@ sum
 (f 1)
 "#,
         )
-        .run();
-        assert_eq!(Some('e' as i64), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some('e' as i64), a0);
     }
 
     #[test]
     #[named]
     fn string_set_by_variable() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define f (lambda (i)
@@ -558,14 +576,14 @@ sum
 (f 1)
 "#,
         )
-        .run();
-        assert_eq!(Some('x' as i64), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some('x' as i64), a0);
     }
 
     #[test]
     #[named]
     fn string_set_1() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (define str "Hello")
@@ -573,21 +591,21 @@ sum
 (array->get str 1)
 "#,
         )
-        .run();
-        assert_eq!(Some('x' as i64), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some('x' as i64), a0);
     }
 
     #[test]
     #[named]
     fn as_char_to_int() {
-        let registers = compile(function_name!(), "(as #\\0 int)").run();
-        assert_eq!(Some('0' as i64), registers["x10"].as_i64());
+        let a0 = compile(function_name!(), "(as #\\0 int)").run_a0();
+        assert_eq!(Some('0' as i64), a0);
     }
 
     #[test]
     #[named]
     fn struct_get_1st_field() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (struct Point
@@ -597,14 +615,14 @@ sum
 (Point->x pos)
 "#,
         )
-        .run();
-        assert_eq!(Some(10), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(10), a0);
     }
 
     #[test]
     #[named]
     fn struct_get_2nd_field() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (struct Point
@@ -614,14 +632,14 @@ sum
 (Point->y pos)
 "#,
         )
-        .run();
-        assert_eq!(Some(20), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(20), a0);
     }
 
     #[test]
     #[named]
     fn struct_get_3rd_field_mixed_types() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (struct ABC
@@ -632,14 +650,14 @@ sum
 (ABC->c abc)
 "#,
         )
-        .run();
-        assert_eq!(Some('c' as i64), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some('c' as i64), a0);
     }
 
     #[test]
     #[named]
     fn complex_program_array_sum() {
-        let registers = compile(
+        let a0 = compile(
             function_name!(),
             r#"
 (include "library/prelude.scm")
@@ -657,7 +675,7 @@ sum
 (array->sum ary)
 "#,
         )
-        .run();
-        assert_eq!(Some(6), registers["x10"].as_i64());
+        .run_a0();
+        assert_eq!(Some(6), a0);
     }
 }
