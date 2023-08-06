@@ -236,16 +236,23 @@ fn calculate_lifetime<'a>(func: &Function, ir_ctx: &'a IrContext) -> AllInOuts<'
 
     let mut exclude_vars = Vec::new();
 
+    // Scan DontAllocateRegister
+    for bb_id in &func.basic_blocks {
+        let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
+
+        for annot_inst in &bb.insts {
+            if annot_inst.has_tag(Tag::DontAllocateRegister) {
+                exclude_vars.push(&annot_inst.result);
+            }
+        }
+    }
+
     for bb_id in &func.basic_blocks {
         let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
 
         let mut def_uses_bb = Vec::new();
 
         for annot_inst in &bb.insts {
-            if annot_inst.has_tag(Tag::DontAllocateRegister) {
-                exclude_vars.push(&annot_inst.result);
-            }
-
             let mut used_vars = Vec::new();
             get_vars(&annot_inst.inst, &mut used_vars);
             let used_vars = used_vars
@@ -436,7 +443,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                             Instruction::Alloca {
                                 // TODO: Adjust type
                                 ty: Type::I32,
-                                count: 1.into(),
+                                count: 4.into(),
                             },
                             ty::Type::Nil,
                         )

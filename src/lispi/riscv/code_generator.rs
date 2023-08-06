@@ -288,6 +288,32 @@ pub fn generate_code(
             ctx.arg_reg_map.insert(arg.clone(), Register::a(i as u32));
         }
 
+        // Scan alloca with DontAllocateRegister
+        for bb in &fun.basic_blocks {
+            let bb = ir_ctx.bb_arena.get(*bb).unwrap();
+
+            for i::AnnotatedInstr {
+                result,
+                inst,
+                ty: _,
+                tags,
+            } in bb.insts.clone()
+            {
+                if let i::Instruction::Alloca { ty: _, count } = inst {
+                    // TODO: Support count other than 4.
+                    if let i::Operand::Immediate(_count) = count {
+                        let has_dont_alloc_tag = tags
+                            .iter()
+                            .any(|t| t.is_match_with(&Tag::DontAllocateRegister));
+
+                        if has_dont_alloc_tag {
+                            frame.allocate_local_var(&result);
+                        }
+                    }
+                }
+            }
+        }
+
         for (bbi, bb) in fun.basic_blocks.into_iter().enumerate() {
             let bb = ir_ctx.bb_arena.get(bb).unwrap();
 
@@ -399,7 +425,7 @@ pub fn generate_code(
                                     .any(|t| t.is_match_with(&Tag::DontAllocateRegister));
 
                                 if has_dont_alloc_tag {
-                                    frame.allocate_local_var(&result);
+                                    // It has been already allocated.
                                 } else {
                                     let count = (Immediate::from(count).value() as f32 / 4.0).ceil()
                                         as i32
