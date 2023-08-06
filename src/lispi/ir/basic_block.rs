@@ -1,11 +1,11 @@
 use anyhow::Result;
 use itertools::Itertools;
-use std::{collections::VecDeque, fmt::Display, fs::File, io::Write, path::Path};
+use std::{collections::VecDeque, fmt::Display, fs::File, io::Write, path::Path, slice::Iter};
 
 use id_arena::{Arena, Id};
 use rustc_hash::FxHashSet;
 
-use super::instruction as i;
+use super::instruction::{self as i, AnnotatedInstr};
 use crate::lispi::{ty::Type, SymbolValue};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -110,6 +110,14 @@ impl Function {
         }
     }
 
+    pub fn walk_instructions<'a>(
+        &'a self,
+        arena: &'a Arena<BasicBlock>,
+    ) -> WalkingInstructionIterator<'a> {
+        let cur_bb = self.basic_blocks.iter();
+        WalkingInstructionIterator::new(arena, cur_bb)
+    }
+
     pub fn dump(&self, arena: &Arena<BasicBlock>) {
         print!("{}", self.display(true, arena));
     }
@@ -119,6 +127,65 @@ impl Function {
             func: self,
             colored,
             arena,
+        }
+    }
+}
+
+pub struct WalkingInstructionIterator<'a> {
+    arena: &'a Arena<BasicBlock>,
+    cur_bb: Iter<'a, Id<BasicBlock>>,
+    cur_inst: Option<Iter<'a, AnnotatedInstr>>,
+
+    finished: bool,
+}
+
+impl<'a> WalkingInstructionIterator<'a> {
+    fn new(arena: &'a Arena<BasicBlock>, cur_bb: Iter<'a, Id<BasicBlock>>) -> Self {
+        Self {
+            arena,
+            cur_bb,
+            cur_inst: None,
+            finished: false,
+        }
+    }
+
+    fn load_next_bb(&mut self) {
+        let next_bb = self.cur_bb.next();
+        match next_bb {
+            Some(next_bb) => {
+                let next_bb = self.arena.get(*next_bb).unwrap();
+                self.cur_inst = Some(next_bb.insts.iter());
+            }
+            None => {
+                self.finished = true;
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for WalkingInstructionIterator<'a> {
+    type Item = &'a AnnotatedInstr;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            None
+        } else {
+            match self.cur_inst.as_mut() {
+                None => {
+                    self.load_next_bb();
+                    self.next()
+                }
+                Some(iter) => {
+                    let ret = iter.next();
+                    match ret {
+                        Some(_) => ret,
+                        None => {
+                            self.load_next_bb();
+                            self.next()
+                        }
+                    }
+                }
+            }
         }
     }
 }
