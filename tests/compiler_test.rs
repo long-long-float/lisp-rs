@@ -214,6 +214,36 @@ mod compiler_test {
     }
 
     #[test]
+    fn arith_cmp_less_than() {
+        assert_eq!(Some(1), compile("", "(< 1 2)").min_opts().run_a0());
+        assert_eq!(Some(0), compile("", "(< 2 1)").min_opts().run_a0());
+        assert_eq!(Some(0), compile("", "(< -1 -2)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(< -2 -1)").min_opts().run_a0());
+    }
+
+    #[test]
+    fn arith_cmp_less_than_and_eq() {
+        assert_eq!(Some(1), compile("", "(<= 1 2)").min_opts().run_a0());
+        assert_eq!(Some(0), compile("", "(<= 2 1)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(<= 2 2)").min_opts().run_a0());
+    }
+
+    #[test]
+    fn arith_cmp_greater_than() {
+        assert_eq!(Some(0), compile("", "(> 1 2)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(> 2 1)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(> -1 -2)").min_opts().run_a0());
+        assert_eq!(Some(0), compile("", "(> -2 -1)").min_opts().run_a0());
+    }
+
+    #[test]
+    fn arith_cmp_greater_than_and_eq() {
+        assert_eq!(Some(0), compile("", "(>= 1 2)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(>= 2 1)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(>= 2 2)").min_opts().run_a0());
+    }
+
+    #[test]
     fn shift() {
         let a0 = compile("", "(<< 1 3)").min_opts().run_a0();
         assert_eq!(Some(8), a0);
