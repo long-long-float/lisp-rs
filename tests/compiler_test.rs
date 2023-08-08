@@ -707,4 +707,20 @@ sum
         .run_a0();
         assert_eq!(Some(123), a0);
     }
+
+    #[test]
+    #[named]
+    fn complex_program_for() {
+        let output = compile(
+            function_name!(),
+            r#"
+(include "library/prelude.scm")
+
+(for (i 0) (< i 3) (+ i 1) (begin
+    (write "Hello\n")))
+"#,
+        )
+        .run_raw_output();
+        assert_eq!("Hello\nHello\nHello\n", output);
+    }
 }
