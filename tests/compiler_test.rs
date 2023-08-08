@@ -678,4 +678,33 @@ sum
         .run_a0();
         assert_eq!(Some(6), a0);
     }
+
+    #[test]
+    #[named]
+    fn complex_program_string_to_int() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(include "library/prelude.scm")
+
+(fn char->int (ch) (begin
+    (- (as ch int) (as #\0 int))))
+
+(fn string->int (str) (begin
+    (define sum 0)
+    (define len (- (array->len str) 1))
+    (define digit 1)
+    (let loop ([i len]) 
+        (define n (char->int (array->get str i)))
+        (set! sum (+ sum (* n digit)))
+        (set! digit (* digit 10))
+        (if (< 0 i)
+            (loop (- i 1))))
+    sum))
+(string->int "123")
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(123), a0);
+    }
 }
