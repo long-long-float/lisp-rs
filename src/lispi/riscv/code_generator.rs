@@ -177,7 +177,7 @@ fn generate_code_bin_op(
     use Instruction::*;
 
     let inst = match (left, right) {
-        (Immediate(imm), var) | (var, Immediate(imm)) => {
+        (var, Immediate(imm)) => {
             let rs1 = get_register_from_operand(ctx, register_map, var)?;
             I(IInstruction {
                 op: opi,
@@ -673,23 +673,24 @@ pub fn generate_code(
                     Cmp(op, left, right) => {
                         use i::CmpOperator::*;
 
-                        let (inst_op, inst_opi) = match op {
+                        match op {
                             Eq => todo!(),
                             SGE => todo!(),
+                            SLE => todo!(),
                             SGT => todo!(),
-                            SLT => (RInstructionOp::Slt, IInstructionOp::Slti),
+                            SLT => {
+                                generate_code_bin_op(
+                                    &mut ctx,
+                                    &mut insts,
+                                    &register_map,
+                                    left,
+                                    right,
+                                    RInstructionOp::Slt,
+                                    IInstructionOp::Slti,
+                                    result_reg,
+                                )?;
+                            }
                         };
-
-                        generate_code_bin_op(
-                            &mut ctx,
-                            &mut insts,
-                            &register_map,
-                            left,
-                            right,
-                            inst_op,
-                            inst_opi,
-                            result_reg,
-                        )?;
                     }
                     Call { fun, args } => {
                         let (mut save, mut restore) =

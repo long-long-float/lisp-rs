@@ -360,7 +360,8 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
                     {
                         let val = match op {
                             CmpOperator::Eq => left == right,
-                            CmpOperator::SGE => left <= right,
+                            CmpOperator::SGE => left >= right,
+                            CmpOperator::SLE => left <= right,
                             CmpOperator::SGT => left < right,
                             CmpOperator::SLT => left > right,
                         };

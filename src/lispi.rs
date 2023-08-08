@@ -214,6 +214,15 @@ pub fn compile(
         printlnuw("");
     }
 
+    riscv::cmp_translator::translate(&funcs, &mut ir_ctx)?;
+    if opt.dump {
+        printlnuw(&"Translate Cmp:".red());
+        for fun in &funcs {
+            fun.dump(&ir_ctx.bb_arena);
+        }
+        printlnuw("");
+    }
+
     if applied_opts.contains(&opt::Optimize::RemovingRedundantAssignments) {
         opt::removing_redundant_assignments::optimize(&funcs, &mut ir_ctx)?;
         if opt.dump {

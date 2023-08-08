@@ -503,8 +503,10 @@ impl From<usize> for Operand {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CmpOperator {
     Eq,
-    /// '<='
+    /// '>='
     SGE,
+    /// '<='
+    SLE,
     /// '>'
     SGT,
     /// '<'
@@ -517,7 +519,8 @@ impl Display for CmpOperator {
 
         let str = match self {
             Eq => "=",
-            SGE => "<=",
+            SGE => ">=",
+            SLE => "<=",
             SGT => ">",
             SLT => "<",
         };
