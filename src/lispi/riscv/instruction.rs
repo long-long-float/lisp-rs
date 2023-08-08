@@ -1,3 +1,4 @@
+use core::panic;
 use std::fmt::Display;
 use std::ops;
 
@@ -146,6 +147,7 @@ pub struct RInstruction {
 pub enum RInstructionOp {
     Add,
     Sub,
+    And,
     Or,
     ShiftLeft,
     ShiftRight,
@@ -175,6 +177,7 @@ impl IInstruction {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum IInstructionOp {
+    Andi,
     Ori,
     Addi,
     Jalr,
@@ -261,6 +264,7 @@ impl GenerateCode for RInstruction {
         let (funct7, funct3, opcode) = match self.op {
             Add => (0b0000000, 0b000, 0b0110011),
             Sub => (0b0100000, 0b000, 0b0110011),
+            And => (0b0000000, 0b111, 0b0110011),
             Or => (0b0000000, 0b110, 0b0110011),
             ShiftLeft => (0b0000000, 0b001, 0b0110011),
             ShiftRight => (0b0000000, 0b101, 0b0110011),
@@ -278,6 +282,7 @@ impl GenerateCode for RInstruction {
         let name = match self.op {
             Add => "add",
             Sub => "sub",
+            And => "and",
             Or => "or",
             ShiftLeft => "sll",
             ShiftRight => "srl",
@@ -304,6 +309,7 @@ impl GenerateCode for IInstruction {
         let rs1 = self.rs1.as_int();
 
         let (funct3, opcode) = match self.op {
+            Andi => (0b111, 0b0010011),
             Ori => (0b110, 0b0010011),
             Addi => (0b000, 0b0010011),
             Jalr => (0b000, 0b1100111),
@@ -327,19 +333,20 @@ impl GenerateCode for IInstruction {
         }
 
         match self.op {
-            Ori | Addi | Jalr | Xori | Slti => {
+            Andi | Ori | Addi | Jalr | Xori | Slti => {
                 let mut imm = self.imm.value();
                 if imm >> 11 & 1 == 1 {
                     // sign extension
                     imm |= 0xffff_f000u32 as i32;
                 }
                 let name = match self.op {
+                    Andi => "andi",
                     Ori => "ori",
                     Addi => "addi",
                     Jalr => "jalr",
                     Xori => "xori",
                     Slti => "slti",
-                    _ => "BUG",
+                    _ => panic!("Unknown op: {:?}", self.op),
                 };
                 format!("{} {}, {}, {}", name, self.rd, self.rs1, imm)
             }

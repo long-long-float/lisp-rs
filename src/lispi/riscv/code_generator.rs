@@ -502,6 +502,18 @@ pub fn generate_code(
                             todo!()
                         }
                     }
+                    And(left, right) => {
+                        generate_code_bin_op(
+                            &mut ctx,
+                            &mut insts,
+                            &register_map,
+                            left,
+                            right,
+                            RInstructionOp::And,
+                            IInstructionOp::Andi,
+                            result_reg,
+                        )?;
+                    }
                     Or(left, right) => {
                         generate_code_bin_op(
                             &mut ctx,

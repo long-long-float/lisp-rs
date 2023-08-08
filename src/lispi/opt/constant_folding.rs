@@ -65,6 +65,7 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                 | Instruction::Sub(l, r)
                 | Instruction::Mul(l, r)
                 | Instruction::Div(l, r)
+                | Instruction::And(l, r)
                 | Instruction::Or(l, r)
                 | Instruction::Shift(_, l, r)
                 | Instruction::Store(l, r)
@@ -281,6 +282,14 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
                     right,
                     |l, r| l / r,
                     I::Div,
+                )),
+                I::And(left, right) => Some(fold_constants_logical(
+                    ctx,
+                    &var,
+                    left,
+                    right,
+                    |l, r| l & r,
+                    I::And,
                 )),
                 I::Or(left, right) => Some(fold_constants_logical(
                     ctx,

@@ -171,6 +171,7 @@ fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
         | Instruction::Sub(left, right)
         | Instruction::Mul(left, right)
         | Instruction::Div(left, right)
+        | Instruction::And(left, right)
         | Instruction::Or(left, right) => {
             add_only_var(left, vars);
             add_only_var(right, vars);

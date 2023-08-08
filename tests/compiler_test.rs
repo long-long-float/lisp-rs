@@ -225,6 +225,22 @@ mod compiler_test {
     }
 
     #[test]
+    fn logical_op_and() {
+        assert_eq!(Some(0), compile("", "(and #f #f)").min_opts().run_a0());
+        assert_eq!(Some(0), compile("", "(and #t #f)").min_opts().run_a0());
+        assert_eq!(Some(0), compile("", "(and #f #t)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(and #t #t)").min_opts().run_a0());
+    }
+
+    #[test]
+    fn logical_op_or() {
+        assert_eq!(Some(0), compile("", "(or #f #f)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(or #t #f)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(or #f #t)").min_opts().run_a0());
+        assert_eq!(Some(1), compile("", "(or #t #t)").min_opts().run_a0());
+    }
+
+    #[test]
     #[named]
     fn write_string() {
         let output = compile(function_name!(), r#"(write "Hello\n")"#).run_raw_output();
