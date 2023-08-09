@@ -33,7 +33,7 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                             };
                             insts.push(AnnotatedInstr::new(
                                 iresult.clone(),
-                                I::Cmp(SLT, right.clone(), left.clone()),
+                                I::Cmp(SLT, left.clone(), right.clone()),
                                 ty,
                             ));
                             insts.push(AnnotatedInstr::new(

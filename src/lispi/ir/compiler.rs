@@ -237,7 +237,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
             Ast::Symbol(fun_sym) => {
                 let name = fun_sym.as_str();
                 match name {
-                    "+" | "-" | "*" | "/" | "=" | "<=" | "<" | ">" | "or" | "and" | "<<" | ">>" => {
+                    "+" | "-" | "*" | "/" | "=" | ">=" | "<" | ">" | "or" | "and" | "<<" | ">>" => {
                         let left = args[0].result.clone();
                         let right = args[1].result.clone();
 
@@ -250,7 +250,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             "*" => I::Mul(left, right),
                             "/" => I::Div(left, right),
                             "=" => I::Cmp(CmpOperator::Eq, left, right),
-                            "<=" => I::Cmp(CmpOperator::SGE, left, right),
+                            ">=" => I::Cmp(CmpOperator::SGE, left, right),
                             ">" => I::Cmp(CmpOperator::SGT, left, right),
                             "<" => I::Cmp(CmpOperator::SLT, left, right),
                             "and" => I::And(left, right),
