@@ -32,11 +32,14 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                             let iresult = Variable {
                                 name: format!("{}-ct", result.name),
                             };
-                            insts.push(AnnotatedInstr::new(
-                                iresult.clone(),
-                                I::Cmp(SLT, left.clone(), right.clone()),
-                                ty,
-                            ));
+                            insts.push(
+                                AnnotatedInstr::new(
+                                    iresult.clone(),
+                                    I::Cmp(SLT, left.clone(), right.clone()),
+                                    ty,
+                                )
+                                .with_tags(tags),
+                            );
                             insts.push(AnnotatedInstr::new(
                                 result,
                                 I::Not(iresult.into()),
@@ -48,18 +51,31 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                             let iresult = Variable {
                                 name: format!("{}-ct", result.name),
                             };
-                            insts.push(AnnotatedInstr::new(
-                                iresult.clone(),
-                                I::Cmp(SLT, right.clone(), left.clone()),
-                                ty,
-                            ));
+                            insts.push(
+                                AnnotatedInstr::new(
+                                    iresult.clone(),
+                                    I::Cmp(SLT, right.clone(), left.clone()),
+                                    ty,
+                                )
+                                .with_tags(tags),
+                            );
                             insts.push(AnnotatedInstr::new(
                                 result,
                                 I::Not(iresult.into()),
                                 Type::Boolean,
                             ));
                         }
-                        SGT => todo!(),
+                        // left > right <=> right < left
+                        SGT => {
+                            insts.push(
+                                AnnotatedInstr::new(
+                                    result,
+                                    I::Cmp(SLT, right.clone(), left.clone()),
+                                    ty,
+                                )
+                                .with_tags(tags),
+                            );
+                        }
                         SLT => insts.push(AnnotatedInstr {
                             result,
                             inst,
