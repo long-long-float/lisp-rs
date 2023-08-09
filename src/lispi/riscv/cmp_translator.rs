@@ -27,6 +27,7 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
 
                     match op {
                         Eq => todo!(),
+                        // left >= right <=> !(left < right)
                         SGE => {
                             let iresult = Variable {
                                 name: format!("{}-ct", result.name),
@@ -42,7 +43,22 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                                 Type::Boolean,
                             ));
                         }
-                        SLE => todo!(),
+                        // left <= right <=> !(right < left)
+                        SLE => {
+                            let iresult = Variable {
+                                name: format!("{}-ct", result.name),
+                            };
+                            insts.push(AnnotatedInstr::new(
+                                iresult.clone(),
+                                I::Cmp(SLT, right.clone(), left.clone()),
+                                ty,
+                            ));
+                            insts.push(AnnotatedInstr::new(
+                                result,
+                                I::Not(iresult.into()),
+                                Type::Boolean,
+                            ));
+                        }
                         SGT => todo!(),
                         SLT => insts.push(AnnotatedInstr {
                             result,
