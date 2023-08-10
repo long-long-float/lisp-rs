@@ -272,20 +272,15 @@ mod compiler_test {
 
     #[test]
     #[named]
-    fn write_string() {
-        let output = compile(function_name!(), r#"(write "Hello\n")"#).run_raw_output();
-        assert_eq!("Hello\n", output);
-    }
-
-    #[test]
-    #[named]
     fn write_string_3times() {
         let output = compile(
             function_name!(),
             r#"
-(write "Hello\n")
-(write "Hello\n")
-(write "Hello\n")
+(include "library/prelude.scm")
+
+(println "Hello")
+(println "Hello")
+(println "Hello")
 "#,
         )
         .run_raw_output();
@@ -763,7 +758,7 @@ sum
 (include "library/prelude.scm")
 
 (for (i 0) (< i 3) (+ i 1) (begin
-    (write "Hello\n")))
+    (println "Hello")))
 "#,
         )
         .run_raw_output();
