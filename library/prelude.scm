@@ -1,3 +1,5 @@
+; Macros
+
 (define-macro fn (name args body)
   (list 'define
         name 
@@ -8,3 +10,12 @@
     (list 'if condn (list 'begin
       body
       (list 'loop update)))))
+
+; Functions
+
+(fn print (str) (begin
+  (syscall3 64 1 (array->data str) (array->len str))))
+
+(fn println (str) (begin
+  (print str)
+  (print "\n")))

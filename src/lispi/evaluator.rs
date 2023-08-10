@@ -1021,6 +1021,16 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
     insert_function(
         env,
         ty_env,
+        s("array->data"),
+        Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv))], Type::Int)),
+        |_| {
+            printlnuw("Cannot call array->len in interpreter mode.");
+            Ok(Value::Integer(0))
+        },
+    );
+    insert_function(
+        env,
+        ty_env,
         s("array->get"),
         Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv.clone())), Type::Int], tv)),
         |args| {
@@ -1077,18 +1087,6 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
     insert_function(
         env,
         ty_env,
-        s("write"),
-        Type::function(vec![Type::string()], Type::Nil),
-        |args| {
-            match_call_args!(args, Value::String(str), {
-                printuw(str);
-                Ok(Value::nil())
-            })
-        },
-    );
-    insert_function(
-        env,
-        ty_env,
         s("io-write"),
         Type::function(vec![Type::Int, Type::Int], Type::Nil),
         |_| {
@@ -1116,6 +1114,12 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         ty_env,
         s("syscall0"),
         Type::function(vec![Type::Int], Type::Nil),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("syscall3"),
+        Type::function(vec![Type::Int, Type::Int, Type::Int, Type::Int], Type::Nil),
     );
     insert_variable_as_symbol_and_type(
         env,

@@ -1,3 +1,4 @@
+use core::panic;
 use std::vec;
 
 use anyhow::Result;
@@ -352,6 +353,24 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             },
                             ast_ty,
                         );
+                    }
+                    "syscall3" => {
+                        if let Some((value, args)) = args.split_first() {
+                            let args = args
+                                .iter()
+                                .map(|arg| Operand::from(arg.result.clone()))
+                                .collect_vec();
+                            add_instr(
+                                ctx,
+                                I::SysCall {
+                                    number: value.result.clone().into(),
+                                    args,
+                                },
+                                ast_ty,
+                            );
+                        } else {
+                            panic!()
+                        }
                     }
                     _ => compile_apply_lambda(fun_ast.clone(), args, ast_ty, ctx)?,
                 }
@@ -1053,96 +1072,6 @@ pub fn compile(
     let mut ctx = Context::new(&mut ir_ctx.bb_arena, t::StructDefinitions::default());
 
     let mut predefined_funcs = Vec::new();
-
-    {
-        let name = "write";
-        let bb = ctx.new_bb(name.to_owned());
-        ctx.add_bb(bb);
-
-        let arg0_name = "str".to_string();
-        let arg0 = Operand::Variable(Variable {
-            name: arg0_name.clone(),
-        });
-
-        // TODO: Call these function
-        // let data = Operand::Variable(
-        //     add_instr(
-        //         &mut ctx,
-        //         Instruction::Call {
-        //             fun: Operand::Immediate(Immediate::Label(Label {
-        //                 name: "array->data".to_string(),
-        //             })),
-        //             args: vec![arg0.clone()],
-        //         },
-        //         t::Type::Nil,
-        //     )
-        //     .result,
-        // );
-        //
-        // let len = Operand::Variable(
-        //     add_instr(
-        //         &mut ctx,
-        //         Instruction::Call {
-        //             fun: Operand::Immediate(Immediate::Label(Label {
-        //                 name: "array->len".to_string(),
-        //             })),
-        //             args: vec![arg0],
-        //         },
-        //         t::Type::Nil,
-        //     )
-        //     .result,
-        // );
-
-        let data = Operand::Variable(
-            add_instr(
-                &mut ctx,
-                Instruction::Add(arg0.clone(), Type::I32.size().into()),
-                t::Type::None,
-            )
-            .result,
-        );
-
-        let len = Operand::Variable(
-            add_instr(
-                &mut ctx,
-                Instruction::LoadElement {
-                    addr: arg0,
-                    ty: Type::I32,
-                    index: 0.into(),
-                },
-                t::Type::Int,
-            )
-            .result,
-        );
-
-        let ret = Operand::Variable(
-            add_instr(
-                &mut ctx,
-                Instruction::SysCall {
-                    number: 64.into(),
-                    args: vec![1.into(), data, len],
-                },
-                t::Type::Nil,
-            )
-            .result,
-        );
-
-        add_instr(&mut ctx, Instruction::Ret(ret), t::Type::None);
-
-        let args = vec![(arg0_name, t::Type::String)];
-        let write = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
-
-        ctx.basic_blocks.clear();
-
-        predefined_funcs.push(write);
-
-        ctx.func_labels.insert_var(
-            name.to_owned(),
-            Label {
-                name: name.to_owned(),
-            },
-        );
-    }
 
     for (name, def) in &struct_defs {
         {
