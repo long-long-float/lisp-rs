@@ -1073,6 +1073,53 @@ pub fn compile(
 
     let mut predefined_funcs = Vec::new();
 
+    // If the following block is removed, some test cases are failed.
+    // TODO: Remove the block
+    {
+        // They may be minimum code to reproduce the problem.
+
+        let name = "__dummy";
+        let bb = ctx.new_bb(name.to_owned());
+        ctx.add_bb(bb);
+
+        add_instr(
+            &mut ctx,
+            Instruction::Add(0.into(), Type::I32.size().into()),
+            t::Type::None,
+        );
+
+        add_instr(
+            &mut ctx,
+            Instruction::LoadElement {
+                addr: 0.into(),
+                ty: Type::I32,
+                index: 0.into(),
+            },
+            t::Type::Int,
+        );
+
+        add_instr(
+            &mut ctx,
+            Instruction::SysCall {
+                number: 64.into(),
+                args: vec![1.into()],
+            },
+            t::Type::Nil,
+        );
+
+        add_instr(&mut ctx, Instruction::Ret(0.into()), t::Type::None);
+
+        //ctx.basic_blocks.clear();
+
+        //predefined_funcs.push(write);
+        // ctx.func_labels.insert_var(
+        //     name.to_owned(),
+        //     Label {
+        //         name: name.to_owned(),
+        //     },
+        // );
+    }
+
     for (name, def) in &struct_defs {
         {
             let bb = ctx.new_bb(name.to_owned());
