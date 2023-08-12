@@ -543,7 +543,6 @@ pub fn create_interference_graph(
                     for sv in spill_list {
                         spill_variable(sv, &func, ir_ctx);
                     }
-                    func.dump(&ir_ctx.bb_arena);
                 }
             }
 

@@ -256,6 +256,14 @@ pub fn compile(
         }
     }
 
+    let funcs = opt::removing_uncalled_functions::optimize(funcs, &mut ir_ctx);
+    if opt.dump {
+        printlnuw(&"Remove uncalled functions:".red());
+        for fun in &funcs {
+            fun.dump(&ir_ctx.bb_arena);
+        }
+    }
+
     ir::removing_phi_instructions::remove_phi_instructions(&funcs, &mut ir_ctx);
 
     if opt.dump {
