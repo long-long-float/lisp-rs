@@ -1,4 +1,4 @@
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 
 use crate::lispi::ir::{
     basic_block::Functions,
@@ -6,9 +6,32 @@ use crate::lispi::ir::{
     IrContext,
 };
 
+fn is_called_from_main(
+    calling_relations: &FxHashMap<String, Vec<String>>,
+    func_name: &String,
+) -> bool {
+    fn is_called_internal(
+        calling_relations: &FxHashMap<String, Vec<String>>,
+        func_name: &String,
+        current: &String,
+    ) -> bool {
+        if current == func_name {
+            true
+        } else if let Some(funcs) = calling_relations.get(current) {
+            funcs
+                .iter()
+                .any(|f| is_called_internal(calling_relations, func_name, f))
+        } else {
+            false
+        }
+    }
+
+    is_called_internal(calling_relations, func_name, &"main".to_string())
+}
+
 pub fn optimize(funcs: Functions, ctx: &mut IrContext) -> Functions {
-    let mut called_funcs = FxHashSet::default();
-    called_funcs.insert("main".to_string());
+    // Map caller functon to called functions
+    let mut calling_relations: FxHashMap<String, Vec<String>> = FxHashMap::default();
 
     for func in &funcs {
         for inst in func.walk_instructions(&ctx.bb_arena) {
@@ -17,13 +40,20 @@ pub fn optimize(funcs: Functions, ctx: &mut IrContext) -> Functions {
                 ..
             } = &inst.inst
             {
-                called_funcs.insert(name.name.clone());
+                let name = name.name.clone();
+                if let Some(called_funcs) = calling_relations.get_mut(&func.name) {
+                    called_funcs.push(name);
+                } else {
+                    calling_relations.insert(func.name.clone(), vec![name]);
+                }
             }
         }
     }
 
+    // println!("{:#?}", calling_relations);
+
     funcs
         .into_iter()
-        .filter(|func| called_funcs.contains(&func.name))
+        .filter(|func| is_called_from_main(&calling_relations, &func.name))
         .collect()
 }
