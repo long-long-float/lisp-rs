@@ -18,4 +18,8 @@
 
 (fn println (str) (begin
   (print str)
-  (print "\n")))
+  (print "\n")
+  0))
+
+(fn println-bool (val) (begin
+  (println (if val "true" "false"))))

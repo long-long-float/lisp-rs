@@ -4,13 +4,7 @@ use super::super::ir::{basic_block as bb, instruction as i, IrContext};
 
 pub fn remove_phi_instructions(funcs: &bb::Functions, ir_ctx: &mut IrContext) {
     for fun in funcs {
-        let bb::Function {
-            name: _,
-            args: _,
-            free_vars: _,
-            ty: _,
-            basic_blocks,
-        } = fun;
+        let bb::Function { basic_blocks, .. } = fun;
 
         let mut assign_map = FxHashMap::default();
 

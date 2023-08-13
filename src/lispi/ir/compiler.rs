@@ -481,6 +481,7 @@ fn compile_lambda(
         args,
         free_vars,
         ast_ty,
+        true,
         ctx.basic_blocks.drain(0..).collect(),
     );
 
@@ -926,6 +927,7 @@ fn compile_main_function(
         Vec::new(),
         Vec::new(),
         t::Type::None,
+        false,
         ctx.basic_blocks.drain(0..).collect(),
     ));
 
@@ -946,6 +948,7 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                  args,
                  free_vars,
                  ty,
+                 is_lambda,
                  basic_blocks,
              }| {
                 for bb_id in &basic_blocks {
@@ -1050,6 +1053,7 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                     args,
                     free_vars,
                     ty,
+                    is_lambda,
                     basic_blocks,
                 }
             },
@@ -1161,7 +1165,14 @@ pub fn compile(
                 .iter()
                 .map(|field| (field.name.clone(), *field.ty.clone()))
                 .collect_vec();
-            let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
+            let ctor = Function::new(
+                name.to_owned(),
+                args,
+                Vec::new(),
+                t::Type::None,
+                false,
+                vec![bb],
+            );
 
             ctx.basic_blocks.clear();
 
@@ -1203,7 +1214,14 @@ pub fn compile(
             );
 
             let args = vec![(arg0_name, t::Type::None)];
-            let ctor = Function::new(name.to_owned(), args, Vec::new(), t::Type::None, vec![bb]);
+            let ctor = Function::new(
+                name.to_owned(),
+                args,
+                Vec::new(),
+                t::Type::None,
+                false,
+                vec![bb],
+            );
 
             ctx.basic_blocks.clear();
 

@@ -54,6 +54,8 @@ pub fn optimize(funcs: Functions, ctx: &mut IrContext) -> Functions {
 
     funcs
         .into_iter()
-        .filter(|func| is_called_from_main(&calling_relations, &func.name))
+        .filter(|func| 
+            // Don't remove lambdas conservatively
+            func.is_lambda || is_called_from_main(&calling_relations, &func.name))
         .collect()
 }

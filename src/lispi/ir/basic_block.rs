@@ -89,6 +89,7 @@ pub struct Function {
     pub args: Vec<(String, Type)>,
     pub free_vars: Vec<SymbolValue>,
     pub ty: Type,
+    pub is_lambda: bool,
 
     pub basic_blocks: BasicBlocks,
 }
@@ -99,6 +100,7 @@ impl Function {
         args: Vec<(String, Type)>,
         free_vars: Vec<SymbolValue>,
         ty: Type,
+        is_lambda: bool,
         basic_blocks: BasicBlocks,
     ) -> Self {
         Self {
@@ -106,6 +108,7 @@ impl Function {
             args,
             free_vars,
             ty,
+            is_lambda,
             basic_blocks,
         }
     }
@@ -207,7 +210,12 @@ impl Display for FunctionDisplay<'_> {
         for id in &self.func.free_vars {
             write!(f, "%{}, ", id)?;
         }
-        writeln!(f, "): {} {{", self.func.ty)?;
+        writeln!(
+            f,
+            "): {} {{ // {}",
+            self.func.ty,
+            if self.func.is_lambda { "lambda" } else { "" }
+        )?;
 
         for bb in &self.func.basic_blocks {
             let bb = self.arena.get(*bb).unwrap();
