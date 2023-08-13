@@ -703,14 +703,14 @@ sum
             r#"
 (include "library/prelude.scm")
 
-(fn array->sum (ary) (begin
+(fn array->sum (ary)
     (define sum 0)
     (define len (- (array->len ary) 1))
     (let loop ([i 0]) 
         (set! sum (+ sum (array->get ary i)))
         (if (< i len)
             (loop (+ i 1))))
-    sum))
+    sum)
 
 (define ary (array 1 2 3))
 (array->sum ary)
@@ -728,10 +728,10 @@ sum
             r#"
 (include "library/prelude.scm")
 
-(fn char->int (ch) (begin
-    (- (as ch int) (as #\0 int))))
+(fn char->int (ch) 
+    (- (as ch int) (as #\0 int)))
 
-(fn string->int (str) (begin
+(fn string->int (str)
     (define sum 0)
     (define len (- (array->len str) 1))
     (define digit 1)
@@ -741,7 +741,7 @@ sum
         (set! digit (* digit 10))
         (if (< 0 i)
             (loop (- i 1))))
-    sum))
+    sum)
 (string->int "123")
 "#,
         )

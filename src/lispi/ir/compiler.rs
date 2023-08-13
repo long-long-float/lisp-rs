@@ -578,6 +578,30 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
 
             ctx.env.insert_var(id, inst.result);
         }
+        Ast::DefineFunction(DefineFunction { id, lambda }) => {
+            let Lambda {
+                args,
+                arg_types,
+                body,
+            } = lambda;
+            compile_lambda(id.clone(), args, body, ast_ty.clone(), ctx)?;
+
+            let inst = add_instr(
+                ctx,
+                I::Operand(Operand::Immediate(Immediate::Label(Label {
+                    name: id.clone(),
+                }))),
+                ast_ty,
+            );
+            ctx.env.insert_var(id.clone(), inst.result);
+
+            // If inst was a Function here, register the id and FV as a pair to fun_fvs.
+            // Get the required FV from fun_fvs at Call time and pass the FV in addition to the argument
+            let fun = ctx.funcs.find_var(&id);
+            if let Some(fun) = fun {
+                ctx.func_fvs.insert_var(id, fun.free_vars);
+            }
+        }
         Ast::Assign(Assign {
             var,
             var_loc: _,

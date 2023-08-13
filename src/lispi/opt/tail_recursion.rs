@@ -211,6 +211,7 @@ fn optimize_tail_recursion(
             | Ast::DefineMacro(_)
             | Ast::DefineStruct(_)
             | Ast::Define(_)
+            | Ast::DefineFunction(_)
             | Ast::Lambda(_)
             | Ast::Continue(_) => Some(ast.clone()),
         }
@@ -260,6 +261,7 @@ fn optimize_tail_recursion(
             | Ast::DefineMacro(_)
             | Ast::DefineStruct(_)
             | Ast::Define(_)
+            | Ast::DefineFunction(_)
             | Ast::Lambda(_)
             | Ast::Continue(_) => false,
         }

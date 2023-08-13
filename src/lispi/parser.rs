@@ -137,6 +137,35 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
                     }))
                 })
             }
+            "fn" => {
+                match_special_args_with_rest!(
+                    args,
+                    body,
+                    ast_pat!(Ast::Symbol(id), _loc),
+                    ast_pat!(Ast::List(args), _loc),
+                    {
+                        let args = args
+                            .iter()
+                            .map(|arg| match arg.ast.clone() {
+                                Ast::SymbolWithType(id, ty) => Ok((id, Some(ty))),
+                                Ast::Symbol(id) => Ok((id, None)),
+                                _ => Err(Error::Eval(format!("{:?} is not an symbol", arg.ast))
+                                    .with_location(arg.location)
+                                    .into()),
+                            })
+                            .collect::<Result<Vec<_>>>()?;
+                        let (args, arg_types) = args.into_iter().unzip();
+                        Ok(Ast::DefineFunction(DefineFunction {
+                            id: id.clone(),
+                            lambda: Lambda {
+                                args,
+                                arg_types,
+                                body: body.to_vec(),
+                            },
+                        }))
+                    }
+                )
+            }
             "lambda" => {
                 match_special_args_with_rest!(args, body, ast_pat!(Ast::List(args), _loc), {
                     let args = args

@@ -26,6 +26,28 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
             def.init = Box::new(expand_macros_ast(*def.init, menv)?);
             Ast::Define(def)
         }
+        Ast::DefineFunction(DefineFunction {
+            id,
+            lambda:
+                Lambda {
+                    args,
+                    arg_types,
+                    body,
+                },
+        }) => {
+            let body = body
+                .into_iter()
+                .map(|ast| expand_macros_ast(ast, menv))
+                .collect::<Result<Vec<_>>>()?;
+            Ast::DefineFunction(DefineFunction {
+                id,
+                lambda: Lambda {
+                    args,
+                    arg_types,
+                    body,
+                },
+            })
+        }
         Ast::Assign(mut assign) => {
             assign.value = Box::new(expand_macros_ast(*assign.value, menv)?);
             Ast::Assign(assign)

@@ -468,6 +468,56 @@ fn collect_constraints_from_ast(
         Ok((new_inits, ict))
     }
 
+    fn collect_constraints_from_lambda(
+        lambda: Lambda,
+        ctx: &mut Context,
+    ) -> Result<(Lambda, Type, Constraints)> {
+        let Lambda {
+            args,
+            arg_types: orig_arg_types,
+            body,
+        } = lambda;
+
+        let arg_types = orig_arg_types
+            .iter()
+            .map(|ty| {
+                if let Some(ty) = ty {
+                    ctx.find_type(ty).map(Box::new)
+                } else {
+                    Ok(Box::new(ctx.gen_tv()))
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        ctx.env.push_local();
+
+        for (arg, ty) in args.iter().zip(arg_types.clone()) {
+            ctx.env.insert_var(arg.clone(), *ty);
+        }
+
+        let (body, cbt) = collect_constraints_from_asts(body.clone(), ctx)?;
+
+        ctx.env.pop_local();
+
+        let result_type = if let Some(last) = body.last() {
+            last.ty.clone()
+        } else {
+            Type::Nil
+        };
+
+        let fun = Lambda {
+            args: args.to_vec(),
+            arg_types: orig_arg_types.clone(),
+            body,
+        };
+        let fun_ty = Type::Function {
+            args: arg_types,
+            result: Box::new(result_type),
+        };
+
+        Ok((fun, fun_ty, cbt))
+    }
+
     match &ast.ast {
         Ast::List(vs) => {
             if let Some((fun, args)) = vs.split_first() {
@@ -551,6 +601,16 @@ fn collect_constraints_from_ast(
             let def = Ast::Define(Define {
                 id: id.clone(),
                 init: Box::new(init),
+            });
+            Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
+        }
+        Ast::DefineFunction(DefineFunction { id, lambda }) => {
+            let (lambda, lambda_type, c) = collect_constraints_from_lambda(lambda.clone(), ctx)?;
+            ctx.env.insert_var(id.clone(), lambda_type.clone());
+
+            let def = Ast::DefineFunction(DefineFunction {
+                id: id.clone(),
+                lambda,
             });
             Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
         }
@@ -1034,6 +1094,16 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
         Ast::Define(def) => ast.with_new_ast_and_type(
             Ast::Define(Define {
                 init: Box::new(replace_ast(*def.init, assign)),
+                ..def
+            }),
+            new_ty,
+        ),
+        Ast::DefineFunction(def) => ast.with_new_ast_and_type(
+            Ast::DefineFunction(DefineFunction {
+                lambda: Lambda {
+                    body: replace_asts(def.lambda.body, assign),
+                    ..def.lambda
+                },
                 ..def
             }),
             new_ty,

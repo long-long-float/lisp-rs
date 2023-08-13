@@ -25,6 +25,7 @@ pub enum Ast {
     Include(String),
     DefineMacro(DefineMacro),
     Define(Define),
+    DefineFunction(DefineFunction),
     Lambda(Lambda),
     Assign(Assign),
     IfExpr(IfExpr),
@@ -132,13 +133,17 @@ pub struct Define {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct DefineFunction {
+    pub id: SymbolValue,
+    pub lambda: Lambda,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct Lambda {
     pub args: Vec<SymbolValue>,
     pub arg_types: Vec<Option<SymbolValue>>,
     pub body: Vec<AnnotatedAst>,
 }
-
-impl Lambda {}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Assign {
@@ -244,6 +249,38 @@ impl AnnotatedAst {
     where
         F: Fn(Self, &mut A) -> Result<Self>,
     {
+        fn traverse_asts<F, A>(
+            asts: Vec<AnnotatedAst>,
+            ctx: &mut A,
+            func: F,
+        ) -> Result<Vec<AnnotatedAst>>
+        where
+            F: Fn(AnnotatedAst, &mut A) -> Result<AnnotatedAst>,
+        {
+            asts.iter()
+                .map(|v| func(v.clone(), ctx))
+                .collect::<Result<Vec<_>>>()
+        }
+
+        fn traverse_lambda<F, A>(lambda: Lambda, ctx: &mut A, func: F) -> Result<Lambda>
+        where
+            F: Fn(AnnotatedAst, &mut A) -> Result<AnnotatedAst>,
+        {
+            let Lambda {
+                args,
+                arg_types,
+                body,
+            } = lambda;
+
+            let body = traverse_asts(body, ctx, func)?;
+
+            Ok(Lambda {
+                args,
+                arg_types,
+                body,
+            })
+        }
+
         let AnnotatedAst { ast, location, ty } = self;
         let ast = match ast {
             Ast::Integer(_)
@@ -257,39 +294,25 @@ impl AnnotatedAst {
             | Ast::Include(_)
             | Ast::DefineStruct(_) => ast,
             Ast::List(vs) => {
-                let vs = vs
-                    .iter()
-                    .map(|v| func(v.clone(), ctx))
-                    .collect::<Result<Vec<_>>>()?;
+                let vs = traverse_asts(vs, ctx, func)?;
                 Ast::List(vs)
             }
             Ast::Quoted(v) => Ast::Quoted(Box::new(func(*v, ctx)?)),
             Ast::DefineMacro(DefineMacro { id, args, body }) => {
-                let body = body
-                    .into_iter()
-                    .map(|v| func(v, ctx))
-                    .collect::<Result<Vec<_>>>()?;
+                let body = traverse_asts(body, ctx, func)?;
                 Ast::DefineMacro(DefineMacro { id, args, body })
             }
             Ast::Define(Define { id, init }) => {
                 let init = Box::new(func(*init, ctx)?);
                 Ast::Define(Define { id, init })
             }
-            Ast::Lambda(Lambda {
-                args,
-                arg_types,
-                body,
-            }) => {
-                let body = body
-                    .into_iter()
-                    .map(|v| func(v, ctx))
-                    .collect::<Result<Vec<_>>>()?;
-                Ast::Lambda(Lambda {
-                    args,
-                    arg_types,
-                    body,
+            Ast::DefineFunction(DefineFunction { id, lambda }) => {
+                Ast::DefineFunction(DefineFunction {
+                    id,
+                    lambda: traverse_lambda(lambda, ctx, func)?,
                 })
             }
+            Ast::Lambda(lambda) => Ast::Lambda(traverse_lambda(lambda, ctx, func)?),
             Ast::Assign(Assign {
                 var,
                 var_loc,
@@ -348,10 +371,7 @@ impl AnnotatedAst {
                     .into_iter()
                     .map(|(var, val)| Ok((var, func(val, ctx)?)))
                     .collect::<Result<Vec<_>>>()?;
-                let body = body
-                    .into_iter()
-                    .map(|v| func(v, ctx))
-                    .collect::<Result<Vec<_>>>()?;
+                let body = traverse_asts(body, ctx, func)?;
                 Ast::Let(Let {
                     sequential,
                     proc_id,
@@ -360,10 +380,7 @@ impl AnnotatedAst {
                 })
             }
             Ast::Begin(Begin { body }) => {
-                let body = body
-                    .into_iter()
-                    .map(|v| func(v, ctx))
-                    .collect::<Result<Vec<_>>>()?;
+                let body = traverse_asts(body, ctx, func)?;
                 Ast::Begin(Begin { body })
             }
             Ast::Loop(Loop { inits, label, body }) => {
@@ -371,31 +388,19 @@ impl AnnotatedAst {
                     .into_iter()
                     .map(|(var, val)| Ok((var, func(val, ctx)?)))
                     .collect::<Result<Vec<_>>>()?;
-                let body = body
-                    .into_iter()
-                    .map(|v| func(v, ctx))
-                    .collect::<Result<Vec<_>>>()?;
+                let body = traverse_asts(body, ctx, func)?;
                 Ast::Loop(Loop { inits, label, body })
             }
             Ast::Continue(Continue { label, updates, .. }) => {
-                let updates = updates
-                    .into_iter()
-                    .map(|up| func(up, ctx))
-                    .collect::<Result<Vec<_>>>()?;
+                let updates = traverse_asts(updates, ctx, func)?;
                 Ast::Continue(Continue { label, updates })
             }
             Ast::ListLiteral(vs) => {
-                let vs = vs
-                    .into_iter()
-                    .map(|v| func(v, ctx))
-                    .collect::<Result<Vec<_>>>()?;
+                let vs = traverse_asts(vs, ctx, func)?;
                 Ast::ListLiteral(vs)
             }
             Ast::ArrayLiteral(vs) => {
-                let vs = vs
-                    .into_iter()
-                    .map(|v| func(v, ctx))
-                    .collect::<Result<Vec<_>>>()?;
+                let vs = traverse_asts(vs, ctx, func)?;
                 Ast::ArrayLiteral(vs)
             }
             Ast::As(v, ty) => Ast::As(Box::new(func(*v, ctx)?), ty),
@@ -408,6 +413,16 @@ impl AnnotatedAst {
     where
         F: Fn(&Self, &mut A) -> Result<()>,
     {
+        fn traverse_asts<F, A>(asts: &Vec<AnnotatedAst>, ctx: &mut A, func: F) -> Result<()>
+        where
+            F: Fn(&AnnotatedAst, &mut A) -> Result<()>,
+        {
+            for v in asts {
+                func(v, ctx)?;
+            }
+            Ok(())
+        }
+
         let AnnotatedAst { ast, .. } = self;
         match ast {
             Ast::Integer(_)
@@ -420,30 +435,15 @@ impl AnnotatedAst {
             | Ast::Nil
             | Ast::Include(_)
             | Ast::DefineStruct(_) => {}
-            Ast::List(vs) => {
-                for v in vs {
-                    func(v, ctx)?;
-                }
+            Ast::List(vs) => traverse_asts(vs, ctx, func)?,
+            Ast::Quoted(v) => func(v, ctx)?,
+            Ast::DefineMacro(DefineMacro { body, .. }) => traverse_asts(body, ctx, func)?,
+            Ast::Define(Define { init, .. }) => func(init, ctx)?,
+            Ast::DefineFunction(DefineFunction { lambda, .. }) => {
+                traverse_asts(&lambda.body, ctx, func)?
             }
-            Ast::Quoted(v) => {
-                func(v, ctx)?;
-            }
-            Ast::DefineMacro(DefineMacro { body, .. }) => {
-                for v in body {
-                    func(v, ctx)?;
-                }
-            }
-            Ast::Define(Define { init, .. }) => {
-                func(init, ctx)?;
-            }
-            Ast::Lambda(Lambda { body, .. }) => {
-                for v in body {
-                    func(v, ctx)?;
-                }
-            }
-            Ast::Assign(Assign { value, .. }) => {
-                func(value, ctx)?;
-            }
+            Ast::Lambda(Lambda { body, .. }) => traverse_asts(body, ctx, func)?,
+            Ast::Assign(Assign { value, .. }) => func(value, ctx)?,
             Ast::IfExpr(IfExpr {
                 cond,
                 then_ast,
@@ -467,38 +467,18 @@ impl AnnotatedAst {
                 for (_, val) in inits {
                     func(val, ctx)?;
                 }
-                for v in body {
-                    func(v, ctx)?;
-                }
+                traverse_asts(body, ctx, func)?;
             }
-            Ast::Begin(Begin { body }) => {
-                for v in body {
-                    func(v, ctx)?;
-                }
-            }
+            Ast::Begin(Begin { body }) => traverse_asts(body, ctx, func)?,
             Ast::Loop(Loop { inits, body, .. }) => {
                 for (_, val) in inits {
                     func(val, ctx)?;
                 }
-                for v in body {
-                    func(v, ctx)?;
-                }
+                traverse_asts(body, ctx, func)?;
             }
-            Ast::Continue(Continue { updates, .. }) => {
-                for ast in updates {
-                    func(ast, ctx)?;
-                }
-            }
-            Ast::ListLiteral(vs) => {
-                for v in vs {
-                    func(v, ctx)?;
-                }
-            }
-            Ast::ArrayLiteral(vs) => {
-                for v in vs {
-                    func(v, ctx)?;
-                }
-            }
+            Ast::Continue(Continue { updates, .. }) => traverse_asts(updates, ctx, func)?,
+            Ast::ListLiteral(vs) => traverse_asts(vs, ctx, func)?,
+            Ast::ArrayLiteral(vs) => traverse_asts(vs, ctx, func)?,
             Ast::As(v, _ty) => func(v, ctx)?,
         }
 
@@ -519,6 +499,34 @@ fn write_values<T: Display>(f: &mut std::fmt::Formatter<'_>, vs: &[T]) -> std::f
 
 impl Display for AnnotatedAst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn write_lambda(f: &mut std::fmt::Formatter<'_>, lambda: &Lambda) -> std::fmt::Result {
+            let Lambda {
+                args,
+                arg_types,
+                body,
+            } = lambda;
+
+            write!(f, "(")?;
+            write_values(
+                f,
+                &args
+                    .iter()
+                    .zip(arg_types)
+                    .map(|(arg, ty)| {
+                        if let Some(ty) = ty {
+                            format!("{}: {}", arg, ty)
+                        } else {
+                            arg.to_owned()
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )?;
+            write!(f, ") ")?;
+            write_values(f, body)?;
+
+            Ok(())
+        }
+
         match &self.ast {
             Ast::List(vs) => {
                 write!(f, "(")?;
@@ -552,28 +560,14 @@ impl Display for AnnotatedAst {
             Ast::Define(Define { id, init }) => {
                 write!(f, "(define {} {})", id, *init)
             }
-            Ast::Lambda(Lambda {
-                args,
-                arg_types,
-                body,
-            }) => {
-                write!(f, "(lambda (")?;
-                write_values(
-                    f,
-                    &args
-                        .iter()
-                        .zip(arg_types)
-                        .map(|(arg, ty)| {
-                            if let Some(ty) = ty {
-                                format!("{}: {}", arg, ty)
-                            } else {
-                                arg.to_owned()
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                )?;
-                write!(f, ") ")?;
-                write_values(f, body)?;
+            Ast::DefineFunction(DefineFunction { id, lambda }) => {
+                write!(f, "(fn {} ", id)?;
+                write_lambda(f, lambda)?;
+                write!(f, ")")
+            }
+            Ast::Lambda(lambda) => {
+                write!(f, "(lambda ")?;
+                write_lambda(f, lambda)?;
                 write!(f, ")")
             }
             Ast::Assign(Assign {
