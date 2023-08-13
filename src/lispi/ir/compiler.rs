@@ -440,6 +440,7 @@ fn compile_lambda(
     name: String,
     args: Vec<String>,
     body: Vec<AnnotatedAst>,
+    is_lambda: bool,
     ast_ty: t::Type,
     ctx: &mut Context,
 ) -> Result<()> {
@@ -481,7 +482,7 @@ fn compile_lambda(
         args,
         free_vars,
         ast_ty,
-        true,
+        is_lambda,
         ctx.basic_blocks.drain(0..).collect(),
     );
 
@@ -584,7 +585,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 arg_types: _,
                 body,
             } = lambda;
-            compile_lambda(id.clone(), args, body, ast_ty.clone(), ctx)?;
+            compile_lambda(id.clone(), args, body, false, ast_ty.clone(), ctx)?;
 
             let inst = add_instr(
                 ctx,
@@ -687,7 +688,14 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 let (lambda_args, passed_args): (Vec<_>, Vec<_>) = inits.into_iter().unzip();
                 // TODO: Set the type
                 let lambda_ty = t::Type::None;
-                compile_lambda(proc_id.clone(), lambda_args, body, lambda_ty.clone(), ctx)?;
+                compile_lambda(
+                    proc_id.clone(),
+                    lambda_args,
+                    body,
+                    false,
+                    lambda_ty.clone(),
+                    ctx,
+                )?;
 
                 let lambda = ctx.funcs.find_var(&proc_id).unwrap();
                 let mut free_vars = lambda.free_vars;
@@ -830,7 +838,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             body,
         }) => {
             let name = format!("fun{}", ctx.var_gen.gen_string());
-            compile_lambda(name.clone(), args, body, ast_ty.clone(), ctx)?;
+            compile_lambda(name.clone(), args, body, true, ast_ty.clone(), ctx)?;
 
             add_instr(
                 ctx,
