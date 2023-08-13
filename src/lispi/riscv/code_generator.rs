@@ -109,7 +109,7 @@ fn load_operand_to(
     match op {
         i::Operand::Variable(_) => {
             let reg = get_register_from_operand(ctx, register_map, op).unwrap();
-            insts.push(InstrWithIr::from(Instruction::mv(rd, reg)).into());
+            insts.push(InstrWithIr::from(Instruction::mv(rd, reg)));
         }
         i::Operand::Immediate(imm) => {
             use i::Immediate::*;
@@ -121,7 +121,7 @@ fn load_operand_to(
                 Label(_) => {
                     // Replace this label to the real address.
                     // To load large addresses (larger than 12bits), we reserve for two instructions, lui and addi.
-                    insts.push(InstrWithIr::from(Instruction::nop()).into());
+                    insts.push(InstrWithIr::from(Instruction::nop()));
                     insts.push(Instruction::li(rd, imm.into()).into());
                 }
             }
@@ -146,19 +146,16 @@ fn load_immediate(insts: &mut Vec<InstrWithIr>, imm: Immediate, rd: Register) {
         } else {
             imm
         };
-        insts.push(
-            InstrWithIr::from(Instruction::U(UInstruction {
-                op: UInstructionOp::Lui,
-                imm: top,
-                rd,
-            }))
-            .into(),
-        );
+        insts.push(InstrWithIr::from(Instruction::U(UInstruction {
+            op: UInstructionOp::Lui,
+            imm: top,
+            rd,
+        })));
         if bot > 0 {
             insts.push(Instruction::addi(rd, rd, bot).into());
         }
     } else {
-        insts.push(InstrWithIr::from(Instruction::li(rd, imm)).into());
+        insts.push(InstrWithIr::from(Instruction::li(rd, imm)));
     }
 }
 
@@ -299,16 +296,18 @@ pub fn generate_code(
                 tags,
             } in bb.insts.clone()
             {
-                if let i::Instruction::Alloca { ty: _, count } = inst {
+                if let i::Instruction::Alloca {
+                    ty: _,
+                    count: i::Operand::Immediate(_),
+                } = inst
+                {
                     // TODO: Support count other than 4.
-                    if let i::Operand::Immediate(_count) = count {
-                        let has_dont_alloc_tag = tags
-                            .iter()
-                            .any(|t| t.is_match_with(&Tag::DontAllocateRegister));
+                    let has_dont_alloc_tag = tags
+                        .iter()
+                        .any(|t| t.is_match_with(&Tag::DontAllocateRegister));
 
-                        if has_dont_alloc_tag {
-                            frame.allocate_local_var(&result);
-                        }
+                    if has_dont_alloc_tag {
+                        frame.allocate_local_var(&result);
                     }
                 }
             }
@@ -354,15 +353,12 @@ pub fn generate_code(
                         else_bb: _,
                     } => {
                         let cond = get_register_from_operand(&mut ctx, &register_map, cond)?;
-                        insts.push(
-                            InstrWithIr::from(SB(SBInstruction {
-                                op: SBInstructionOp::Bne,
-                                imm: RelAddress::Label(then_label),
-                                rs1: cond,
-                                rs2: Register::zero(),
-                            }))
-                            .into(),
-                        );
+                        insts.push(InstrWithIr::from(SB(SBInstruction {
+                            op: SBInstructionOp::Bne,
+                            imm: RelAddress::Label(then_label),
+                            rs1: cond,
+                            rs2: Register::zero(),
+                        })));
                         insts.push(
                             J(JInstruction {
                                 op: JInstructionOp::Jal,
@@ -373,14 +369,11 @@ pub fn generate_code(
                         );
                     }
                     Jump(label, _) => {
-                        insts.push(
-                            InstrWithIr::from(J(JInstruction {
-                                op: JInstructionOp::Jal,
-                                imm: RelAddress::Label(label),
-                                rd: Register::zero(),
-                            }))
-                            .into(),
-                        );
+                        insts.push(InstrWithIr::from(J(JInstruction {
+                            op: JInstructionOp::Jal,
+                            imm: RelAddress::Label(label),
+                            rd: Register::zero(),
+                        })));
                     }
                     Ret(op) => {
                         load_operand_to(&mut ctx, &mut insts, &register_map, op, Register::a(0));

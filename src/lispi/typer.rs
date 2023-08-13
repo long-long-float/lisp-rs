@@ -495,7 +495,7 @@ fn collect_constraints_from_ast(
             ctx.env.insert_var(arg.clone(), *ty);
         }
 
-        let (body, cbt) = collect_constraints_from_asts(body.clone(), ctx)?;
+        let (body, cbt) = collect_constraints_from_asts(body, ctx)?;
 
         ctx.env.pop_local();
 
@@ -507,7 +507,7 @@ fn collect_constraints_from_ast(
 
         let fun = Lambda {
             args: args.to_vec(),
-            arg_types: orig_arg_types.clone(),
+            arg_types: orig_arg_types,
             body,
         };
         let fun_ty = Type::Function {
@@ -606,7 +606,7 @@ fn collect_constraints_from_ast(
         }
         Ast::DefineFunction(DefineFunction { id, lambda }) => {
             let (lambda, lambda_type, c) = collect_constraints_from_lambda(lambda.clone(), ctx)?;
-            ctx.env.insert_var(id.clone(), lambda_type.clone());
+            ctx.env.insert_var(id.clone(), lambda_type);
 
             let def = Ast::DefineFunction(DefineFunction {
                 id: id.clone(),

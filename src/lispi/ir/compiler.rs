@@ -581,7 +581,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         Ast::DefineFunction(DefineFunction { id, lambda }) => {
             let Lambda {
                 args,
-                arg_types,
+                arg_types: _,
                 body,
             } = lambda;
             compile_lambda(id.clone(), args, body, ast_ty.clone(), ctx)?;

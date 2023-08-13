@@ -3,7 +3,6 @@ use anyhow::Result;
 use crate::lispi::{
     ir::{basic_block::*, instruction::*, IrContext},
     ty::Type,
-    unique_generator::UniqueGenerator,
 };
 
 use Instruction as I;
