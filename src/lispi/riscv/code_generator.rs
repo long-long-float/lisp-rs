@@ -66,7 +66,7 @@ fn dump_instructions(ctx: &mut Context, insts: &[InstrWithIr]) {
             println!("{}: {}", label, addr.dimmed());
         }
         if let Some(ir) = ir {
-            let ir = format!("; {}", ir);
+            let ir = format!(";{}", ir);
             println!("  {}", ir.dimmed());
         }
         println!("  {}", inst);
@@ -322,13 +322,16 @@ pub fn generate_code(
                 insts.append(&mut frame.generate_fun_header());
             }
 
-            for i::AnnotatedInstr {
-                result,
-                inst,
-                ty: _,
-                tags,
-            } in bb.insts.clone()
-            {
+            for ainst in bb.insts.clone() {
+                let ir = Some(ainst.display(false).to_string());
+
+                let i::AnnotatedInstr {
+                    result,
+                    inst,
+                    ty: _,
+                    tags,
+                } = ainst;
+
                 use i::Instruction::*;
 
                 let result_reg = if !inst.is_terminal() {
@@ -341,7 +344,6 @@ pub fn generate_code(
                     Register::zero()
                 };
 
-                let ir = Some(inst.to_string());
                 let ir_insertion_idx = insts.len();
 
                 match inst {
