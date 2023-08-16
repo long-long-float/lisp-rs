@@ -697,6 +697,21 @@ sum
 
     #[test]
     #[named]
+    fn reference_ref() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define x 10)
+(ref x)
+"#,
+        )
+        .run_a0();
+        // Don't check the value due to random address.
+        assert!(a0.is_some());
+    }
+
+    #[test]
+    #[named]
     fn complex_program_array_sum() {
         let a0 = compile(
             function_name!(),

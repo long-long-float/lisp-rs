@@ -37,6 +37,8 @@ pub enum Ast {
     As(Box<AnnotatedAst>, SymbolValue),
     DefineStruct(DefineStruct),
 
+    Ref(Box<AnnotatedAst>),
+
     /// For optimizing tail recursion
     Loop(Loop),
     Continue(Continue),
@@ -404,6 +406,7 @@ impl AnnotatedAst {
                 Ast::ArrayLiteral(vs)
             }
             Ast::As(v, ty) => Ast::As(Box::new(func(*v, ctx)?), ty),
+            Ast::Ref(v) => Ast::Ref(Box::new(func(*v, ctx)?)),
         };
 
         Ok(AnnotatedAst { ast, location, ty })
@@ -480,6 +483,7 @@ impl AnnotatedAst {
             Ast::ListLiteral(vs) => traverse_asts(vs, ctx, func)?,
             Ast::ArrayLiteral(vs) => traverse_asts(vs, ctx, func)?,
             Ast::As(v, _ty) => func(v, ctx)?,
+            Ast::Ref(v) => func(v, ctx)?,
         }
 
         Ok(())
@@ -658,6 +662,9 @@ impl Display for AnnotatedAst {
                     write!(f, "  [{} {}]", field.name, field.ty)?;
                 }
                 write!(f, ")")
+            }
+            Ast::Ref(value) => {
+                write!(f, "(ref {})", value,)
             }
         }?;
 

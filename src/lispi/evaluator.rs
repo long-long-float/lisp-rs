@@ -266,6 +266,8 @@ impl From<&Ast> for Value {
             | Ast::As(_, _)
             | Ast::Cond(_) => Value::nil(),
 
+            Ast::Ref(_) => todo!(),
+
             Ast::Continue(v) => Value::Continue(v.clone()),
         }
     }

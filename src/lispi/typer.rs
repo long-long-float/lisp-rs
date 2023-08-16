@@ -40,6 +40,8 @@ pub enum Type {
     },
     Any,
 
+    Reference(Box<Type>),
+
     Variable(TypeVariable),
 }
 
@@ -118,6 +120,7 @@ impl Type {
             }
             Type::Variable(ttv) => ttv == tv,
             Type::ForAll { tv: ttv, ty } => tv != ttv && ty.has_free_var(tv),
+            Type::Reference(t) => t.has_free_var(tv),
         }
     }
 
@@ -171,6 +174,7 @@ impl Type {
                     self
                 }
             }
+            Type::Reference(t) => Type::Reference(Box::new(t.replace(assign))),
         }
     }
 
@@ -231,6 +235,8 @@ impl std::fmt::Display for Type {
             Type::Any => write!(f, "any"),
             Type::Variable(v) => write!(f, "{}", v.name),
             Type::ForAll { tv, ty } => write!(f, "∀{}. {}", tv.name, ty),
+
+            Type::Reference(t) => write!(f, "&{}", t),
 
             Type::None => write!(f, "(none)"),
         }
@@ -934,6 +940,17 @@ fn collect_constraints_from_ast(
                 ctx,
             )
         }
+        Ast::Ref(v) => {
+            let (v, ct) = collect_constraints_from_ast(*v.clone(), ctx)?;
+            let inner_type = v.ty.clone();
+            Ok((
+                ast.with_new_ast_and_type(
+                    Ast::Ref(Box::new(v)),
+                    Type::Reference(Box::new(inner_type)),
+                ),
+                ct,
+            ))
+        }
         Ast::Continue(_) | Ast::DefineMacro(_) | Ast::Include(_) => Ok((ast, Vec::new())),
     }
 }
@@ -1196,6 +1213,10 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
         Ast::ArrayLiteral(vs) => {
             let vs = replace_asts(vs, assign);
             ast.with_new_ast_and_type(Ast::ArrayLiteral(vs), new_ty)
+        }
+        Ast::Ref(v) => {
+            let v = replace_ast(*v, assign);
+            ast.with_new_ast_and_type(Ast::Ref(Box::new(v)), new_ty)
         }
     }
 }

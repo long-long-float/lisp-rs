@@ -199,6 +199,9 @@ fn optimize_tail_recursion(
                 Some(ast.clone().with_new_ast(Ast::Cond(Cond { clauses })))
             }
             Ast::Quoted(v) => _optimize_tail_recursion(func_name, locals, v),
+            Ast::Ref(expr) => Some(ast.clone().with_new_ast(Ast::Ref(Box::new(
+                _optimize_tail_recursion(func_name, locals, expr)?,
+            )))),
             Ast::Symbol(_)
             | Ast::SymbolWithType(_, _)
             | Ast::Integer(_)
@@ -251,6 +254,7 @@ fn optimize_tail_recursion(
             Ast::Cond(Cond { clauses }) => clauses.iter().any(|CondClause { cond, body }| {
                 includes_symbol(sym, &cond.ast) || body.iter().any(|b| includes_symbol(sym, &b.ast))
             }),
+            Ast::Ref(expr) => includes_symbol(sym, &expr.ast),
             Ast::Integer(_)
             | Ast::Float(_)
             | Ast::Boolean(_)

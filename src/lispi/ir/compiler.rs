@@ -502,6 +502,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         ty: ast_ty,
     } = ast;
 
+    // Refされている変数はメモリに配置するようにする
+
     match ast {
         Ast::List(vs) => compile_apply(vs, ast_ty, ctx)?,
         Ast::Quoted(_) => todo!(),
@@ -846,6 +848,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 ast_ty,
             );
         }
+
+        Ast::Ref(v) => todo!(),
     }
 
     Ok(())
