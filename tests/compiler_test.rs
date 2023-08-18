@@ -15,7 +15,7 @@ mod compiler_test {
     use function_name::named;
     use lisp_rs::lispi;
     use lisp_rs::lispi::cli_option::CliOption;
-    use lisp_rs::lispi::opt;
+    use lisp_rs::lispi::pass;
 
     /// Timeout for execution the emulator in seconds
     const TIMEOUT_EMU: u32 = 5;
@@ -23,13 +23,13 @@ mod compiler_test {
     struct Compiler {
         name: &'static str,
         program: &'static str,
-        optimizations: HashSet<opt::Optimize>,
+        optimizations: HashSet<pass::Optimize>,
     }
 
     impl Compiler {
         fn min_opts(self) -> Self {
             Self {
-                optimizations: opt::Optimize::minimum(),
+                optimizations: pass::Optimize::minimum(),
                 ..self
             }
         }
@@ -141,7 +141,7 @@ mod compiler_test {
         Compiler {
             name,
             program,
-            optimizations: opt::Optimize::all(),
+            optimizations: pass::Optimize::all(),
         }
     }
 

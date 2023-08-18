@@ -2,7 +2,7 @@ pub mod console;
 pub mod error;
 
 pub mod ir;
-pub mod opt;
+pub mod pass;
 
 pub mod ast;
 pub mod common;
@@ -127,7 +127,7 @@ impl std::fmt::Display for LocationRange {
 pub fn frontend(
     program: Vec<String>,
     opt: &CliOption,
-    applied_opts: &HashSet<opt::Optimize>,
+    applied_opts: &HashSet<pass::Optimize>,
 ) -> Result<(Program, Environment<Value>, ty::StructDefinitions)> {
     let tokens = t::tokenize(program)?;
 
@@ -167,8 +167,8 @@ pub fn frontend(
     //     println!("{}", ast);
     // }
 
-    let program = if applied_opts.contains(&opt::Optimize::TailRecursion) {
-        opt::tail_recursion::optimize(program)?
+    let program = if applied_opts.contains(&pass::Optimize::TailRecursion) {
+        pass::tail_recursion::optimize(program)?
     } else {
         program
     };
@@ -191,14 +191,14 @@ pub fn frontend(
 ///
 /// Functions of each steps return Result to express errors.
 pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value, ty::Type)>> {
-    let (program, mut env, _struct_defs) = frontend(program, opt, &opt::Optimize::all())?;
+    let (program, mut env, _struct_defs) = frontend(program, opt, &pass::Optimize::all())?;
     e::eval_program(&program, &mut env)
 }
 
 pub fn compile(
     program: Vec<String>,
     opt: &CliOption,
-    applied_opts: HashSet<opt::Optimize>,
+    applied_opts: HashSet<pass::Optimize>,
 ) -> Result<()> {
     let (program, mut _env, struct_defs) = frontend(program, opt, &applied_opts)?;
 
@@ -223,8 +223,8 @@ pub fn compile(
         printlnuw("");
     }
 
-    if applied_opts.contains(&opt::Optimize::RemovingRedundantAssignments) {
-        opt::removing_redundant_assignments::optimize(&funcs, &mut ir_ctx)?;
+    if applied_opts.contains(&pass::Optimize::RemovingRedundantAssignments) {
+        pass::removing_redundant_assignments::optimize(&funcs, &mut ir_ctx)?;
         if opt.dump {
             printlnuw(&"Remove redundant assignments:".red());
             for fun in &funcs {
@@ -234,8 +234,8 @@ pub fn compile(
         }
     }
 
-    if applied_opts.contains(&opt::Optimize::ConstantFolding) {
-        opt::constant_folding::optimize(&funcs, &mut ir_ctx)?;
+    if applied_opts.contains(&pass::Optimize::ConstantFolding) {
+        pass::constant_folding::optimize(&funcs, &mut ir_ctx)?;
         if opt.dump {
             printlnuw(&"Constant folding:".red());
             for fun in &funcs {
@@ -245,8 +245,8 @@ pub fn compile(
         }
     }
 
-    if applied_opts.contains(&opt::Optimize::ImmediateUnfolding) {
-        opt::immediate_unfolding::optimize(&funcs, &mut ir_ctx, true)?;
+    if applied_opts.contains(&pass::Optimize::ImmediateUnfolding) {
+        pass::immediate_unfolding::optimize(&funcs, &mut ir_ctx, true)?;
         if opt.dump {
             printlnuw(&"Immediate unfolding:".red());
             for fun in &funcs {
@@ -256,7 +256,7 @@ pub fn compile(
         }
     }
 
-    let funcs = opt::removing_uncalled_functions::optimize(funcs, &mut ir_ctx);
+    let funcs = pass::removing_uncalled_functions::optimize(funcs, &mut ir_ctx);
     if opt.dump {
         printlnuw(&"Remove uncalled functions:".red());
         for fun in &funcs {
@@ -425,6 +425,6 @@ pub fn interpret_with_env(
     let program = p::parse_with_env(tokens)?;
     let program = me::expand_macros(program)?;
     let (program, _struct_defs) = ty::check_and_inference_type(program, ty_env)?;
-    let program = opt::tail_recursion::optimize(program)?;
+    let program = pass::tail_recursion::optimize(program)?;
     e::eval_program(&program, env)
 }

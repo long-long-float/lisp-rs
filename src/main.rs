@@ -14,7 +14,7 @@ use lisp_rs::lispi::cli_option::CliOption;
 use lisp_rs::lispi::common::read_lines;
 use lisp_rs::lispi::error::ErrorWithLocation;
 use lisp_rs::lispi::*;
-use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e, opt};
+use lisp_rs::lispi::{console as c, environment as env, error::Error, evaluator as e, pass};
 use lisp_rs::lispi::{Location, LocationRange, TokenLocation};
 
 fn main() -> Result<()> {
@@ -28,9 +28,9 @@ fn main() -> Result<()> {
 
         if cli.compile {
             let applied_opts = if cli.without_opts {
-                opt::Optimize::minimum()
+                pass::Optimize::minimum()
             } else {
-                opt::Optimize::all()
+                pass::Optimize::all()
             };
             let result = compile(lines.clone(), &cli, applied_opts);
             match result {
