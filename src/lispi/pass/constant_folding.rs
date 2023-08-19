@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use itertools::fold;
 use rustc_hash::FxHashMap;
 
 use crate::lispi::ir::IrContext;

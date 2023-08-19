@@ -223,6 +223,15 @@ pub fn compile(
         printlnuw("");
     }
 
+    pass::placing_on_memory::optimize(&funcs, &mut ir_ctx)?;
+    if opt.dump {
+        printlnuw(&"Place on memory:".red());
+        for fun in &funcs {
+            fun.dump(&ir_ctx.bb_arena);
+        }
+        printlnuw("");
+    }
+
     if applied_opts.contains(&pass::Optimize::RemovingRedundantAssignments) {
         pass::removing_redundant_assignments::optimize(&funcs, &mut ir_ctx)?;
         if opt.dump {
