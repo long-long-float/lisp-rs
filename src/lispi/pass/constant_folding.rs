@@ -48,67 +48,12 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
             tags: _,
         } in bb.insts.clone().into_iter().rev()
         {
-            // TOOD: Use get_vars in register_allocation
-            match &inst {
-                Instruction::Branch {
-                    cond,
-                    then_label: _,
-                    else_label: _,
-                    ..
-                } => {
-                    register_as_used(&mut used_vars, cond);
+            if let Instruction::Phi(_) = &inst {
+                // Variables added in front.
+            } else {
+                for v in inst.collect_vars() {
+                    used_vars.insert(v.clone());
                 }
-                Instruction::Ret(op) => register_as_used(&mut used_vars, op),
-
-                Instruction::Alloca { ty: _, count } => register_as_used(&mut used_vars, count),
-
-                Instruction::Add(l, r)
-                | Instruction::Sub(l, r)
-                | Instruction::Mul(l, r)
-                | Instruction::Div(l, r)
-                | Instruction::And(l, r)
-                | Instruction::Or(l, r)
-                | Instruction::Shift(_, l, r)
-                | Instruction::Store(l, r)
-                | Instruction::Cmp(_, l, r) => {
-                    register_as_used(&mut used_vars, l);
-                    register_as_used(&mut used_vars, r);
-                }
-                Instruction::Not(op) => register_as_used(&mut used_vars, op),
-
-                Instruction::LoadElement { addr, ty: _, index } => {
-                    register_as_used(&mut used_vars, addr);
-                    register_as_used(&mut used_vars, index);
-                }
-                Instruction::StoreElement {
-                    addr,
-                    ty: _,
-                    index,
-                    value,
-                } => {
-                    register_as_used(&mut used_vars, addr);
-                    register_as_used(&mut used_vars, index);
-                    register_as_used(&mut used_vars, value);
-                }
-
-                Instruction::Call { fun, args } => {
-                    register_as_used(&mut used_vars, fun);
-                    args.iter()
-                        .for_each(|arg| register_as_used(&mut used_vars, arg));
-                }
-                Instruction::SysCall { number, args } => {
-                    register_as_used(&mut used_vars, number);
-                    args.iter()
-                        .for_each(|arg| register_as_used(&mut used_vars, arg));
-                }
-
-                Instruction::Phi(_) => { /* Variables added in front. */ }
-
-                Instruction::Reference(op) => register_as_used(&mut used_vars, op),
-
-                Instruction::Operand(op) => register_as_used(&mut used_vars, op),
-
-                Instruction::Jump(_, _) | Instruction::Label(_) | Instruction::Nop => {}
             }
 
             let used = inst.is_label() || inst.is_terminal() || used_vars.contains(&var);

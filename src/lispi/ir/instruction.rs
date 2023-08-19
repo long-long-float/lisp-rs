@@ -1,6 +1,6 @@
 use colored::Colorize;
 use id_arena::Id;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::Display;
 
 use crate::lispi::ty as t;
@@ -141,6 +141,87 @@ impl Instruction {
 
     pub fn is_label(&self) -> bool {
         matches!(self, Instruction::Label(_))
+    }
+
+    pub fn collect_vars(&self) -> FxHashSet<&Variable> {
+        fn add_only_var<'a>(op: &'a Operand, vars: &mut FxHashSet<&'a Variable>) {
+            if let Operand::Variable(var) = op {
+                vars.insert(var);
+            }
+        }
+
+        let mut vars = FxHashSet::default();
+
+        match self {
+            Instruction::Branch { cond, .. } => {
+                add_only_var(cond, &mut vars);
+            }
+            Instruction::Jump(_, _) => {}
+            Instruction::Ret(op) => add_only_var(op, &mut vars),
+            Instruction::Alloca { ty: _, count } => add_only_var(count, &mut vars),
+            Instruction::Add(left, right)
+            | Instruction::Sub(left, right)
+            | Instruction::Mul(left, right)
+            | Instruction::Div(left, right)
+            | Instruction::And(left, right)
+            | Instruction::Or(left, right) => {
+                add_only_var(left, &mut vars);
+                add_only_var(right, &mut vars);
+            }
+
+            Instruction::Not(op) => {
+                add_only_var(op, &mut vars);
+            }
+            Instruction::Shift(_, left, right) => {
+                add_only_var(left, &mut vars);
+                add_only_var(right, &mut vars);
+            }
+            Instruction::Store(addr, value) => {
+                add_only_var(addr, &mut vars);
+                add_only_var(value, &mut vars);
+            }
+            Instruction::LoadElement { addr, ty: _, index } => {
+                add_only_var(addr, &mut vars);
+                add_only_var(index, &mut vars);
+            }
+            Instruction::StoreElement {
+                addr,
+                ty: _,
+                index,
+                value,
+            } => {
+                add_only_var(addr, &mut vars);
+                add_only_var(index, &mut vars);
+                add_only_var(value, &mut vars);
+            }
+            Instruction::Cmp(_, left, right) => {
+                add_only_var(left, &mut vars);
+                add_only_var(right, &mut vars);
+            }
+            Instruction::Call { fun, args } => {
+                add_only_var(fun, &mut vars);
+                for arg in args {
+                    add_only_var(arg, &mut vars);
+                }
+            }
+            Instruction::SysCall { number, args } => {
+                add_only_var(number, &mut vars);
+                for arg in args {
+                    add_only_var(arg, &mut vars);
+                }
+            }
+            Instruction::Phi(nodes) => {
+                for (op, _) in nodes {
+                    add_only_var(op, &mut vars);
+                }
+            }
+            Instruction::Operand(op) => add_only_var(op, &mut vars),
+            Instruction::Reference(op) => add_only_var(op, &mut vars),
+            Instruction::Label(_) => {}
+            Instruction::Nop => {}
+        }
+
+        vars
     }
 
     pub fn replace_var(self, replace_var_map: &FxHashMap<Variable, Variable>) -> Self {

@@ -12,7 +12,7 @@ use crate::{
         error::Error,
         ir::{
             basic_block::{BasicBlock, Function, Functions},
-            instruction::{AnnotatedInstr, Instruction, Operand, Type, Variable},
+            instruction::{AnnotatedInstr, Instruction, Type, Variable},
             IrContext,
         },
         ty,
@@ -153,83 +153,6 @@ impl Display for InterferenceGraph {
     }
 }
 
-fn get_vars<'a>(inst: &'a Instruction, vars: &mut Vec<&'a Variable>) {
-    fn add_only_var<'a>(op: &'a Operand, vars: &mut Vec<&'a Variable>) {
-        if let Operand::Variable(var) = op {
-            vars.push(var);
-        }
-    }
-
-    match inst {
-        Instruction::Branch { cond, .. } => {
-            add_only_var(cond, vars);
-        }
-        Instruction::Jump(_, _) => {}
-        Instruction::Ret(op) => add_only_var(op, vars),
-        Instruction::Alloca { ty: _, count } => add_only_var(count, vars),
-        Instruction::Add(left, right)
-        | Instruction::Sub(left, right)
-        | Instruction::Mul(left, right)
-        | Instruction::Div(left, right)
-        | Instruction::And(left, right)
-        | Instruction::Or(left, right) => {
-            add_only_var(left, vars);
-            add_only_var(right, vars);
-        }
-
-        Instruction::Not(op) => {
-            add_only_var(op, vars);
-        }
-        Instruction::Shift(_, left, right) => {
-            add_only_var(left, vars);
-            add_only_var(right, vars);
-        }
-        Instruction::Store(addr, value) => {
-            add_only_var(addr, vars);
-            add_only_var(value, vars);
-        }
-        Instruction::LoadElement { addr, ty: _, index } => {
-            add_only_var(addr, vars);
-            add_only_var(index, vars);
-        }
-        Instruction::StoreElement {
-            addr,
-            ty: _,
-            index,
-            value,
-        } => {
-            add_only_var(addr, vars);
-            add_only_var(index, vars);
-            add_only_var(value, vars);
-        }
-        Instruction::Cmp(_, left, right) => {
-            add_only_var(left, vars);
-            add_only_var(right, vars);
-        }
-        Instruction::Call { fun, args } => {
-            add_only_var(fun, vars);
-            for arg in args {
-                add_only_var(arg, vars);
-            }
-        }
-        Instruction::SysCall { number, args } => {
-            add_only_var(number, vars);
-            for arg in args {
-                add_only_var(arg, vars);
-            }
-        }
-        Instruction::Phi(nodes) => {
-            for (op, _) in nodes {
-                add_only_var(op, vars);
-            }
-        }
-        Instruction::Operand(op) => add_only_var(op, vars),
-        Instruction::Reference(op) => add_only_var(op, vars),
-        Instruction::Label(_) => {}
-        Instruction::Nop => {}
-    }
-}
-
 type VariableSet<'a> = FxHashSet<&'a Variable>;
 type AllInOuts<'a> = FxHashMap<Id<BasicBlock>, Vec<(VariableSet<'a>, VariableSet<'a>)>>;
 
@@ -255,8 +178,8 @@ fn calculate_lifetime<'a>(func: &Function, ir_ctx: &'a IrContext) -> AllInOuts<'
         let mut def_uses_bb = Vec::new();
 
         for annot_inst in &bb.insts {
-            let mut used_vars = Vec::new();
-            get_vars(&annot_inst.inst, &mut used_vars);
+            let used_vars = annot_inst.inst.collect_vars();
+            // get_vars(&annot_inst.inst, &mut used_vars);
             let used_vars = used_vars
                 .into_iter()
                 .filter(|uv| !exclude_vars.iter().any(|v| v == uv))
