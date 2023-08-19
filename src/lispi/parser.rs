@@ -75,6 +75,9 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
                     Ok(Ast::As(Box::new(expr.clone()), ty.clone()))
                 })
             }
+            "ref" => {
+                match_special_args!(args, expr, { Ok(Ast::Ref(Box::new(expr.clone()))) })
+            }
             "define-macro" => {
                 match_special_args_with_rest!(
                     args,

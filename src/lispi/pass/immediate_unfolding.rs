@@ -1,4 +1,5 @@
 use anyhow::Result;
+use itertools::unfold;
 
 use crate::lispi::{
     ir::{basic_block::*, instruction::*, IrContext},
@@ -220,6 +221,9 @@ pub fn optimize(
                         } else {
                             Some(I::Ret(op))
                         }
+                    }
+                    I::Reference(op) => {
+                        Some(I::Reference(unfold_immediate(op, &mut insts, &mut ctx)))
                     }
                 };
 

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
+use itertools::fold;
 use rustc_hash::FxHashMap;
 
 use crate::lispi::ir::IrContext;
@@ -102,6 +103,8 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
                 }
 
                 Instruction::Phi(_) => { /* Variables added in front. */ }
+
+                Instruction::Reference(op) => register_as_used(&mut used_vars, op),
 
                 Instruction::Operand(op) => register_as_used(&mut used_vars, op),
 
@@ -385,6 +388,8 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
                     Some(I::SysCall { number, args })
                 }
                 I::Ret(op) => Some(I::Ret(fold_imm(ctx, op))),
+
+                I::Reference(op) => Some(I::Reference(fold_imm(ctx, op))),
 
                 I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => Some(inst),
             };

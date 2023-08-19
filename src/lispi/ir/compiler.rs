@@ -849,7 +849,10 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             );
         }
 
-        Ast::Ref(v) => todo!(),
+        Ast::Ref(v) => {
+            let v = compile_and_add(*v, ctx)?;
+            add_instr(ctx, I::Reference(v.result.into()), ast_ty);
+        }
     }
 
     Ok(())

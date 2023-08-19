@@ -1,3 +1,4 @@
+use core::panic;
 use std::collections::HashSet;
 
 use anyhow::Result;
@@ -760,6 +761,9 @@ pub fn generate_code(
                         insts.append(&mut restore);
                     }
                     Phi(_nodes) => {}
+                    Reference(_) => {
+                        panic!("ref must be removed before code generating.")
+                    }
                     Operand(op) => {
                         load_operand_to(&mut ctx, &mut insts, &register_map, op, result_reg);
                     }

@@ -92,6 +92,8 @@ pub enum Instruction {
     },
     Phi(Vec<(Operand, Label)>),
 
+    Reference(Operand),
+
     Operand(Operand),
     /// TODO: Remove this
     Label(Label),
@@ -128,6 +130,7 @@ impl Instruction {
                 | And(..)
                 | Call { .. }
                 | Operand(_)
+                | Reference(_)
                 | Phi(_)
         )
     }
@@ -256,6 +259,8 @@ impl Instruction {
                 I::SysCall { number, args }
             }
 
+            I::Reference(op) => I::Reference(replace_var(replace_var_map, op)),
+
             I::Ret(op) => I::Ret(replace_var(replace_var_map, op)),
 
             I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => self,
@@ -351,6 +356,9 @@ impl Display for Instruction {
                 }
                 Ok(())
             }
+            Reference(op) => {
+                write!(f, "ref {}", op)
+            }
             Operand(op) => {
                 write!(f, "{}", op)
             }
@@ -440,6 +448,7 @@ impl Display for AnnotatedInstrDisplay<'_> {
             | Call { .. }
             | SysCall { .. }
             | Operand(_)
+            | Reference(_)
             | Phi(_) => {
                 write!(f, "  {}:{} = {}", result, ty, inst)?;
             }
@@ -545,10 +554,18 @@ pub struct Variable {
 }
 
 impl Variable {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+
     pub fn empty() -> Variable {
         Variable {
             name: "".to_string(),
         }
+    }
+
+    pub fn with_suffix(self, suff: &String) -> Self {
+        Self::new(format!("{}-{}", self.name, suff))
     }
 }
 

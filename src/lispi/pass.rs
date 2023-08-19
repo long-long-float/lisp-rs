@@ -3,6 +3,7 @@ use std::collections::HashSet;
 pub mod constant_folding;
 pub mod context_folding;
 pub mod immediate_unfolding;
+pub mod placing_on_memory;
 pub mod removing_duplicated_assignments;
 pub mod removing_redundant_assignments;
 pub mod removing_uncalled_functions;

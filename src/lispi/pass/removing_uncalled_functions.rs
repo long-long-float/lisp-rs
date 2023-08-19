@@ -30,7 +30,7 @@ fn is_called_from_main(
 }
 
 pub fn optimize(funcs: Functions, ctx: &mut IrContext) -> Functions {
-    // Map caller functon to called functions
+    // Map caller function to called functions
     let mut calling_relations: FxHashMap<String, Vec<String>> = FxHashMap::default();
 
     for func in &funcs {
@@ -49,8 +49,6 @@ pub fn optimize(funcs: Functions, ctx: &mut IrContext) -> Functions {
             }
         }
     }
-
-    // println!("{:#?}", calling_relations);
 
     funcs
         .into_iter()
