@@ -810,4 +810,22 @@ sum
         .run_raw_output();
         assert_eq!("Hello\nHello\nHello\n", output);
     }
+
+    #[test]
+    #[named]
+    fn complex_program_for_2times() {
+        let output = compile(
+            function_name!(),
+            r#"
+(include "library/prelude.scm")
+
+(for (i 0) (< i 3) (+ i 1) (begin
+    (println "Hello")))
+(for (i 0) (< i 3) (+ i 1) (begin
+    (println "Hello")))
+"#,
+        )
+        .run_raw_output();
+        assert_eq!("Hello\nHello\nHello\nHello\nHello\nHello\n", output);
+    }
 }

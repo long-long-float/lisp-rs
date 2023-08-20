@@ -50,8 +50,6 @@ pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
             }
         }
 
-        println!("{:#?}", vars_on_memory);
-
         let mut gen = UniqueGenerator::new("pom".to_string());
 
         for bb in &fun.basic_blocks {
