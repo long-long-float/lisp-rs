@@ -712,6 +712,37 @@ sum
 
     #[test]
     #[named]
+    fn reference_deref() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define x 10)
+(define x-ptr (ref x))
+(deref x-ptr)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(10), a0);
+    }
+
+    #[test]
+    #[named]
+    fn reference_ref_set() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define x 10)
+(define x-ptr (ref x))
+(ref-set x-ptr 42)
+(deref x-ptr)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(42), a0);
+    }
+
+    #[test]
+    #[named]
     fn complex_program_array_sum() {
         let a0 = compile(
             function_name!(),

@@ -100,8 +100,6 @@ pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
                             None
                         };
 
-                    println!("{}, {:?}", inst, referenced_var);
-
                     if let Some(ref_var) = referenced_var {
                         //
                         // C: Get address of the variable

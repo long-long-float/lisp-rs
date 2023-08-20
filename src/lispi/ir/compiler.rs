@@ -343,6 +343,34 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let value = args[0].result.clone();
                         add_instr(ctx, I::Not(Operand::Variable(value)), ast_ty);
                     }
+                    "deref" => {
+                        let ptr = args[0].result.clone().into();
+                        add_instr(
+                            ctx,
+                            I::LoadElement {
+                                addr: ptr,
+                                // TODO: Set type
+                                ty: Type::I32,
+                                index: 0.into(),
+                            },
+                            ast_ty,
+                        );
+                    }
+                    "ref-set" => {
+                        let ptr = args[0].result.clone().into();
+                        let value = args[1].result.clone().into();
+                        add_instr(
+                            ctx,
+                            I::StoreElement {
+                                addr: ptr,
+                                // TODO: Set type
+                                ty: Type::I32,
+                                index: 0.into(),
+                                value,
+                            },
+                            ast_ty,
+                        );
+                    }
                     "syscall0" => {
                         let value = args[0].result.clone();
                         add_instr(
@@ -501,8 +529,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         location,
         ty: ast_ty,
     } = ast;
-
-    // Refされている変数はメモリに配置するようにする
 
     match ast {
         Ast::List(vs) => compile_apply(vs, ast_ty, ctx)?,
@@ -851,7 +877,36 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
 
         Ast::Ref(v) => {
             let v = compile_and_add(*v, ctx)?;
-            add_instr(ctx, I::Reference(v.result.into()), ast_ty);
+            if let I::Operand(Operand::Variable(var)) = &v.inst {
+                // To avoid generating strange output.
+                //
+                // For example in the following code, referencing 'x' will be folded to 10.
+                // However it is expected to be 11.
+                //
+                // ; (define x 10)
+                // %var127 = 10
+                // ; (inc (ref x)) increment x
+                // %var128 = %var127
+                // %var129 = ref %var128
+                // %var131 = call inc, %var129
+                // ; x
+                // %var132 = %var127 ; folded to 10
+                //
+                // To avoid this, use the variable directly.
+                //
+                // ; (define x 10)
+                // %var127 = 10
+                // ; (inc (ref x)) increment x
+                // %var129 = ref %var127
+                // %var131 = call inc, %var129
+                // ; x
+                // %var132 = %var127 ; NOT folded to 10 because %var127 is referenced.
+                //
+
+                add_instr(ctx, I::Reference(var.clone().into()), ast_ty);
+            } else {
+                add_instr(ctx, I::Reference(v.result.into()), ast_ty);
+            }
         }
     }
 

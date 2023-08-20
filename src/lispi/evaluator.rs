@@ -1076,6 +1076,28 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
             })
         },
     );
+    insert_function(
+        env,
+        ty_env,
+        s("deref"),
+        Type::for_all(|tv| Type::function(vec![Type::Reference(Box::new(tv.clone()))], tv)),
+        |_| {
+            printlnuw("Cannot call array->len in interpreter mode.");
+            Ok(Value::nil())
+        },
+    );
+    insert_function(
+        env,
+        ty_env,
+        s("ref-set"),
+        Type::for_all(|tv| {
+            Type::function(vec![Type::Reference(Box::new(tv.clone())), tv], Type::Nil)
+        }),
+        |_| {
+            printlnuw("Cannot call array->len in interpreter mode.");
+            Ok(Value::nil())
+        },
+    );
 
     insert_function(
         env,

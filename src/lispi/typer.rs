@@ -1001,14 +1001,20 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
     if let Some((c, rest)) = constraints.split_first() {
         match (&c.left.ty, &c.right.ty) {
             (s, t) if s == t => unify(rest.to_vec()),
+
             (Type::Variable(x), t) if !t.has_free_var(x) => unify_type_var(x, t, &c.right, rest),
             (t, Type::Variable(x)) if !t.has_free_var(x) => unify_type_var(x, t, &c.left, rest),
+
             (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
+
             (Type::Numeric, Type::Int)
             | (Type::Int, Type::Numeric)
             | (Type::Numeric, Type::Float)
             | (Type::Float, Type::Numeric) => unify(rest.to_vec()),
-            (Type::List(e0), Type::List(e1)) | (Type::Array(e0), Type::Array(e1)) => {
+
+            (Type::List(e0), Type::List(e1))
+            | (Type::Array(e0), Type::Array(e1))
+            | (Type::Reference(e0), Type::Reference(e1)) => {
                 let mut rest = rest.to_vec();
                 rest.push(TypeEquality::new(
                     e0.clone().with_locations(&c.left.loc, c.left.expected),
@@ -1016,6 +1022,7 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
                 ));
                 unify(rest)
             }
+
             (
                 f0 @ Type::Function {
                     args: args0,
