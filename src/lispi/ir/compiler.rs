@@ -780,6 +780,15 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         Ast::ListLiteral(_) => todo!(),
         Ast::ArrayLiteral(vs) => compile_array_literal(vs, ast_ty, ctx)?,
         Ast::Loop(Loop { inits, label, body }) => {
+            if ctx.loop_label_map.contains_key(&label) {
+                return Err(Error::CompileError(format!(
+                    "Loop label '{}' has been already defined",
+                    label
+                ))
+                .with_location(location)
+                .into());
+            }
+
             ctx.loop_updates_map.insert(label.clone(), Vec::new());
 
             let header_label = ctx.gen_label();
