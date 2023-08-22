@@ -774,9 +774,6 @@ sum
             r#"
 (include "library/prelude.scm")
 
-(fn char->int (ch) 
-    (- (as ch int) (as #\0 int)))
-
 (fn string->int (str)
     (define sum 0)
     (define len (- (array->len str) 1))

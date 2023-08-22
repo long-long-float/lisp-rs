@@ -9,13 +9,24 @@
 
 ; Functions
 
-(fn print (str) (begin
-  (syscall3 64 1 (array->data str) (array->len str))))
+(fn print (str)
+  (syscall3 64 1 (array->data str) (array->len str)))
 
-(fn println (str) (begin
+(fn println (str)
   (print str)
   (print "\n")
-  0))
+  0)
 
-(fn println-bool (val) (begin
-  (println (if val "true" "false"))))
+(fn println-bool (val)
+  (println (if val "true" "false")))
+
+(fn char->int (ch)
+  (- (as ch int) (as #\0 int)))
+
+(fn int->char (val)
+  (as (+ (as #\0 int) val) char))
+
+(fn print-char (ch)
+  (define str " ")
+  (array->set str 0 ch)
+  (syscall3 64 1 (array->data str) (array->len str)))
