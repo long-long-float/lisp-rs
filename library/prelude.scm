@@ -1,10 +1,11 @@
 ; Macros
 
 (define-macro for (init condn update body)
-  (list 'let 'loop (list init) 
+  (define label (__gen-unique-sym))
+  (list 'let label (list init) 
     (list 'if condn (list 'begin
       body
-      (list 'loop update)))))
+      (list label update)))))
 
 ; Functions
 

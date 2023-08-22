@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use uuid::Uuid;
 
 use super::{
     ast::*, console::*, environment::*, error::*, parser::*, typer::*, SymbolValue, TokenLocation,
@@ -1118,6 +1119,13 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
             printlnuw("Cannot call io-write in interpreter mode.");
             Ok(Value::nil())
         },
+    );
+    insert_function(
+        env,
+        ty_env,
+        s("__gen-unique-sym"),
+        Type::function(vec![], Type::Symbol),
+        |_| Ok(Value::Symbol(Uuid::new_v4().to_string())),
     );
 
     // These functions cannot be defined using `match_call_args!` due to variable arguments.
