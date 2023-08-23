@@ -225,6 +225,56 @@ fn compile_apply_lambda(
     Ok(())
 }
 
+fn compile_array_constructor(
+    count: Operand,
+    elem_type: Type,
+    ast_ty: t::Type,
+    ctx: &mut Context,
+) -> Result<Operand> {
+    use Instruction as I;
+
+    let len = add_instr(ctx, I::Operand(count.clone()), t::Type::Nil).result;
+
+    let count = match count {
+        Operand::Immediate(Immediate::Integer(count)) => {
+            (Type::I32.size() + count as usize * elem_type.size()).into()
+        }
+        Operand::Immediate(_) | Operand::Variable(_) => {
+            let count = add_instr(ctx, I::Mul(count, elem_type.size().into()), t::Type::None)
+                .result
+                .into();
+            add_instr(ctx, I::Add(count, Type::I32.size().into()), t::Type::None)
+                .result
+                .into()
+        }
+    };
+
+    let ary = Operand::from(
+        add_instr(
+            ctx,
+            I::Alloca {
+                ty: Type::I32,
+                count,
+            },
+            ast_ty,
+        )
+        .result,
+    );
+
+    add_instr(
+        ctx,
+        I::StoreElement {
+            addr: ary.clone(),
+            ty: Type::I32,
+            index: 0.into(),
+            value: len.into(),
+        },
+        t::Type::Nil,
+    );
+
+    Ok(ary)
+}
+
 fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> Result<()> {
     use Instruction as I;
 
@@ -270,6 +320,16 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             I::Store(args[0].result.clone().into(), args[1].result.clone().into()),
                             ast_ty,
                         );
+                    }
+                    "array->new" => {
+                        let t::Type::Array(elem_type) = ast_ty.clone() else {
+                            panic!("The result type of array->new must be array");
+                        };
+                        let elem_type = Type::from(*elem_type);
+                        let count = args[0].result.clone().into();
+                        let ary = compile_array_constructor(count, elem_type, ast_ty.clone(), ctx)?;
+
+                        add_instr(ctx, I::Operand(ary), ast_ty);
                     }
                     "array->get" => {
                         let ary = args[0].result.clone().into();

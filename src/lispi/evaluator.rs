@@ -1053,6 +1053,13 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
     insert_function(
         env,
         ty_env,
+        s("array->new"),
+        Type::for_all(|tv| Type::function(vec![Type::Int], Type::Array(Box::new(tv)))),
+        |args| match_call_args!(args, _count, { todo!() }),
+    );
+    insert_function(
+        env,
+        ty_env,
         s("array->set"),
         Type::for_all(|tv| {
             Type::function(
