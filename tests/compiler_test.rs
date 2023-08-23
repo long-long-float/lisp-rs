@@ -214,6 +214,28 @@ mod compiler_test {
     }
 
     #[test]
+    #[named]
+    fn arith_mod() {
+        let a0 = compile(function_name!(), "(% 13 10)")
+            .min_opts()
+            .run_a0_i32();
+        assert_eq!(Some(3), a0);
+
+        let a0 = compile(function_name!(), "(% 6 3)").min_opts().run_a0_i32();
+        assert_eq!(Some(0), a0);
+
+        let a0 = compile(function_name!(), "(% -13 10)")
+            .min_opts()
+            .run_a0_i32();
+        assert_eq!(Some(-3), a0);
+
+        let a0 = compile(function_name!(), "(% 13 -10)")
+            .min_opts()
+            .run_a0_i32();
+        assert_eq!(Some(-3), a0);
+    }
+
+    #[test]
     fn arith_cmp_less_than() {
         assert_eq!(Some(1), compile("", "(< 1 2)").min_opts().run_a0());
         assert_eq!(Some(0), compile("", "(< 2 1)").min_opts().run_a0());
