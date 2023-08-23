@@ -2,10 +2,12 @@
 
 (define-macro for (init condn update body)
   (define label (__gen-unique-sym))
-  (list 'let label (list init) 
-    (list 'if condn (list 'begin
-      body
-      (list label update)))))
+  (list 'begin
+    (list 'let label (list init) 
+      (list 'if condn (list 'begin
+        body
+        (list label update))))
+    0))
 
 ; Functions
 
