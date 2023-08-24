@@ -156,6 +156,7 @@ pub enum RInstructionOp {
 
     Mul,
     Div,
+    Rem,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -271,6 +272,7 @@ impl GenerateCode for RInstruction {
             Slt => (0b0000000, 0b010, 0b0110011),
             Mul => (0b0000001, 0b000, 0b0110011),
             Div => (0b0000001, 0b100, 0b0110011),
+            Rem => (0b0000001, 0b110, 0b0110011),
         };
 
         (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
@@ -289,6 +291,7 @@ impl GenerateCode for RInstruction {
             Slt => "slt",
             Mul => "mul",
             Div => "div",
+            Rem => "rem",
         };
 
         format!("{} {}, {}, {}", name, self.rd, self.rs1, self.rs2)

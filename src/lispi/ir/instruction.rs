@@ -61,6 +61,7 @@ pub enum Instruction {
     Sub(Operand, Operand),
     Mul(Operand, Operand),
     Div(Operand, Operand),
+    Mod(Operand, Operand),
     And(Operand, Operand),
     Or(Operand, Operand),
     Not(Operand),
@@ -163,6 +164,7 @@ impl Instruction {
             | Instruction::Sub(left, right)
             | Instruction::Mul(left, right)
             | Instruction::Div(left, right)
+            | Instruction::Mod(left, right)
             | Instruction::And(left, right)
             | Instruction::Or(left, right) => {
                 add_only_var(left, &mut vars);
@@ -281,6 +283,10 @@ impl Instruction {
                 replace_var(replace_var_map, left),
                 replace_var(replace_var_map, right),
             ),
+            I::Mod(left, right) => I::Mod(
+                replace_var(replace_var_map, left),
+                replace_var(replace_var_map, right),
+            ),
             I::Or(left, right) => I::Or(
                 replace_var(replace_var_map, left),
                 replace_var(replace_var_map, right),
@@ -382,6 +388,9 @@ impl Display for Instruction {
             }
             Div(left, right) => {
                 write!(f, "div {}, {}", left, right)
+            }
+            Mod(left, right) => {
+                write!(f, "mod {}, {}", left, right)
             }
             And(left, right) => {
                 write!(f, "and {}, {}", left, right)
@@ -520,6 +529,7 @@ impl Display for AnnotatedInstrDisplay<'_> {
             | Sub(_, _)
             | Mul(_, _)
             | Div(_, _)
+            | Mod(_, _)
             | And(_, _)
             | Or(_, _)
             | Not(_)

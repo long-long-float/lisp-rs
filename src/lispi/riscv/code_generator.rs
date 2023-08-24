@@ -498,6 +498,24 @@ pub fn generate_code(
                             todo!()
                         }
                     }
+                    Mod(left, right) => {
+                        if specs.contains(&Spec::Multiplication) {
+                            let rs1 = get_register_from_operand(&mut ctx, &register_map, left)?;
+                            let rs2 = get_register_from_operand(&mut ctx, &register_map, right)?;
+
+                            insts.push(
+                                R(RInstruction {
+                                    op: RInstructionOp::Rem,
+                                    rs1,
+                                    rs2,
+                                    rd: result_reg,
+                                })
+                                .into(),
+                            );
+                        } else {
+                            todo!()
+                        }
+                    }
                     And(left, right) => {
                         generate_code_bin_op(
                             &mut ctx,

@@ -230,6 +230,14 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
                     |l, r| l / r,
                     I::Div,
                 )),
+                I::Mod(left, right) => Some(fold_constants_arith(
+                    ctx,
+                    &var,
+                    left,
+                    right,
+                    |l, r| l % r,
+                    I::Mod,
+                )),
                 I::And(left, right) => Some(fold_constants_logical(
                     ctx,
                     &var,

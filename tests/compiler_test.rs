@@ -232,7 +232,7 @@ mod compiler_test {
         let a0 = compile(function_name!(), "(% 13 -10)")
             .min_opts()
             .run_a0_i32();
-        assert_eq!(Some(-3), a0);
+        assert_eq!(Some(3), a0);
     }
 
     #[test]

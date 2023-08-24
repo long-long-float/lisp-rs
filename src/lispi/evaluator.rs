@@ -1188,6 +1188,12 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
     insert_variable_as_symbol_and_type(
         env,
         ty_env,
+        s("%"),
+        Type::function(vec![Type::Numeric, Type::Numeric], Type::Numeric),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
         s("or"),
         Type::function(vec![Type::Boolean, Type::Boolean], Type::Boolean),
     );
