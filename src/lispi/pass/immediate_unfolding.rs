@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::lispi::{
     ir::{basic_block::*, instruction::*, IrContext},
-    ty::Type,
+    ty as t,
     unique_generator::UniqueGenerator,
 };
 
@@ -30,6 +30,7 @@ fn unfold_immediate(op: Operand, insts: &mut Vec<AnnotatedInstr>, ctx: &mut Cont
             insts.push(AnnotatedInstr {
                 result: var.clone(),
                 inst: I::Operand(op),
+                original_ty: t::Type::None,
                 ty: Type::None,
                 tags: Vec::new(),
             });
@@ -81,6 +82,7 @@ pub fn optimize(
             for AnnotatedInstr {
                 result,
                 inst,
+                original_ty,
                 ty,
                 tags,
             } in bb.insts.drain(..)
@@ -238,6 +240,7 @@ pub fn optimize(
                     insts.push(AnnotatedInstr {
                         result,
                         inst,
+                        original_ty,
                         ty,
                         tags,
                     })

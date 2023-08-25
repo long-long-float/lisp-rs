@@ -11,6 +11,8 @@ use super::{basic_block::BasicBlock, tag::Tag};
 pub enum Type {
     I32,
     Char,
+    FixedArray { len: usize, elem_type: Box<Type> },
+    None,
 }
 
 impl Type {
@@ -20,6 +22,20 @@ impl Type {
         match self {
             I32 => 4,
             Char => 1,
+            FixedArray { len, elem_type } => 4 /* length */ + len * &elem_type.size(),
+            None => 4,
+        }
+    }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Type::*;
+        match self {
+            I32 => write!(f, "i32"),
+            Char => write!(f, "char"),
+            FixedArray { len, elem_type } => write!(f, "fixed_array<{}, {}>", elem_type, len),
+            None => write!(f, "none"),
         }
     }
 }
@@ -31,7 +47,7 @@ impl From<t::Type> for Type {
         match ty {
             tt::Int => Type::I32,
             tt::Char => Type::Char,
-            _ => Type::I32,
+            _ => Type::None,
         }
     }
 }
@@ -472,22 +488,28 @@ pub enum ShiftOperator {
 pub struct AnnotatedInstr {
     pub result: Variable,
     pub inst: Instruction,
-    pub ty: t::Type,
+    pub original_ty: t::Type,
+    pub ty: Type,
     pub tags: Vec<Tag>,
 }
 
 impl AnnotatedInstr {
-    pub fn new(result: Variable, inst: Instruction, ty: t::Type) -> Self {
+    pub fn new(result: Variable, inst: Instruction, original_ty: t::Type) -> Self {
         Self {
             result,
             inst,
-            ty,
+            original_ty,
+            ty: Type::None,
             tags: Vec::new(),
         }
     }
 
     pub fn with_tags(self, tags: Vec<Tag>) -> Self {
         Self { tags, ..self }
+    }
+
+    pub fn with_type(self, ty: Type) -> Self {
+        Self { ty, ..self }
     }
 
     pub fn has_tag(&self, tag: Tag) -> bool {
@@ -515,6 +537,7 @@ impl Display for AnnotatedInstrDisplay<'_> {
         let AnnotatedInstr {
             result,
             inst,
+            original_ty,
             ty,
             tags,
         } = &self.instr;
@@ -541,7 +564,7 @@ impl Display for AnnotatedInstrDisplay<'_> {
             | Operand(_)
             | Reference(_)
             | Phi(_) => {
-                write!(f, "  {}:{} = {}", result, ty, inst)?;
+                write!(f, "  {}:{} ({}) = {}", result, ty, original_ty, inst)?;
             }
 
             Label(_) => {

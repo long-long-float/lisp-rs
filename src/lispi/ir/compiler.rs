@@ -336,7 +336,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let ary = args[0].result.clone().into();
                         let index = args[1].result.clone().into();
 
-                        let elem_type = Type::from(args[0].ty.element_type().unwrap());
+                        let elem_type = Type::from(args[0].original_ty.element_type().unwrap());
 
                         let index =
                             add_instr(ctx, I::Mul(index, elem_type.size().into()), t::Type::None)
@@ -362,7 +362,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let index = args[1].result.clone().into();
                         let value = args[2].result.clone().into();
 
-                        let elem_type = Type::from(args[0].ty.element_type().unwrap());
+                        let elem_type = Type::from(args[0].original_ty.element_type().unwrap());
 
                         let index =
                             add_instr(ctx, I::Mul(index, elem_type.size().into()), t::Type::None)
@@ -655,7 +655,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             // Get the required FV from fun_fvs at Call time and pass the FV in addition to the argument
             if let AnnotatedInstr {
                 inst: I::Operand(Operand::Immediate(Immediate::Label(fname))),
-                ty: t::Type::Function { .. },
+                original_ty: t::Type::Function { .. },
                 ..
             } = inst
             {
@@ -876,7 +876,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 let inst = add_instr_with_tags(
                     ctx,
                     Instruction::Operand(Operand::Variable(init.result)),
-                    init.ty,
+                    init.original_ty,
                     vec![Tag::LoopPhiFunctionSite(LoopPhiFunctionSite {
                         label: label.clone(),
                         index: LoopPhiFunctionSiteIndex::Loop(index),
@@ -1123,6 +1123,7 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                     for AnnotatedInstr {
                         result: var,
                         inst,
+                        original_ty,
                         ty,
                         tags,
                     } in bb.insts.clone()
@@ -1203,6 +1204,7 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                         result.push(AnnotatedInstr {
                             result: var,
                             inst,
+                            original_ty,
                             ty,
                             tags,
                         })

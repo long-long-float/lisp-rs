@@ -335,6 +335,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
         for AnnotatedInstr {
             result: var,
             inst,
+            original_ty,
             ty,
             tags,
         } in bb.insts.clone().into_iter()
@@ -358,7 +359,8 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                     ty::Type::Nil,
                 ));
             }
-            result.push(AnnotatedInstr::new(var.clone(), replaced_inst, ty).with_tags(tags));
+            result
+                .push(AnnotatedInstr::new(var.clone(), replaced_inst, original_ty).with_tags(tags));
 
             if &var == spilled_var {
                 if !already_spilled {

@@ -60,6 +60,7 @@ pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
             for AnnotatedInstr {
                 result: result_var,
                 inst,
+                original_ty,
                 ty,
                 tags: _,
             } in bb.insts.clone()
@@ -69,7 +70,7 @@ pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
                     // A: Initialize
                     //
                     let tmp_var = result_var.clone().with_suffix(&gen.gen_string());
-                    result.push(AnnotatedInstr::new(tmp_var.clone(), inst, ty));
+                    result.push(AnnotatedInstr::new(tmp_var.clone(), inst, original_ty));
 
                     result.push(AnnotatedInstr::new(
                         result_var.clone(),
@@ -105,7 +106,7 @@ pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
                         result.push(AnnotatedInstr::new(
                             result_var,
                             Instruction::Operand(ref_var.clone().into()),
-                            ty,
+                            original_ty,
                         ));
                     } else {
                         //
@@ -134,7 +135,11 @@ pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
                             vmap.insert(var.clone(), tmp_var);
                         }
 
-                        result.push(AnnotatedInstr::new(result_var, inst.replace_var(&vmap), ty));
+                        result.push(AnnotatedInstr::new(
+                            result_var,
+                            inst.replace_var(&vmap),
+                            original_ty,
+                        ));
                     }
                 }
             }

@@ -47,6 +47,7 @@ fn remove_redundant_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resul
                 |AnnotatedInstr {
                      result: result_var,
                      inst,
+                     original_ty,
                      ty,
                      tags,
                  }| {
@@ -64,6 +65,7 @@ fn remove_redundant_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resul
                     Some(AnnotatedInstr {
                         result: result_var,
                         inst: inst.replace_var(&ctx.replace_var_map),
+                        original_ty,
                         ty,
                         tags,
                     })

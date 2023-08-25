@@ -17,6 +17,7 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
             for AnnotatedInstr {
                 result,
                 inst,
+                original_ty,
                 ty,
                 tags,
             } in bb.insts.drain(..)
@@ -35,7 +36,7 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                                 AnnotatedInstr::new(
                                     iresult.clone(),
                                     I::Cmp(SLT, left.clone(), right.clone()),
-                                    ty,
+                                    original_ty,
                                 )
                                 .with_tags(tags),
                             );
@@ -54,7 +55,7 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                                 AnnotatedInstr::new(
                                     iresult.clone(),
                                     I::Cmp(SLT, right.clone(), left.clone()),
-                                    ty,
+                                    original_ty,
                                 )
                                 .with_tags(tags),
                             );
@@ -70,7 +71,7 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                                 AnnotatedInstr::new(
                                     result,
                                     I::Cmp(SLT, right.clone(), left.clone()),
-                                    ty,
+                                    original_ty,
                                 )
                                 .with_tags(tags),
                             );
@@ -78,6 +79,7 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                         SLT => insts.push(AnnotatedInstr {
                             result,
                             inst,
+                            original_ty,
                             ty,
                             tags,
                         }),
@@ -86,6 +88,7 @@ pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
                     insts.push(AnnotatedInstr {
                         result,
                         inst,
+                        original_ty,
                         ty,
                         tags,
                     })

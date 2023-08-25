@@ -43,6 +43,7 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
         for AnnotatedInstr {
             result: var,
             inst,
+            original_ty,
             ty,
             tags: _,
         } in bb.insts.clone().into_iter().rev()
@@ -58,7 +59,7 @@ fn remove_deadcode(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
             let used = inst.is_label() || inst.is_terminal() || used_vars.contains(&var);
 
             if !inst.is_removable() || used {
-                result.push(AnnotatedInstr::new(var, inst, ty));
+                result.push(AnnotatedInstr::new(var, inst, original_ty));
             }
         }
 
@@ -161,6 +162,7 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
         for AnnotatedInstr {
             result: var,
             inst,
+            original_ty,
             ty,
             tags: _,
         } in bb.insts.clone()
@@ -347,7 +349,7 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
             };
 
             if let Some(inst) = inst {
-                result.push(AnnotatedInstr::new(var, inst, ty));
+                result.push(AnnotatedInstr::new(var, inst, original_ty));
             }
         }
 

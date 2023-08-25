@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use super::super::ir::{basic_block as bb, instruction as i, IrContext};
+use super::super::typer as t;
 
 pub fn remove_phi_instructions(funcs: &bb::Functions, ir_ctx: &mut IrContext) {
     for fun in funcs {
@@ -12,10 +13,7 @@ pub fn remove_phi_instructions(funcs: &bb::Functions, ir_ctx: &mut IrContext) {
             let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
 
             for i::AnnotatedInstr {
-                result,
-                inst,
-                ty,
-                tags: _,
+                result, inst, ty, ..
             } in &bb.insts
             {
                 if let i::Instruction::Phi(nodes) = &inst {
@@ -43,6 +41,7 @@ pub fn remove_phi_instructions(funcs: &bb::Functions, ir_ctx: &mut IrContext) {
             for i::AnnotatedInstr {
                 result,
                 inst,
+                original_ty,
                 ty,
                 tags: _,
             } in insts.into_iter().rev()
@@ -53,16 +52,20 @@ pub fn remove_phi_instructions(funcs: &bb::Functions, ir_ctx: &mut IrContext) {
                         if !inst.is_terminal() {
                             if let Some(entries) = assign_map.remove(&bb.label) {
                                 for (result, ty, operand) in entries {
-                                    new_insts.push(i::AnnotatedInstr::new(
-                                        result,
-                                        i::Instruction::Operand(operand),
-                                        ty,
-                                    ));
+                                    new_insts.push(
+                                        i::AnnotatedInstr::new(
+                                            result,
+                                            i::Instruction::Operand(operand),
+                                            t::Type::None,
+                                        )
+                                        .with_type(ty),
+                                    );
                                 }
                             }
                         }
 
-                        new_insts.push(i::AnnotatedInstr::new(result, inst, ty));
+                        new_insts
+                            .push(i::AnnotatedInstr::new(result, inst, original_ty).with_type(ty));
                     }
                 }
             }

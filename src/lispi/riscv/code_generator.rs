@@ -291,10 +291,7 @@ pub fn generate_code(
             let bb = ir_ctx.bb_arena.get(*bb).unwrap();
 
             for i::AnnotatedInstr {
-                result,
-                inst,
-                ty: _,
-                tags,
+                result, inst, tags, ..
             } in bb.insts.clone()
             {
                 if let i::Instruction::Alloca {
@@ -327,10 +324,7 @@ pub fn generate_code(
                 let ir = Some(ainst.display(false).to_string());
 
                 let i::AnnotatedInstr {
-                    result,
-                    inst,
-                    ty: _,
-                    tags,
+                    result, inst, tags, ..
                 } = ainst;
 
                 use i::Instruction::*;
@@ -595,6 +589,7 @@ pub fn generate_code(
                         let op = match ty {
                             i::Type::I32 => IInstructionOp::Lw,
                             i::Type::Char => IInstructionOp::Lb,
+                            _ => todo!(),
                         };
 
                         if let Some(local_idx) = local_idx {
@@ -648,6 +643,7 @@ pub fn generate_code(
                         let op = match ty {
                             i::Type::I32 => SInstructionOp::Sw,
                             i::Type::Char => SInstructionOp::Sb,
+                            _ => todo!(),
                         };
 
                         if let Some(local_idx) = local_idx {
