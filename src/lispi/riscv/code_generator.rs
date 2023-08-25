@@ -8,7 +8,10 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     bug,
-    lispi::ir::{register_allocation::RegisterMap, tag::Tag},
+    lispi::{
+        ir::{register_allocation::RegisterMap, tag::Tag},
+        ty::Type,
+    },
 };
 
 use super::{
@@ -593,8 +596,9 @@ pub fn generate_code(
                         };
 
                         let op = match ty {
-                            i::Type::I32 => IInstructionOp::Lw,
-                            i::Type::Char => IInstructionOp::Lb,
+                            Type::Int => IInstructionOp::Lw,
+                            Type::Char => IInstructionOp::Lb,
+                            _ => todo!(),
                         };
 
                         if let Some(local_idx) = local_idx {
@@ -646,8 +650,9 @@ pub fn generate_code(
                         let value = get_register_from_operand(&mut ctx, &register_map, value)?;
 
                         let op = match ty {
-                            i::Type::I32 => SInstructionOp::Sw,
-                            i::Type::Char => SInstructionOp::Sb,
+                            Type::Int => SInstructionOp::Sw,
+                            Type::Char => SInstructionOp::Sb,
+                            _ => todo!(),
                         };
 
                         if let Some(local_idx) = local_idx {

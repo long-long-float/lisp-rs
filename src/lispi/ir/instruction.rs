@@ -3,35 +3,18 @@ use id_arena::Id;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::Display;
 
-use crate::lispi::ty as t;
+use crate::lispi::ty::Type;
 
 use super::{basic_block::BasicBlock, tag::Tag};
-
-#[derive(Clone, PartialEq, Debug)]
-pub enum Type {
-    I32,
-    Char,
-}
 
 impl Type {
     /// Return data size in bytes
     pub fn size(&self) -> usize {
         use Type::*;
         match self {
-            I32 => 4,
+            Int => 4,
             Char => 1,
-        }
-    }
-}
-
-impl From<t::Type> for Type {
-    fn from(ty: t::Type) -> Self {
-        use t::Type as tt;
-
-        match ty {
-            tt::Int => Type::I32,
-            tt::Char => Type::Char,
-            _ => Type::I32,
+            _ => 4,
         }
     }
 }
@@ -472,12 +455,12 @@ pub enum ShiftOperator {
 pub struct AnnotatedInstr {
     pub result: Variable,
     pub inst: Instruction,
-    pub ty: t::Type,
+    pub ty: Type,
     pub tags: Vec<Tag>,
 }
 
 impl AnnotatedInstr {
-    pub fn new(result: Variable, inst: Instruction, ty: t::Type) -> Self {
+    pub fn new(result: Variable, inst: Instruction, ty: Type) -> Self {
         Self {
             result,
             inst,

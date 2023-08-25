@@ -12,7 +12,7 @@ use crate::{
         error::Error,
         ir::{
             basic_block::{BasicBlock, Function, Functions},
-            instruction::{AnnotatedInstr, Instruction, Type, Variable},
+            instruction::{AnnotatedInstr, Instruction, Variable},
             IrContext,
         },
         ty,
@@ -352,7 +352,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                     Instruction::LoadElement {
                         addr: ptr_var.clone().into(),
                         // TODO: Adjust type
-                        ty: Type::I32,
+                        ty: ty::Type::Int,
                         index: 0.into(),
                     },
                     ty::Type::Nil,
@@ -367,7 +367,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                             ptr_var.clone(),
                             Instruction::Alloca {
                                 // TODO: Adjust type
-                                ty: Type::I32,
+                                ty: ty::Type::Int,
                                 count: 4.into(),
                             },
                             ty::Type::Nil,
@@ -383,7 +383,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                     Instruction::StoreElement {
                         addr: ptr_var.clone().into(),
                         // TODO: Adjust type
-                        ty: Type::I32,
+                        ty: ty::Type::Int,
                         index: 0.into(),
                         value: spilled_var.clone().into(),
                     },

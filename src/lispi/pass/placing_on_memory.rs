@@ -27,7 +27,6 @@ use anyhow::Result;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lispi::{
-    ir,
     ir::{
         basic_block::Functions,
         instruction::{AnnotatedInstr, Instruction, Operand, Variable},
@@ -75,7 +74,7 @@ pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
                         result_var.clone(),
                         Instruction::Alloca {
                             // TODO: Set type
-                            ty: ir::instruction::Type::I32,
+                            ty: Type::Int,
                             count: 1.into(),
                         },
                         Type::None,
@@ -125,7 +124,7 @@ pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
                                 tmp_var.clone(),
                                 Instruction::LoadElement {
                                     addr: var.clone().into(),
-                                    ty: ir::instruction::Type::I32,
+                                    ty: Type::Int,
                                     index: 0.into(),
                                 },
                                 Type::None,

@@ -227,7 +227,7 @@ fn compile_apply_lambda(
 
 fn compile_array_constructor(
     count: Operand,
-    elem_type: Type,
+    elem_type: t::Type,
     ast_ty: t::Type,
     ctx: &mut Context,
 ) -> Result<Operand> {
@@ -237,15 +237,19 @@ fn compile_array_constructor(
 
     let count = match count {
         Operand::Immediate(Immediate::Integer(count)) => {
-            (Type::I32.size() + count as usize * elem_type.size()).into()
+            (t::Type::Int.size() + count as usize * elem_type.size()).into()
         }
         Operand::Immediate(_) | Operand::Variable(_) => {
             let count = add_instr(ctx, I::Mul(count, elem_type.size().into()), t::Type::None)
                 .result
                 .into();
-            add_instr(ctx, I::Add(count, Type::I32.size().into()), t::Type::None)
-                .result
-                .into()
+            add_instr(
+                ctx,
+                I::Add(count, t::Type::Int.size().into()),
+                t::Type::None,
+            )
+            .result
+            .into()
         }
     };
 
@@ -253,7 +257,7 @@ fn compile_array_constructor(
         add_instr(
             ctx,
             I::Alloca {
-                ty: Type::I32,
+                ty: t::Type::Int,
                 count,
             },
             ast_ty,
@@ -265,7 +269,7 @@ fn compile_array_constructor(
         ctx,
         I::StoreElement {
             addr: ary.clone(),
-            ty: Type::I32,
+            ty: t::Type::Int,
             index: 0.into(),
             value: len.into(),
         },
@@ -326,9 +330,9 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let t::Type::Array(elem_type) = ast_ty.clone() else {
                             panic!("The result type of array->new must be array");
                         };
-                        let elem_type = Type::from(*elem_type);
                         let count = args[0].result.clone().into();
-                        let ary = compile_array_constructor(count, elem_type, ast_ty.clone(), ctx)?;
+                        let ary =
+                            compile_array_constructor(count, *elem_type, ast_ty.clone(), ctx)?;
 
                         add_instr(ctx, I::Operand(ary), ast_ty);
                     }
@@ -336,16 +340,19 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let ary = args[0].result.clone().into();
                         let index = args[1].result.clone().into();
 
-                        let elem_type = Type::from(args[0].ty.element_type().unwrap());
+                        let elem_type = args[0].ty.element_type().unwrap();
 
                         let index =
                             add_instr(ctx, I::Mul(index, elem_type.size().into()), t::Type::None)
                                 .result
                                 .into();
-                        let index =
-                            add_instr(ctx, I::Add(index, Type::I32.size().into()), t::Type::None)
-                                .result
-                                .into();
+                        let index = add_instr(
+                            ctx,
+                            I::Add(index, t::Type::Int.size().into()),
+                            t::Type::None,
+                        )
+                        .result
+                        .into();
 
                         add_instr(
                             ctx,
@@ -362,16 +369,19 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let index = args[1].result.clone().into();
                         let value = args[2].result.clone().into();
 
-                        let elem_type = Type::from(args[0].ty.element_type().unwrap());
+                        let elem_type = args[0].ty.element_type().unwrap();
 
                         let index =
                             add_instr(ctx, I::Mul(index, elem_type.size().into()), t::Type::None)
                                 .result
                                 .into();
-                        let index =
-                            add_instr(ctx, I::Add(index, Type::I32.size().into()), t::Type::None)
-                                .result
-                                .into();
+                        let index = add_instr(
+                            ctx,
+                            I::Add(index, t::Type::Int.size().into()),
+                            t::Type::None,
+                        )
+                        .result
+                        .into();
 
                         add_instr(
                             ctx,
@@ -390,7 +400,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             ctx,
                             I::LoadElement {
                                 addr: ary,
-                                ty: Type::I32,
+                                ty: t::Type::Int,
                                 index: 0.into(),
                             },
                             ast_ty,
@@ -398,7 +408,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                     }
                     "array->data" => {
                         let ary = args[0].result.clone().into();
-                        add_instr(ctx, I::Add(ary, Type::I32.size().into()), ast_ty);
+                        add_instr(ctx, I::Add(ary, t::Type::Int.size().into()), ast_ty);
                     }
                     "not" => {
                         let value = args[0].result.clone();
@@ -411,7 +421,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             I::LoadElement {
                                 addr: ptr,
                                 // TODO: Set type
-                                ty: Type::I32,
+                                ty: t::Type::Int,
                                 index: 0.into(),
                             },
                             ast_ty,
@@ -425,7 +435,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             I::StoreElement {
                                 addr: ptr,
                                 // TODO: Set type
-                                ty: Type::I32,
+                                ty: t::Type::Int,
                                 index: 0.into(),
                                 value,
                             },
@@ -479,14 +489,14 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
     let elem_type = vs
         .first()
         .map(|elem| elem.ty.clone().into())
-        .unwrap_or(Type::I32);
+        .unwrap_or(t::Type::Int);
 
     let ary = Operand::Variable(
         add_instr(
             ctx,
             I::Alloca {
-                ty: Type::I32,
-                count: (Type::I32.size() + vs.len() * elem_type.size()).into(),
+                ty: t::Type::Int,
+                count: (t::Type::Int.size() + vs.len() * elem_type.size()).into(),
             },
             ast_ty.clone(),
         )
@@ -499,7 +509,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
         ctx,
         I::StoreElement {
             addr: ary.clone(),
-            ty: Type::I32,
+            ty: t::Type::Int,
             index: 0.into(),
             value: len.into(),
         },
@@ -513,7 +523,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
             I::StoreElement {
                 addr: ary.clone(),
                 ty: elem_type.clone(),
-                index: (Type::I32.size() + (idx * elem_type.size())).into(),
+                index: (t::Type::Int.size() + (idx * elem_type.size())).into(),
                 value,
             },
             t::Type::Nil,
@@ -1252,7 +1262,7 @@ pub fn compile(
 
         add_instr(
             &mut ctx,
-            Instruction::Add(0.into(), Type::I32.size().into()),
+            Instruction::Add(0.into(), t::Type::Int.size().into()),
             t::Type::None,
         );
 
@@ -1260,7 +1270,7 @@ pub fn compile(
             &mut ctx,
             Instruction::LoadElement {
                 addr: 0.into(),
-                ty: Type::I32,
+                ty: t::Type::Int,
                 index: 0.into(),
             },
             t::Type::Int,
@@ -1297,8 +1307,8 @@ pub fn compile(
                 add_instr(
                     &mut ctx,
                     Instruction::Alloca {
-                        ty: Type::I32,
-                        count: (def.fields.len() * Type::I32.size()).into(),
+                        ty: t::Type::Int,
+                        count: (def.fields.len() * t::Type::Int.size()).into(),
                     },
                     t::Type::None,
                 )
@@ -1314,8 +1324,8 @@ pub fn compile(
                     &mut ctx,
                     Instruction::StoreElement {
                         addr: ptr.clone(),
-                        ty: Type::I32,
-                        index: (idx * Type::I32.size()).into(),
+                        ty: t::Type::Int,
+                        index: (idx * t::Type::Int.size()).into(),
                         value,
                     },
                     t::Type::None,
@@ -1366,8 +1376,8 @@ pub fn compile(
                 &mut ctx,
                 Instruction::LoadElement {
                     addr: obj,
-                    ty: Type::I32,
-                    index: (idx * Type::I32.size()).into(),
+                    ty: t::Type::Int,
+                    index: (idx * t::Type::Int.size()).into(),
                 },
                 t::Type::None,
             );
