@@ -9,7 +9,6 @@ use super::{
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
-    Numeric,
     Int,
     Float,
     Boolean,
@@ -99,8 +98,7 @@ impl Type {
 
     fn has_free_var(&self, tv: &TypeVariable) -> bool {
         match self {
-            Type::Numeric
-            | Type::Int
+            Type::Int
             | Type::Float
             | Type::Boolean
             | Type::Char
@@ -126,8 +124,7 @@ impl Type {
 
     fn replace(self, assign: &TypeAssignment) -> Self {
         match self {
-            Type::Numeric
-            | Type::Int
+            Type::Int
             | Type::Float
             | Type::Boolean
             | Type::Char
@@ -202,7 +199,6 @@ impl Type {
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Type::Numeric => write!(f, "numeric"),
             Type::Int => write!(f, "int"),
             Type::Float => write!(f, "float"),
             Type::Boolean => write!(f, "boolean"),
@@ -1006,11 +1002,6 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
             (t, Type::Variable(x)) if !t.has_free_var(x) => unify_type_var(x, t, &c.left, rest),
 
             (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
-
-            (Type::Numeric, Type::Int)
-            | (Type::Int, Type::Numeric)
-            | (Type::Numeric, Type::Float)
-            | (Type::Float, Type::Numeric) => unify(rest.to_vec()),
 
             (Type::List(e0), Type::List(e1))
             | (Type::Array(e0), Type::Array(e1))

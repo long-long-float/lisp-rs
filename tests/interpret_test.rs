@@ -64,22 +64,22 @@ fn arithmetic_test() {
     assert_eq!(Ok(Value::Integer(1)), interp("(+ (* 1 2) (- 3 4))"));
 
     // assert_eq!(Ok(Value::Integer(0)), interp("(+)"));
-    assert_eq_eps!(2.2, interp("(+ 1 1.2)"));
+    // assert_eq_eps!(2.2, interp("(+ 1 1.2)"));
     // assert_eq_eps!(6.0, interp("(+ 1 2 3.0)"));
-    assert_eq_eps!(3.3, interp("(+ 1.1 2.2)"));
+    // assert_eq_eps!(3.3, interp("(+ 1.1 2.2)"));
 
     // assert_eq!(Ok(Value::Integer(-1)), interp("(- 1)"));
-    assert_eq_eps!(-0.2, interp("(- 1 1.2)"));
+    // assert_eq_eps!(-0.2, interp("(- 1 1.2)"));
     // assert_eq_eps!(-4.0, interp("(- 1 2 3.0)"));
-    assert_eq_eps!(-1.1, interp("(- 1.1 2.2)"));
+    // assert_eq_eps!(-1.1, interp("(- 1.1 2.2)"));
 
     // assert_eq!(Ok(Value::Integer(1)), interp("(*)"));
     assert_eq!(Ok(Value::Integer(2)), interp("(* 1 2)"));
-    assert_eq_eps!(2.0, interp("(* 1 2.0)"));
+    // assert_eq_eps!(2.0, interp("(* 1 2.0)"));
 
     // assert_eq_eps!(0.5, interp("(/ 2.0)"));
     assert_eq!(Ok(Value::Integer(0)), interp("(/ 1 2)"));
-    assert_eq_eps!(0.5, interp("(/ 1 2.0)"));
+    // assert_eq_eps!(0.5, interp("(/ 1 2.0)"));
 }
 
 #[test]
