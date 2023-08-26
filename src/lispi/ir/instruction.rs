@@ -502,34 +502,17 @@ impl Display for AnnotatedInstrDisplay<'_> {
             tags,
         } = &self.instr;
 
-        match inst {
-            Branch { .. } | Jump(_, _) | Ret(_) | Nop | Store(_, _) | StoreElement { .. } => {
-                write!(f, "  {}", inst)?;
-            }
+        let has_result = matches!(
+            inst,
+            Branch { .. } | Jump(_, _) | Ret(_) | Nop | Store(_, _) | StoreElement { .. }
+        );
 
-            Alloca { .. }
-            | Add(_, _)
-            | Sub(_, _)
-            | Mul(_, _)
-            | Div(_, _)
-            | Mod(_, _)
-            | And(_, _)
-            | Or(_, _)
-            | Not(_)
-            | Shift(_, _, _)
-            | LoadElement { .. }
-            | Cmp(_, _, _)
-            | Call { .. }
-            | SysCall { .. }
-            | Operand(_)
-            | Reference(_)
-            | Phi(_) => {
-                write!(f, "  {}:{} = {}", result, ty, inst)?;
-            }
-
-            Label(_) => {
-                write!(f, "{}:", inst)?;
-            }
+        if let Label(_) = inst {
+            write!(f, "{}:", inst)?;
+        } else if has_result || ty == &Type::Void {
+            write!(f, "  {}", inst)?;
+        } else {
+            write!(f, "  {}:{} = {}", result, ty, inst)?;
         }
 
         if !tags.is_empty() && self.colored {

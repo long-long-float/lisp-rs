@@ -233,14 +233,14 @@ fn compile_array_constructor(
 ) -> Result<Operand> {
     use Instruction as I;
 
-    let len = add_instr(ctx, I::Operand(count.clone()), t::Type::Void).result;
+    let len = add_instr(ctx, I::Operand(count.clone()), t::Type::Int).result;
 
     let count = match count {
         Operand::Immediate(Immediate::Integer(count)) => {
             (t::Type::Int.size() + count as usize * elem_type.size()).into()
         }
         Operand::Immediate(_) | Operand::Variable(_) => {
-            let count = add_instr(ctx, I::Mul(count, elem_type.size().into()), t::Type::None)
+            let count = add_instr(ctx, I::Mul(count, elem_type.size().into()), t::Type::Int)
                 .result
                 .into();
             add_instr(
@@ -503,7 +503,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
         .result,
     );
 
-    let len = add_instr(ctx, I::Operand((vs.len() as i32).into()), t::Type::Void).result;
+    let len = add_instr(ctx, I::Operand((vs.len() as i32).into()), t::Type::Int).result;
 
     add_instr(
         ctx,
