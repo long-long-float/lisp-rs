@@ -853,7 +853,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("even?"),
-        Type::function(vec![Type::int()], Type::Boolean),
+        Type::function(vec![Type::Int], Type::Boolean),
         |args| match_call_args!(args, Value::Integer(v), { Ok(Value::from(v % 2 == 0)) }),
     );
     insert_function(
@@ -910,7 +910,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("<<"),
-        Type::function(vec![Type::int(), Type::int()], Type::int()),
+        Type::function(vec![Type::Int, Type::Int], Type::Int),
         |args| {
             match_call_args!(args, Value::Integer(left), Value::Integer(right), {
                 Ok(Value::Integer(left << right))
@@ -921,7 +921,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s(">>"),
-        Type::function(vec![Type::int(), Type::int()], Type::int()),
+        Type::function(vec![Type::Int, Type::Int], Type::Int),
         |args| {
             match_call_args!(args, Value::Integer(left), Value::Integer(right), {
                 Ok(Value::Integer(left >> right))
@@ -933,7 +933,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("mod"),
-        Type::function(vec![Type::int(), Type::int()], Type::int()),
+        Type::function(vec![Type::Int, Type::Int], Type::Int),
         |args| {
             match_call_args!(args, Value::Integer(num), Value::Integer(divisor), {
                 Ok(Value::Integer(num % divisor))

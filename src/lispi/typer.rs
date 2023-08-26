@@ -45,14 +45,6 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn int() -> Type {
-        Type::Int
-    }
-
-    pub fn symbol() -> Type {
-        Type::Symbol
-    }
-
     pub fn list() -> Type {
         Type::List(Box::new(Type::Any))
     }
@@ -563,7 +555,7 @@ fn collect_constraints_from_ast(
                 ..
             } = *inner.clone()
             {
-                Ok((ast.with_new_type(Type::symbol()), Vec::new()))
+                Ok((ast.with_new_type(Type::Symbol), Vec::new()))
             } else {
                 Err(
                     Error::Type("Quote is now supported for only symbols.".to_string())
