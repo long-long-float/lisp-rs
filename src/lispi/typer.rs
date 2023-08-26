@@ -606,13 +606,19 @@ fn collect_constraints_from_ast(
             });
             Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
         }
-        Ast::DefineFunction(DefineFunction { id, lambda }) => {
+        Ast::DefineFunction(DefineFunction {
+            id,
+            lambda,
+            // Don't use lambda_type because it must be Type::None at first.
+            lambda_type: _,
+        }) => {
             let (lambda, lambda_type, c) = collect_constraints_from_lambda(lambda.clone(), ctx)?;
-            ctx.env.insert_var(id.clone(), lambda_type);
+            ctx.env.insert_var(id.clone(), lambda_type.clone());
 
             let def = Ast::DefineFunction(DefineFunction {
                 id: id.clone(),
                 lambda,
+                lambda_type,
             });
             Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
         }
@@ -1119,6 +1125,7 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
                     body: replace_asts(def.lambda.body, assign),
                     ..def.lambda
                 },
+                lambda_type: def.lambda_type.replace(assign),
                 ..def
             }),
             new_ty,

@@ -678,13 +678,17 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
 
             ctx.env.insert_var(id, inst.result);
         }
-        Ast::DefineFunction(DefineFunction { id, lambda }) => {
+        Ast::DefineFunction(DefineFunction {
+            id,
+            lambda,
+            lambda_type,
+        }) => {
             let Lambda {
                 args,
                 arg_types: _,
                 body,
             } = lambda;
-            compile_lambda(id.clone(), args, body, false, ast_ty.clone(), ctx)?;
+            compile_lambda(id.clone(), args, body, false, lambda_type, ctx)?;
 
             let inst = add_instr(
                 ctx,

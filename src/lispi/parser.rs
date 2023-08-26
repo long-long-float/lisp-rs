@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 
-use crate::{ast_pat, match_special_args, match_special_args_with_rest};
+use crate::{ast_pat, lispi::ty::Type, match_special_args, match_special_args_with_rest};
 
 use super::{
     ast::*, error::*, evaluator as e, tokenizer::*, LocationRange, SymbolValue, TokenLocation,
@@ -165,6 +165,7 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
                                 arg_types,
                                 body: body.to_vec(),
                             },
+                            lambda_type: Type::None,
                         }))
                     }
                 )

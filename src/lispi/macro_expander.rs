@@ -34,6 +34,7 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
                     arg_types,
                     body,
                 },
+            lambda_type,
         }) => {
             let body = body
                 .into_iter()
@@ -46,6 +47,7 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
                     arg_types,
                     body,
                 },
+                lambda_type,
             })
         }
         Ast::Assign(mut assign) => {

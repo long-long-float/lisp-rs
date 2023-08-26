@@ -138,6 +138,7 @@ pub struct Define {
 pub struct DefineFunction {
     pub id: SymbolValue,
     pub lambda: Lambda,
+    pub lambda_type: Type,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -308,12 +309,15 @@ impl AnnotatedAst {
                 let init = Box::new(func(*init, ctx)?);
                 Ast::Define(Define { id, init })
             }
-            Ast::DefineFunction(DefineFunction { id, lambda }) => {
-                Ast::DefineFunction(DefineFunction {
-                    id,
-                    lambda: traverse_lambda(lambda, ctx, func)?,
-                })
-            }
+            Ast::DefineFunction(DefineFunction {
+                id,
+                lambda,
+                lambda_type,
+            }) => Ast::DefineFunction(DefineFunction {
+                id,
+                lambda: traverse_lambda(lambda, ctx, func)?,
+                lambda_type,
+            }),
             Ast::Lambda(lambda) => Ast::Lambda(traverse_lambda(lambda, ctx, func)?),
             Ast::Assign(Assign {
                 var,
@@ -564,7 +568,11 @@ impl Display for AnnotatedAst {
             Ast::Define(Define { id, init }) => {
                 write!(f, "(define {} {})", id, *init)
             }
-            Ast::DefineFunction(DefineFunction { id, lambda }) => {
+            Ast::DefineFunction(DefineFunction {
+                id,
+                lambda,
+                lambda_type: _,
+            }) => {
                 write!(f, "(fn {} ", id)?;
                 write_lambda(f, lambda)?;
                 write!(f, ")")
