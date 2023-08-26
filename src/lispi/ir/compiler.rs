@@ -1343,11 +1343,17 @@ pub fn compile(
                 .iter()
                 .map(|field| (field.name.clone(), *field.ty.clone()))
                 .collect_vec();
+
+            let ctor_type = t::Type::function(
+                args.iter().map(|(_, t)| t.clone()).collect_vec(),
+                t::Type::Struct { name: name.clone() },
+            );
+
             let ctor = Function::new(
                 name.to_owned(),
                 args,
                 Vec::new(),
-                t::Type::None,
+                ctor_type,
                 false,
                 vec![bb],
             );
@@ -1365,7 +1371,7 @@ pub fn compile(
         }
 
         for (idx, field) in def.fields.iter().enumerate() {
-            let name = field.accessor_name(name);
+            let aname = field.accessor_name(name);
 
             let bb = ctx.new_bb(name.to_owned());
             ctx.add_bb(bb);
@@ -1391,24 +1397,27 @@ pub fn compile(
                 t::Type::None,
             );
 
-            let args = vec![(arg0_name, t::Type::None)];
-            let ctor = Function::new(
-                name.to_owned(),
+            let obj_type = t::Type::Struct { name: name.clone() };
+            let accessor_type = t::Type::function(vec![obj_type.clone()], *field.ty.clone());
+
+            let args = vec![(arg0_name, obj_type)];
+            let accessor = Function::new(
+                aname.to_owned(),
                 args,
                 Vec::new(),
-                t::Type::None,
+                accessor_type,
                 false,
                 vec![bb],
             );
 
             ctx.basic_blocks.clear();
 
-            predefined_funcs.push(ctor);
+            predefined_funcs.push(accessor);
 
             ctx.func_labels.insert_var(
-                name.to_owned(),
+                aname.to_owned(),
                 Label {
-                    name: name.to_owned(),
+                    name: aname.to_owned(),
                 },
             );
         }
