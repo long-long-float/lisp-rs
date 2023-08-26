@@ -332,7 +332,7 @@ pub fn generate_code(
                 let i::AnnotatedInstr {
                     result,
                     inst,
-                    ty: _,
+                    ty,
                     tags,
                 } = ainst;
 
@@ -712,6 +712,14 @@ pub fn generate_code(
                         };
                     }
                     Call { fun, args } => {
+                        if !matches!(ty, Type::Int | Type::Char | Type::Void) {
+                            return Err(Error::CompileError(format!(
+                                "Functions can't return only {} now.",
+                                ty
+                            ))
+                            .into());
+                        }
+
                         let (mut save, mut restore) =
                             frame.generate_insts_for_call(args.len(), &result_reg);
 
@@ -748,7 +756,11 @@ pub fn generate_code(
                             _ => todo!(),
                         }
 
-                        insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                        if ty != Type::Void {
+                            insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                        } else {
+                            // Drop the void result
+                        }
 
                         insts.append(&mut restore);
                     }
