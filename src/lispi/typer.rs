@@ -15,7 +15,7 @@ pub enum Type {
     Char,
     String,
     Symbol,
-    Nil,
+    Void,
     None,
 
     ForAll {
@@ -95,7 +95,7 @@ impl Type {
             | Type::Boolean
             | Type::Char
             | Type::String
-            | Type::Nil
+            | Type::Void
             | Type::Any
             | Type::Scala(_)
             | Type::Symbol
@@ -121,7 +121,7 @@ impl Type {
             | Type::Boolean
             | Type::Char
             | Type::String
-            | Type::Nil
+            | Type::Void
             | Type::Any
             | Type::Scala(_)
             | Type::Symbol
@@ -197,7 +197,7 @@ impl std::fmt::Display for Type {
             Type::Char => write!(f, "char"),
             Type::String => write!(f, "string"),
             Type::Symbol => write!(f, "symbol"),
-            Type::Nil => write!(f, "nil"),
+            Type::Void => write!(f, "void"),
             Type::Scala(name) => write!(f, "{}", name),
             Type::List(e) => write!(f, "list<{}>", e),
             Type::Array(e) => write!(f, "array<{}>", e),
@@ -398,7 +398,7 @@ fn resolve_for_all(ty: Type, ctx: &mut Context) -> Type {
 fn get_result_type_with_loc(body: &[AnnotatedAst]) -> TypeWithLocation {
     body.last()
         .map(|a| a.ty.clone().with_location(a.location, false))
-        .unwrap_or(Type::Nil.with_null_location())
+        .unwrap_or(Type::Void.with_null_location())
 }
 
 fn collect_constraints_from_collection_literal<TC, AC>(
@@ -496,7 +496,7 @@ fn collect_constraints_from_ast(
         let result_type = if let Some(last) = body.last() {
             last.ty.clone()
         } else {
-            Type::Nil
+            Type::Void
         };
 
         let fun = Lambda {
@@ -575,7 +575,7 @@ fn collect_constraints_from_ast(
                 Vec::new(),
             ))
         }
-        Ast::Nil => Ok((ast.with_new_type(Type::Nil), Vec::new())),
+        Ast::Nil => Ok((ast.with_new_type(Type::Void), Vec::new())),
         Ast::Symbol(id) | Ast::SymbolWithType(id, _) => {
             let ty = find_var(id, &ast.location, ctx)?;
             Ok((ast.with_new_type(ty), Vec::new()))
@@ -596,7 +596,7 @@ fn collect_constraints_from_ast(
                 id: id.clone(),
                 init: Box::new(init),
             });
-            Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
+            Ok((ast.with_new_ast_and_type(def, Type::Void), c))
         }
         Ast::DefineFunction(DefineFunction {
             id,
@@ -612,7 +612,7 @@ fn collect_constraints_from_ast(
                 lambda,
                 lambda_type,
             });
-            Ok((ast.with_new_ast_and_type(def, Type::Nil), c))
+            Ok((ast.with_new_ast_and_type(def, Type::Void), c))
         }
         Ast::DefineStruct(DefineStruct { name, fields }) => {
             let fields = fields
@@ -682,7 +682,7 @@ fn collect_constraints_from_ast(
             let result_type = if let Some(last) = body.last() {
                 last.ty.clone()
             } else {
-                Type::Nil
+                Type::Void
             };
 
             let fun = Ast::Lambda(Lambda {
@@ -716,7 +716,7 @@ fn collect_constraints_from_ast(
                 value: Box::new(value),
             });
 
-            Ok((ast.with_new_ast_and_type(assign, Type::Nil), vct))
+            Ok((ast.with_new_ast_and_type(assign, Type::Void), vct))
         }
         Ast::IfExpr(IfExpr {
             cond,
@@ -760,7 +760,7 @@ fn collect_constraints_from_ast(
                         then_ast: Box::new(then_ast),
                         else_ast: None,
                     },
-                    Type::Nil,
+                    Type::Void,
                 )
             };
 
@@ -818,7 +818,7 @@ fn collect_constraints_from_ast(
 
                 fst_body_ty.ty
             } else {
-                Type::Nil
+                Type::Void
             };
 
             Ok((
@@ -862,7 +862,7 @@ fn collect_constraints_from_ast(
             let result_ty = body
                 .last()
                 .map(|a| a.ty.clone().with_location(a.location, false))
-                .unwrap_or(Type::Nil.with_location(ast.location, false));
+                .unwrap_or(Type::Void.with_location(ast.location, false));
 
             if proc_result != Type::None {
                 ct.push(TypeEquality::new(
@@ -886,7 +886,7 @@ fn collect_constraints_from_ast(
         }
         Ast::Begin(Begin { body }) => {
             let (body, bct) = collect_constraints_from_asts(body.clone(), ctx)?;
-            let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Nil);
+            let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Void);
 
             Ok((
                 ast.with_new_ast_and_type(Ast::Begin(Begin { body }), result_ty),
@@ -903,7 +903,7 @@ fn collect_constraints_from_ast(
 
             ctx.env.pop_local();
 
-            let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Nil);
+            let result_ty = body.last().map(|a| a.ty.clone()).unwrap_or(Type::Void);
 
             let mut ct = ict;
             ct.append(&mut bct);

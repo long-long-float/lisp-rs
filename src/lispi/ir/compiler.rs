@@ -233,7 +233,7 @@ fn compile_array_constructor(
 ) -> Result<Operand> {
     use Instruction as I;
 
-    let len = add_instr(ctx, I::Operand(count.clone()), t::Type::Nil).result;
+    let len = add_instr(ctx, I::Operand(count.clone()), t::Type::Void).result;
 
     let count = match count {
         Operand::Immediate(Immediate::Integer(count)) => {
@@ -273,7 +273,7 @@ fn compile_array_constructor(
             index: 0.into(),
             value: len.into(),
         },
-        t::Type::Nil,
+        t::Type::Void,
     );
 
     Ok(ary)
@@ -503,7 +503,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
         .result,
     );
 
-    let len = add_instr(ctx, I::Operand((vs.len() as i32).into()), t::Type::Nil).result;
+    let len = add_instr(ctx, I::Operand((vs.len() as i32).into()), t::Type::Void).result;
 
     add_instr(
         ctx,
@@ -513,7 +513,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
             index: 0.into(),
             value: len.into(),
         },
-        t::Type::Nil,
+        t::Type::Void,
     );
 
     for (idx, v) in vs.into_iter().enumerate() {
@@ -526,7 +526,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
                 index: (t::Type::Int.size() + (idx * elem_type.size())).into(),
                 value,
             },
-            t::Type::Nil,
+            t::Type::Void,
         );
     }
 
@@ -1286,7 +1286,7 @@ pub fn compile(
                 number: 64.into(),
                 args: vec![1.into()],
             },
-            t::Type::Nil,
+            t::Type::Void,
         );
 
         add_instr(&mut ctx, Instruction::Ret(0.into()), t::Type::None);

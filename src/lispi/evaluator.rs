@@ -1064,7 +1064,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         Type::for_all(|tv| {
             Type::function(
                 vec![Type::Array(Box::new(tv.clone())), Type::Int, tv],
-                Type::Nil,
+                Type::Void,
             )
         }),
         |args| {
@@ -1099,7 +1099,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         ty_env,
         s("ref-set"),
         Type::for_all(|tv| {
-            Type::function(vec![Type::Reference(Box::new(tv.clone())), tv], Type::Nil)
+            Type::function(vec![Type::Reference(Box::new(tv.clone())), tv], Type::Void)
         }),
         |_| {
             printlnuw("Cannot call array->len in interpreter mode.");
@@ -1121,7 +1121,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("io-write"),
-        Type::function(vec![Type::Int, Type::Int], Type::Nil),
+        Type::function(vec![Type::Int, Type::Int], Type::Void),
         |_| {
             printlnuw("Cannot call io-write in interpreter mode.");
             Ok(Value::nil())
@@ -1141,25 +1141,25 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("print"),
-        Type::for_all(|tv| Type::function(vec![tv], Type::Nil)),
+        Type::for_all(|tv| Type::function(vec![tv], Type::Void)),
     );
     insert_variable_as_symbol_and_type(
         env,
         ty_env,
         s("display"),
-        Type::for_all(|tv| Type::function(vec![tv], Type::Nil)),
+        Type::for_all(|tv| Type::function(vec![tv], Type::Void)),
     );
     insert_variable_as_symbol_and_type(
         env,
         ty_env,
         s("syscall0"),
-        Type::function(vec![Type::Int], Type::Nil),
+        Type::function(vec![Type::Int], Type::Void),
     );
     insert_variable_as_symbol_and_type(
         env,
         ty_env,
         s("syscall3"),
-        Type::function(vec![Type::Int, Type::Int, Type::Int, Type::Int], Type::Nil),
+        Type::function(vec![Type::Int, Type::Int, Type::Int, Type::Int], Type::Void),
     );
     insert_variable_as_symbol_and_type(
         env,

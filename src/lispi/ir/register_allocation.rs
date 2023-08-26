@@ -355,7 +355,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                         ty: ty::Type::Int,
                         index: 0.into(),
                     },
-                    ty::Type::Nil,
+                    ty::Type::Void,
                 ));
             }
             result.push(AnnotatedInstr::new(var.clone(), replaced_inst, ty).with_tags(tags));
@@ -370,7 +370,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                                 ty: ty::Type::Int,
                                 count: 4.into(),
                             },
-                            ty::Type::Nil,
+                            ty::Type::Void,
                         )
                         .with_tags(vec![Tag::DontAllocateRegister]),
                     );
@@ -387,7 +387,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
                         index: 0.into(),
                         value: spilled_var.clone().into(),
                     },
-                    ty::Type::Nil,
+                    ty::Type::Void,
                 ));
             }
         }
