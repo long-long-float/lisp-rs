@@ -715,7 +715,10 @@ pub fn generate_code(
                         };
                     }
                     Call { fun, args } => {
-                        if !matches!(ty, Type::Int | Type::Char | Type::Void) {
+                        if !matches!(
+                            ty,
+                            Type::Int | Type::Char | Type::Void | Type::Struct { .. }
+                        ) {
                             return Err(Error::CompileError(format!(
                                 "Functions can't return only {} now.",
                                 ty
@@ -759,10 +762,40 @@ pub fn generate_code(
                             _ => todo!(),
                         }
 
-                        if ty != Type::Void {
-                            insts.push(Instruction::mv(result_reg, Register::a(0)).into());
-                        } else {
-                            // Drop the void result
+                        match ty {
+                            Type::Void => {
+                                // Drop the void result
+                            }
+                            Type::Struct { name } => {
+                                let Some(struct_def) = structs.iter().find(|s| s.name == name)
+                                else {
+                                    return Err(Error::CompileError(format!(
+                                        "Struct {} is not defined",
+                                        name
+                                    ))
+                                    .into());
+                                };
+
+                                let reg_size = XLEN as usize;
+                                let size = struct_def.size(reg_size);
+                                if size <= reg_size {
+                                    insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                                } else if size <= reg_size * 2 {
+                                    insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                                    // TODO: Copy result
+                                    // insts.push(Instruction::mv(result_reg, Register::a(1)).into());
+                                } else {
+                                    return Err(Error::CompileError(format!(
+                                        "To return struct whose size is larger than {} is not supported now.",
+                                        reg_size * 2
+                                    ))
+                                    .into());
+                                }
+                            }
+                            Type::Int | Type::Char => {
+                                insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                            }
+                            _ => todo!(),
                         }
 
                         insts.append(&mut restore);

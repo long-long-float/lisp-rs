@@ -324,6 +324,35 @@ pub struct StructDefinition {
     pub fields: Vec<TStructField>,
 }
 
+impl StructDefinition {
+    fn size_and_offsets(&self, align: usize) -> (usize, Vec<usize>) {
+        let mut cur = 0;
+        let offsets = self
+            .fields
+            .iter()
+            .map(|field| {
+                if cur % align != 0 {
+                    cur = (cur + (align - 1) / align) * align;
+                }
+                let offset = cur;
+                cur += field.ty.size();
+                offset
+            })
+            .collect_vec();
+        (cur, offsets)
+    }
+
+    /// Calculate the offsets for each fields
+    pub fn offsets(&self, align: usize) -> Vec<usize> {
+        self.size_and_offsets(align).1
+    }
+
+    /// Return the size in bytes.
+    pub fn size(&self, align: usize) -> usize {
+        self.size_and_offsets(align).0
+    }
+}
+
 pub type StructDefinitions = FxHashMap<String, StructDefinition>;
 
 struct Context {
@@ -772,7 +801,7 @@ fn collect_constraints_from_ast(
         Ast::As(expr, str_ty) => {
             let (expr, ct) = collect_constraints_from_ast(*expr.clone(), ctx)?;
             let Some(ty) = ctx.type_env.find_var(str_ty) else {
-                return Err(Error::UndefinedVariable(str_ty.to_owned(), "typing").into())
+                return Err(Error::UndefinedVariable(str_ty.to_owned(), "typing").into());
             };
             let str_ty = str_ty.to_owned();
             Ok((
