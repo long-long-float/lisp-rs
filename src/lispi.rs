@@ -19,7 +19,6 @@ pub mod unique_generator;
 
 pub mod cli_option;
 
-use itertools::Itertools;
 use object::elf::*;
 use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Sym, Writer};
 use object::write::StreamingBuffer;
@@ -39,6 +38,8 @@ use crate::lispi::{
 };
 
 use self::console::printlnuw;
+use self::ir::basic_block::IrProgram;
+use self::ir::IrContext;
 use self::{environment::Environment, evaluator::Value, parser::Program};
 
 pub type SymbolValue = String;
@@ -195,6 +196,14 @@ pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value,
     e::eval_program(&program, &mut env)
 }
 
+fn dump_program(title: &str, program: &IrProgram, ir_ctx: &IrContext) {
+    printlnuw(&format!("{}:", title).red());
+    for fun in &program.funcs {
+        fun.dump(&ir_ctx.bb_arena);
+    }
+    printlnuw("");
+}
+
 pub fn compile(
     program: Vec<String>,
     opt: &CliOption,
@@ -204,86 +213,55 @@ pub fn compile(
 
     let mut ir_ctx = ir::IrContext::default();
 
-    let funcs = ir::compiler::compile(program, &mut ir_ctx, struct_defs, opt)?;
+    let program = ir::compiler::compile(program, &mut ir_ctx, struct_defs, opt)?;
 
     if opt.dump {
-        printlnuw(&"Raw IR instructions:".red());
-        for fun in &funcs {
-            fun.dump(&ir_ctx.bb_arena);
-        }
-        printlnuw("");
+        dump_program("Raw IR instructions", &program, &ir_ctx);
     }
 
-    riscv::cmp_translator::translate(&funcs, &mut ir_ctx)?;
+    riscv::cmp_translator::translate(&program, &mut ir_ctx)?;
     if opt.dump {
-        printlnuw(&"Translate Cmp:".red());
-        for fun in &funcs {
-            fun.dump(&ir_ctx.bb_arena);
-        }
-        printlnuw("");
+        dump_program("Translate Cmp", &program, &ir_ctx);
     }
 
-    pass::placing_on_memory::optimize(&funcs, &mut ir_ctx)?;
+    pass::placing_on_memory::optimize(&program, &mut ir_ctx)?;
     if opt.dump {
-        printlnuw(&"Place on memory:".red());
-        for fun in &funcs {
-            fun.dump(&ir_ctx.bb_arena);
-        }
-        printlnuw("");
+        dump_program("Place on memory", &program, &ir_ctx);
     }
 
     if applied_opts.contains(&pass::Optimize::RemovingRedundantAssignments) {
-        pass::removing_redundant_assignments::optimize(&funcs, &mut ir_ctx)?;
+        pass::removing_redundant_assignments::optimize(&program, &mut ir_ctx)?;
         if opt.dump {
-            printlnuw(&"Remove redundant assignments:".red());
-            for fun in &funcs {
-                fun.dump(&ir_ctx.bb_arena);
-            }
-            printlnuw("");
+            dump_program("Remove redundant assignments", &program, &ir_ctx);
         }
     }
 
     if applied_opts.contains(&pass::Optimize::ConstantFolding) {
-        pass::constant_folding::optimize(&funcs, &mut ir_ctx)?;
+        pass::constant_folding::optimize(&program, &mut ir_ctx)?;
         if opt.dump {
-            printlnuw(&"Constant folding:".red());
-            for fun in &funcs {
-                fun.dump(&ir_ctx.bb_arena);
-            }
-            printlnuw("");
+            dump_program("Constant folding", &program, &ir_ctx);
         }
     }
 
     if applied_opts.contains(&pass::Optimize::ImmediateUnfolding) {
-        pass::immediate_unfolding::optimize(&funcs, &mut ir_ctx, true)?;
+        pass::immediate_unfolding::optimize(&program, &mut ir_ctx, true)?;
         if opt.dump {
-            printlnuw(&"Immediate unfolding:".red());
-            for fun in &funcs {
-                fun.dump(&ir_ctx.bb_arena);
-            }
-            printlnuw("");
+            dump_program("Immediate unfolding", &program, &ir_ctx);
         }
     }
 
-    let funcs = pass::removing_uncalled_functions::optimize(funcs, &mut ir_ctx);
+    let program = pass::removing_uncalled_functions::optimize(program, &mut ir_ctx);
     if opt.dump {
-        printlnuw(&"Remove uncalled functions:".red());
-        for fun in &funcs {
-            fun.dump(&ir_ctx.bb_arena);
-        }
+        dump_program("Remove uncalled functions", &program, &ir_ctx);
     }
 
-    ir::removing_phi_instructions::remove_phi_instructions(&funcs, &mut ir_ctx);
-
+    ir::removing_phi_instructions::remove_phi_instructions(&program, &mut ir_ctx);
     if opt.dump {
-        printlnuw(&"Remove phi nodes:".red());
-        for fun in &funcs {
-            fun.dump(&ir_ctx.bb_arena);
-        }
+        dump_program("Remove phi nodes", &program, &ir_ctx);
     }
 
     // Insert a nop instruction to empty BB
-    for func in &funcs {
+    for func in &program.funcs {
         for bb in &func.basic_blocks {
             let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
             if bb.insts.is_empty() {
@@ -299,15 +277,15 @@ pub fn compile(
     }
 
     if opt.dump {
-        ir::basic_block::dump_functions_as_dot(&mut ir_ctx.bb_arena, &funcs, "cfg.gv")?;
+        ir::basic_block::dump_functions_as_dot(&mut ir_ctx.bb_arena, &program.funcs, "cfg.gv")?;
     }
 
-    let func_with_reg_maps =
-        ir::register_allocation::create_interference_graph(funcs, &mut ir_ctx, opt)?;
+    let (program, reg_maps) =
+        ir::register_allocation::create_interference_graph(program, &mut ir_ctx, opt)?;
 
     if opt.dump {
         printlnuw(&"Register allocation:".red());
-        for (fun, reg_map) in &func_with_reg_maps {
+        for (fun, reg_map) in program.funcs.iter().zip(&reg_maps) {
             printlnuw(&format!("{}:", fun.name));
             for (var, id) in reg_map {
                 printlnuw(&format!("  %{} -> {}", var.name, id));
@@ -315,15 +293,12 @@ pub fn compile(
         }
         printlnuw("");
 
-        ir::basic_block::dump_functions(
-            &mut ir_ctx.bb_arena,
-            &func_with_reg_maps.iter().map(|(f, _)| f).collect_vec(),
-            "ir.txt",
-        )?;
+        ir::basic_block::dump_functions(&mut ir_ctx.bb_arena, &program.funcs, "ir.txt")?;
     }
 
     let codes = riscv::code_generator::generate_code(
-        func_with_reg_maps,
+        program,
+        reg_maps,
         &mut ir_ctx,
         opt,
         HashSet::from([riscv::Spec::Integer32, riscv::Spec::Multiplication]),

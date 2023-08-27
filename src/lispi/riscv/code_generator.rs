@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     bug,
     lispi::{
-        ir::{register_allocation::RegisterMap, tag::Tag},
+        ir::{basic_block::IrProgram, register_allocation::RegisterMap, tag::Tag},
         ty::Type,
     },
 };
@@ -18,7 +18,7 @@ use super::{
     super::{
         cli_option::CliOption,
         error::*,
-        ir::{basic_block as bb, instruction as i, register_allocation as ra, IrContext},
+        ir::{instruction as i, register_allocation as ra, IrContext},
     },
     Spec,
 };
@@ -245,7 +245,8 @@ fn replace_labels(inst: InstrWithIr, ctx: &Context) -> InstrWithIr {
 }
 
 pub fn generate_code(
-    funcs: Vec<(bb::Function, ra::RegisterMap)>,
+    program: IrProgram,
+    register_maps: Vec<ra::RegisterMap>,
     ir_ctx: &mut IrContext,
     opt: &CliOption,
     specs: HashSet<Spec>,
@@ -280,7 +281,9 @@ pub fn generate_code(
         Register::sp(),
     );
 
-    for (fun, register_map) in funcs {
+    let IrProgram { funcs, structs } = program;
+
+    for (fun, register_map) in funcs.into_iter().zip(register_maps) {
         let mut frame = StackFrame::new(&register_map);
 
         ctx.reset_on_fun();

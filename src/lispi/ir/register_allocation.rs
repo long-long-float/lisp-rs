@@ -11,7 +11,7 @@ use crate::{
         cli_option::CliOption,
         error::Error,
         ir::{
-            basic_block::{BasicBlock, Function, Functions},
+            basic_block::{BasicBlock, Function, IrProgram},
             instruction::{AnnotatedInstr, Instruction, Variable},
             IrContext,
         },
@@ -396,83 +396,87 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
     }
 }
 
+/// Order is the second vector of the result is the same as `InProgram.funcs`.
 pub fn create_interference_graph(
-    funcs: Functions,
+    program: IrProgram,
     ir_ctx: &mut IrContext,
     _opt: &CliOption,
-) -> Result<Vec<(Function, RegisterMap)>> {
+) -> Result<(IrProgram, Vec<RegisterMap>)> {
     // TODO: Take the number from outside
     let num_of_registers = 7;
 
-    funcs
-        .into_iter()
-        .map(|func| {
-            for _ in 0..3 {
-                let all_in_outs = calculate_lifetime(&func, ir_ctx);
+    let mut register_maps = Vec::new();
 
-                let mut inter_graph = build_inference_graph(&func, &all_in_outs, ir_ctx);
+    let program = program.map_fun(|func| {
+        for _ in 0..3 {
+            let all_in_outs = calculate_lifetime(&func, ir_ctx);
 
-                let vars = inter_graph.vars.clone();
+            let mut inter_graph = build_inference_graph(&func, &all_in_outs, ir_ctx);
 
-                // A vector of (IGID, connected IGIDs).
-                let mut removed_vars = Vec::new();
-                let mut spill_list = Vec::new();
+            let vars = inter_graph.vars.clone();
 
-                for (var, id) in &vars {
-                    let connected_var = inter_graph.get_connected_vars(var);
+            // A vector of (IGID, connected IGIDs).
+            let mut removed_vars = Vec::new();
+            let mut spill_list = Vec::new();
 
-                    let register_pressure = connected_var.len();
-                    if register_pressure < num_of_registers {
-                        removed_vars.push((id, connected_var));
-                    } else {
-                        spill_list.push(var);
-                    }
-                    inter_graph.remove(var);
-                }
+            for (var, id) in &vars {
+                let connected_var = inter_graph.get_connected_vars(var);
 
-                if spill_list.is_empty() {
-                    // A mapping for IGID and register ID.
-                    let mut allocation_map = FxHashMap::default();
-
-                    for (&var, others) in removed_vars.iter().rev() {
-                        let mut allocated = vec![false].repeat(num_of_registers);
-                        for other in others {
-                            if let Some(&reg_id) = allocation_map.get(other) {
-                                allocated[reg_id] = true;
-                            }
-                        }
-
-                        let reg_id = allocated
-                            .iter()
-                            .enumerate()
-                            .find(|(_, &alloc)| !alloc)
-                            .map(|(id, _)| id);
-
-                        if let Some(reg_id) = reg_id {
-                            allocation_map.insert(var, reg_id);
-                        } else {
-                            return Err(bug!("Register cannot be allocated!"));
-                        }
-                    }
-
-                    let mut result = FxHashMap::default();
-
-                    for (var, reg) in allocation_map {
-                        let (var, _) = vars.iter().find(|(_, &id)| id == var).unwrap();
-                        result.insert(var.to_owned(), reg);
-                    }
-
-                    return Ok((func, result));
+                let register_pressure = connected_var.len();
+                if register_pressure < num_of_registers {
+                    removed_vars.push((id, connected_var));
                 } else {
-                    for sv in spill_list {
-                        spill_variable(sv, &func, ir_ctx);
-                    }
+                    spill_list.push(var);
                 }
+                inter_graph.remove(var);
             }
 
-            Err(Error::CompileError("Cannot allocate registers".to_string()).into())
-        })
-        .collect::<Result<Vec<_>>>()
+            if spill_list.is_empty() {
+                // A mapping for IGID and register ID.
+                let mut allocation_map = FxHashMap::default();
+
+                for (&var, others) in removed_vars.iter().rev() {
+                    let mut allocated = vec![false].repeat(num_of_registers);
+                    for other in others {
+                        if let Some(&reg_id) = allocation_map.get(other) {
+                            allocated[reg_id] = true;
+                        }
+                    }
+
+                    let reg_id = allocated
+                        .iter()
+                        .enumerate()
+                        .find(|(_, &alloc)| !alloc)
+                        .map(|(id, _)| id);
+
+                    if let Some(reg_id) = reg_id {
+                        allocation_map.insert(var, reg_id);
+                    } else {
+                        return Err(bug!("Register cannot be allocated!"));
+                    }
+                }
+
+                let mut result = FxHashMap::default();
+
+                for (var, reg) in allocation_map {
+                    let (var, _) = vars.iter().find(|(_, &id)| id == var).unwrap();
+                    result.insert(var.to_owned(), reg);
+                }
+
+                register_maps.push(result);
+
+                return Ok(func);
+            } else {
+                for sv in spill_list {
+                    spill_variable(sv, &func, ir_ctx);
+                }
+            }
+        }
+
+        Err(Error::CompileError("Cannot allocate registers".to_string()).into())
+    })?;
+
+    Ok((program, register_maps))
 }
 
 #[cfg(test)]

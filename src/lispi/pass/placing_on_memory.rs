@@ -28,7 +28,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lispi::{
     ir::{
-        basic_block::Functions,
+        basic_block::IrProgram,
         instruction::{AnnotatedInstr, Instruction, Operand, Variable},
         IrContext,
     },
@@ -36,8 +36,8 @@ use crate::lispi::{
     unique_generator::UniqueGenerator,
 };
 
-pub fn optimize(funcs: &Functions, ctx: &mut IrContext) -> Result<()> {
-    for fun in funcs {
+pub fn optimize(program: &IrProgram, ctx: &mut IrContext) -> Result<()> {
+    for fun in &program.funcs {
         let mut vars_on_memory = FxHashSet::default();
         for inst in fun.walk_instructions(&ctx.bb_arena) {
             if let Instruction::Reference(op) = &inst.inst {

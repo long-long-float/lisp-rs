@@ -357,15 +357,15 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
     Ok(())
 }
 
-pub fn optimize(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
+pub fn optimize(program: &IrProgram, ir_ctx: &mut IrContext) -> Result<()> {
     let mut ctx = Context {
         env: FxHashMap::default(),
     };
-    for fun in funcs {
+    for fun in &program.funcs {
         fold_constants_insts(fun, &mut ctx, ir_ctx)?;
     }
 
-    for fun in funcs {
+    for fun in &program.funcs {
         remove_deadcode(fun, ir_ctx)?;
     }
 

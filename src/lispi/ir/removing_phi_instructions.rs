@@ -2,8 +2,8 @@ use rustc_hash::FxHashMap;
 
 use super::super::ir::{basic_block as bb, instruction as i, IrContext};
 
-pub fn remove_phi_instructions(funcs: &bb::Functions, ir_ctx: &mut IrContext) {
-    for fun in funcs {
+pub fn remove_phi_instructions(program: &bb::IrProgram, ir_ctx: &mut IrContext) {
+    for fun in &program.funcs {
         let bb::Function { basic_blocks, .. } = fun;
 
         let mut assign_map = FxHashMap::default();

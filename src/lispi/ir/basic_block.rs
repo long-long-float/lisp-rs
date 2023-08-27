@@ -6,7 +6,10 @@ use id_arena::{Arena, Id};
 use rustc_hash::FxHashSet;
 
 use super::instruction::{self as i, AnnotatedInstr};
-use crate::lispi::{ty::Type, SymbolValue};
+use crate::lispi::{
+    ty::{StructDefinition, Type},
+    SymbolValue,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct BasicBlock {
@@ -231,7 +234,23 @@ impl Display for FunctionDisplay<'_> {
     }
 }
 
-pub type Functions = Vec<Function>;
+pub struct IrProgram {
+    pub funcs: Vec<Function>,
+    pub structs: Vec<StructDefinition>,
+}
+
+impl IrProgram {
+    pub fn map_fun<F>(self, fun: F) -> Result<Self>
+    where
+        F: FnMut(Function) -> Result<Function>,
+    {
+        let IrProgram { funcs, structs } = self;
+        Ok(IrProgram {
+            funcs: funcs.into_iter().map(fun).collect::<Result<Vec<_>>>()?,
+            structs,
+        })
+    }
+}
 
 fn connect_bbs(
     arena: &mut Arena<BasicBlock>,
@@ -283,7 +302,7 @@ pub fn build_connections_between_bbs(arena: &mut Arena<BasicBlock>, funcs: &[Fun
     }
 }
 
-pub fn dump_functions<P>(arena: &mut Arena<BasicBlock>, funcs: &[&Function], path: P) -> Result<()>
+pub fn dump_functions<P>(arena: &mut Arena<BasicBlock>, funcs: &[Function], path: P) -> Result<()>
 where
     P: AsRef<Path>,
 {

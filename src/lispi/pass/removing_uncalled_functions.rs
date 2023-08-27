@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::lispi::ir::{
-    basic_block::Functions,
+    basic_block::IrProgram,
     instruction::{Immediate, Instruction, Operand},
     IrContext,
 };
@@ -29,11 +29,11 @@ fn is_called_from_main(
     is_called_internal(calling_relations, func_name, &"main".to_string())
 }
 
-pub fn optimize(funcs: Functions, ctx: &mut IrContext) -> Functions {
+pub fn optimize(program: IrProgram, ctx: &mut IrContext) -> IrProgram {
     // Map caller function to called functions
     let mut calling_relations: FxHashMap<String, Vec<String>> = FxHashMap::default();
 
-    for func in &funcs {
+    for func in &program.funcs {
         for inst in func.walk_instructions(&ctx.bb_arena) {
             if let Instruction::Call {
                 fun: Operand::Immediate(Immediate::Label(name)),
@@ -50,10 +50,15 @@ pub fn optimize(funcs: Functions, ctx: &mut IrContext) -> Functions {
         }
     }
 
-    funcs
-        .into_iter()
-        .filter(|func| 
-            // Don't remove lambdas conservatively
-            func.is_lambda || is_called_from_main(&calling_relations, &func.name))
-        .collect()
+    let IrProgram { funcs, structs } = program;
+    IrProgram {
+        funcs: funcs
+            .into_iter()
+            .filter(|func| {
+                // Don't remove lambdas conservatively
+                func.is_lambda || is_called_from_main(&calling_relations, &func.name)
+            })
+            .collect(),
+        structs,
+    }
 }

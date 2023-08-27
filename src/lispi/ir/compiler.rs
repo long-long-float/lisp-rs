@@ -12,7 +12,7 @@ use super::{
         unique_generator::UniqueGenerator,
     },
     basic_block as bb,
-    basic_block::{BasicBlock, Function, Functions},
+    basic_block::{BasicBlock, Function, IrProgram},
     tag::LoopPhiFunctionSite,
     IrContext,
 };
@@ -1113,14 +1113,13 @@ fn compile_main_function(
 }
 
 /// Insert phi nodes beginning of the loops
-fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions {
+fn insert_phi_nodes_for_loops(program: IrProgram, ctx: &mut Context) -> IrProgram {
     // Moving is necessary because ctx is used in the following closure.
     let loop_updates_map: FxHashMap<_, _> = ctx.loop_updates_map.drain().collect();
     let assigned_map: FxHashMap<_, _> = ctx.assigned_map.drain().collect();
 
-    funcs
-        .into_iter()
-        .map(
+    program
+        .map_fun(
             |Function {
                  name,
                  args,
@@ -1226,17 +1225,17 @@ fn insert_phi_nodes_for_loops(funcs: Functions, ctx: &mut Context) -> Functions 
                     bb.insts = result;
                 }
 
-                Function {
+                Ok(Function {
                     name,
                     args,
                     free_vars,
                     ty,
                     is_lambda,
                     basic_blocks,
-                }
+                })
             },
         )
-        .collect()
+        .unwrap()
 }
 
 pub fn compile(
@@ -1244,7 +1243,7 @@ pub fn compile(
     ir_ctx: &mut IrContext,
     struct_defs: t::StructDefinitions,
     _opt: &CliOption,
-) -> Result<Functions> {
+) -> Result<IrProgram> {
     let mut result = Vec::new();
 
     let main_bb = ir_ctx
@@ -1455,6 +1454,12 @@ pub fn compile(
     result.append(&mut predefined_funcs);
 
     bb::build_connections_between_bbs(ctx.arena, &result);
+
+    let structs = ctx.struct_defs.values().map(|v| v.clone()).collect_vec();
+    let result = IrProgram {
+        funcs: result,
+        structs,
+    };
 
     let result = insert_phi_nodes_for_loops(result, &mut ctx);
 

@@ -7,8 +7,8 @@ use crate::lispi::{
 
 use Instruction as I;
 
-pub fn translate(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
-    for fun in funcs {
+pub fn translate(program: &IrProgram, ir_ctx: &mut IrContext) -> Result<()> {
+    for fun in &program.funcs {
         for bb in &fun.basic_blocks {
             let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
 

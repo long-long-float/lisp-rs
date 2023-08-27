@@ -84,8 +84,8 @@ fn remove_duplicated_assignments(fun: &Function, ir_ctx: &mut IrContext) -> Resu
     Ok(())
 }
 
-pub fn optimize(funcs: &Functions, ir_ctx: &mut IrContext) -> Result<()> {
-    for fun in funcs {
+pub fn optimize(program: &IrProgram, ir_ctx: &mut IrContext) -> Result<()> {
+    for fun in &program.funcs {
         remove_duplicated_assignments(fun, ir_ctx)?;
     }
 

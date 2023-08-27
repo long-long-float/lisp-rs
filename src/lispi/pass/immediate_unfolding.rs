@@ -66,13 +66,13 @@ where
 }
 
 pub fn optimize(
-    funcs: &Functions,
+    program: &IrProgram,
     ir_ctx: &mut IrContext,
     unfolding_for_riscv: bool,
 ) -> Result<()> {
     let mut ctx = Context::default();
 
-    for fun in funcs {
+    for fun in &program.funcs {
         for bb in &fun.basic_blocks {
             let bb = ir_ctx.bb_arena.get_mut(*bb).unwrap();
 
