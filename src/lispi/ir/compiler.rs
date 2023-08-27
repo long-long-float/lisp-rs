@@ -60,13 +60,11 @@ struct Context<'a> {
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
 
-    struct_defs: t::StructDefinitions,
-
     basic_blocks: Vec<Id<BasicBlock>>,
 }
 
 impl<'a> Context<'a> {
-    fn new(arena: &'a mut Arena<BasicBlock>, struct_defs: t::StructDefinitions) -> Self {
+    fn new(arena: &'a mut Arena<BasicBlock>) -> Self {
         let mut preludes = e::Env::default();
         e::init_env(&mut preludes, &mut Environment::default());
 
@@ -85,7 +83,6 @@ impl<'a> Context<'a> {
             loop_label_map: FxHashMap::default(),
             loop_updates_map: FxHashMap::default(),
             assigned_map: FxHashMap::default(),
-            struct_defs,
         }
     }
 
@@ -1250,7 +1247,7 @@ pub fn compile(
         .bb_arena
         .alloc(BasicBlock::new("main".to_string(), None));
 
-    let mut ctx = Context::new(&mut ir_ctx.bb_arena, t::StructDefinitions::default());
+    let mut ctx = Context::new(&mut ir_ctx.bb_arena);
 
     let mut predefined_funcs = Vec::new();
 
@@ -1455,7 +1452,7 @@ pub fn compile(
 
     bb::build_connections_between_bbs(ctx.arena, &result);
 
-    let structs = ctx.struct_defs.values().map(|v| v.clone()).collect_vec();
+    let structs = struct_defs.values().map(|v| v.clone()).collect_vec();
     let result = IrProgram {
         funcs: result,
         structs,

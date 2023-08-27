@@ -776,7 +776,7 @@ pub fn generate_code(
                                     .into());
                                 };
 
-                                let reg_size = XLEN as usize;
+                                let reg_size = XLEN as usize / 8;
                                 let size = struct_def.size(reg_size);
                                 if size <= reg_size {
                                     insts.push(Instruction::mv(result_reg, Register::a(0)).into());

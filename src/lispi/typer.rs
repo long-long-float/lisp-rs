@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use anyhow::Result;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
@@ -350,6 +352,16 @@ impl StructDefinition {
     /// Return the size in bytes.
     pub fn size(&self, align: usize) -> usize {
         self.size_and_offsets(align).0
+    }
+}
+
+impl Display for StructDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "struct {} {{", self.name)?;
+        for field in &self.fields {
+            writeln!(f, "  {}: {}", field.name, field.ty)?;
+        }
+        write!(f, "}}")
     }
 }
 
