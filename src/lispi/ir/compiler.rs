@@ -1369,7 +1369,7 @@ pub fn compile(
         for (idx, field) in def.fields.iter().enumerate() {
             let aname = field.accessor_name(name);
 
-            let bb = ctx.new_bb(name.to_owned());
+            let bb = ctx.new_bb(aname.to_owned());
             ctx.add_bb(bb);
 
             let arg0_name = "obj".to_string();
