@@ -90,6 +90,13 @@ impl Type {
         }
     }
 
+    pub fn fun_result_type(&self) -> Option<&Type> {
+        match self {
+            Type::Function { args: _, result } => Some(&result),
+            _ => None,
+        }
+    }
+
     fn has_free_var(&self, tv: &TypeVariable) -> bool {
         match self {
             Type::Int

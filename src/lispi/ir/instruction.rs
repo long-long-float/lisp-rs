@@ -14,6 +14,10 @@ impl Type {
         match self {
             Int => 4,
             Char => 1,
+            Struct { .. } => {
+                // panic!("Cannot get struct size from its type.")
+                4 * 2
+            }
             _ => 4,
         }
     }

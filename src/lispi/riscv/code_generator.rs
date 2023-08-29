@@ -299,7 +299,7 @@ pub fn generate_code(
             for i::AnnotatedInstr {
                 result,
                 inst,
-                ty: _,
+                ty,
                 tags,
             } in bb.insts.clone()
             {
@@ -314,7 +314,7 @@ pub fn generate_code(
                         .any(|t| t.is_match_with(&Tag::DontAllocateRegister));
 
                     if has_dont_alloc_tag {
-                        frame.allocate_local_var(&result);
+                        frame.allocate_local_var(&result, ty.size());
                     }
                 }
             }
@@ -385,7 +385,28 @@ pub fn generate_code(
                         })));
                     }
                     Ret(op) => {
-                        load_operand_to(&mut ctx, &mut insts, &register_map, op, Register::a(0));
+                        let result_size = fun.ty.fun_result_type().map(|ty| ty.size());
+                        println!("{:?} {:?}", fun.ty.fun_result_type(), result_size);
+                        if result_size.map_or(false, |size| size > (XLEN / 8) as usize) {
+                            let reg =
+                                get_register_from_operand(&mut ctx, &register_map, op).unwrap();
+
+                            // TODO: Support size > XLEN * 2
+                            insts.push(
+                                Instruction::lw(Register::a(0), reg, Immediate::new(0)).into(),
+                            );
+                            insts.push(
+                                Instruction::lw(Register::a(1), reg, Immediate::new(4)).into(),
+                            );
+                        } else {
+                            load_operand_to(
+                                &mut ctx,
+                                &mut insts,
+                                &register_map,
+                                op,
+                                Register::a(0),
+                            );
+                        }
 
                         if fun.name == "main" {
                             // syscall EXIT on rv32emu
@@ -593,7 +614,7 @@ pub fn generate_code(
                     }
                     LoadElement { addr, ty, index } => {
                         let local_idx = if let i::Operand::Variable(addr) = &addr {
-                            frame.get_local_var(addr)
+                            frame.get_local_var(addr).map(|(idx, _)| idx)
                         } else {
                             None
                         };
@@ -645,7 +666,7 @@ pub fn generate_code(
                         value,
                     } => {
                         let local_idx = if let i::Operand::Variable(addr) = &addr {
-                            frame.get_local_var(addr)
+                            frame.get_local_var(addr).map(|(idx, _)| idx)
                         } else {
                             None
                         };
@@ -720,7 +741,7 @@ pub fn generate_code(
                             Type::Int | Type::Char | Type::Void | Type::Struct { .. }
                         ) {
                             return Err(Error::CompileError(format!(
-                                "Functions can't return only {} now.",
+                                "Functions can't return {} now.",
                                 ty
                             ))
                             .into());
@@ -781,9 +802,31 @@ pub fn generate_code(
                                 if size <= reg_size {
                                     insts.push(Instruction::mv(result_reg, Register::a(0)).into());
                                 } else if size <= reg_size * 2 {
-                                    insts.push(Instruction::mv(result_reg, Register::a(0)).into());
-                                    // TODO: Copy result
-                                    // insts.push(Instruction::mv(result_reg, Register::a(1)).into());
+                                    let local_idx = frame.allocate_local_var(&result, size);
+                                    insts.push(
+                                        Instruction::addi(
+                                            result_reg,
+                                            Register::fp(),
+                                            local_idx as i32,
+                                        )
+                                        .into(),
+                                    );
+                                    insts.push(
+                                        Instruction::sw(
+                                            Register::a(0),
+                                            result_reg,
+                                            Immediate::new(0),
+                                        )
+                                        .into(),
+                                    );
+                                    insts.push(
+                                        Instruction::sw(
+                                            Register::a(1),
+                                            result_reg,
+                                            Immediate::new(4),
+                                        )
+                                        .into(),
+                                    );
                                 } else {
                                     return Err(Error::CompileError(format!(
                                         "To return struct whose size is larger than {} is not supported now.",

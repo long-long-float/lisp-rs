@@ -34,7 +34,7 @@ pub struct StackFrame<'a> {
 
     /// Size of the region for local variable in bytes
     local_var_size: usize,
-    local_var_map: FxHashMap<Variable, usize>,
+    local_var_map: FxHashMap<Variable, (usize, usize)>,
 }
 
 impl<'a> StackFrame<'a> {
@@ -49,26 +49,31 @@ impl<'a> StackFrame<'a> {
                 Register::s(1),
             ],
             num_of_used_a_register: 10,
-            local_var_size: 16,
+            local_var_size: 16 * 4,
             local_var_map: FxHashMap::default(),
         }
     }
 
     /// TODO: Manage local variable statically
-    pub fn allocate_local_var(&mut self, var: &Variable) -> usize {
-        assert!(self.local_var_map.len() < self.local_var_size * 4);
+    pub fn allocate_local_var(&mut self, var: &Variable, size: usize) -> usize {
+        assert!(self.get_local_vars_size() < self.local_var_size);
 
-        let idx = (self.callee_saved_registers.len()
-            + self.register_map.values().unique().count()
-            + self.num_of_used_a_register
-            + self.local_var_map.len())
-            * 4;
-        self.local_var_map.insert(var.clone(), idx);
+        let idx = 4
+            * (self.callee_saved_registers.len()
+                + self.register_map.values().unique().count()
+                + self.num_of_used_a_register)
+            + self.get_local_vars_size();
+        self.local_var_map.insert(var.clone(), (idx, size));
         idx
     }
 
-    pub fn get_local_var(&self, var: &Variable) -> Option<usize> {
+    /// Returns the address and size of var.
+    pub fn get_local_var(&self, var: &Variable) -> Option<(usize, usize)> {
         self.local_var_map.get(var).copied()
+    }
+
+    pub fn get_local_vars_size(&self) -> usize {
+        self.local_var_map.values().map(|(_, size)| size).sum()
     }
 
     pub fn generate_fun_header(&self) -> Vec<InstrWithIr> {
