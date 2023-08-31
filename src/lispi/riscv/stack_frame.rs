@@ -118,7 +118,6 @@ impl<'a> StackFrame<'a> {
         args_count: usize,
         result_reg: Option<&Register>,
     ) -> (Vec<InstrWithIr>, Vec<InstrWithIr>) {
-        println!("{:#?}", self.register_map);
         let used_regs = self
             .register_map
             .values()

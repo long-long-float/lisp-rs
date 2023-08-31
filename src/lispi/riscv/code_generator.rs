@@ -800,7 +800,11 @@ pub fn generate_code(
                     Call { fun, args } => {
                         if !matches!(
                             ty,
-                            Type::Int | Type::Char | Type::Void | Type::Struct { .. }
+                            Type::Int
+                                | Type::Char
+                                | Type::Boolean
+                                | Type::Void
+                                | Type::Struct { .. }
                         ) {
                             return Err(Error::CompileError(format!(
                                 "Functions can't return {} now.",
@@ -916,7 +920,7 @@ pub fn generate_code(
                                     // Received the result through result_reg
                                 }
                             }
-                            Type::Int | Type::Char => {
+                            Type::Int | Type::Char | Type::Boolean => {
                                 insts.push(Instruction::mv(result_reg, Register::a(0)).into());
                             }
                             _ => todo!(),
