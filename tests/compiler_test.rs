@@ -832,6 +832,31 @@ sum
 
     #[test]
     #[named]
+    fn complex_program_println_int() {
+        let output = compile(
+            function_name!(),
+            r#"
+(include "library/prelude.scm")
+
+(fn println-int (value)
+    (define digit 1)
+    (for (i 1) (< 0 (/ value i)) (* i 10)
+        (set! digit i))
+    (set! digit (/ digit 10))
+    (for (d digit) (< 0 d) (/ d 10) (begin
+        (print-char (int->char (/ value d)))
+        (set! value (% value d))
+        ))
+    (println ""))
+(println-int 1995)
+"#,
+        )
+        .run_raw_output();
+        assert_eq!("1995\n", output);
+    }
+
+    #[test]
+    #[named]
     fn complex_program_for_2times() {
         let output = compile(
             function_name!(),
