@@ -255,6 +255,17 @@ fn get_type_size(ty: &Type, structs: &Vec<StructDefinition>, align: usize) -> Re
     }
 }
 
+fn get_struct_def<'a>(
+    ty: &Type,
+    structs: &'a Vec<StructDefinition>,
+) -> Option<&'a StructDefinition> {
+    if let Type::Struct { name } = ty {
+        structs.iter().find(|s| &s.name == name)
+    } else {
+        None
+    }
+}
+
 pub fn generate_code(
     program: IrProgram,
     register_maps: Vec<ra::RegisterMap>,
@@ -423,8 +434,16 @@ pub fn generate_code(
                                 );
                             } else {
                                 // result_size > reg_size * 2
-                                for i in 0..(result_size / reg_size) {
-                                    let offset = i as i32 * 4;
+                                let offsets = if let Some(struct_def @ StructDefinition { .. }) =
+                                    get_struct_def(&fun.ty.fun_result_type().unwrap(), &structs)
+                                {
+                                    struct_def.offsets(reg_size)
+                                } else {
+                                    (0..(result_size / reg_size)).map(|i| i * 4).collect_vec()
+                                };
+
+                                for offset in offsets {
+                                    let offset = offset as i32;
                                     // We should be able to use register s2 at Ret instruction.
                                     let tmp_reg = Register::s(2);
                                     insts.push(

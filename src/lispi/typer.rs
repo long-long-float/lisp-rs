@@ -362,6 +362,36 @@ impl StructDefinition {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn struct_definition_size_and_offsets() {
+        let struct_def = StructDefinition {
+            name: "Struct".to_string(),
+            fields: vec![
+                TStructField {
+                    name: "f1".to_string(),
+                    ty: Box::new(Type::Char),
+                },
+                TStructField {
+                    name: "f2".to_string(),
+                    ty: Box::new(Type::Int),
+                },
+                TStructField {
+                    name: "f3".to_string(),
+                    ty: Box::new(Type::Char),
+                },
+            ],
+        };
+
+        let (size, offsets) = struct_def.size_and_offsets(4);
+        assert_eq!(4 + 4 + 1, size);
+        assert_eq!(vec![0, 4, 8], offsets);
+    }
+}
+
 impl Display for StructDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "struct {} {{", self.name)?;
