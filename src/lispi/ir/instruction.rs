@@ -15,8 +15,7 @@ impl Type {
             Int => 4,
             Char => 1,
             Struct { .. } => {
-                // panic!("Cannot get struct size from its type.")
-                4 * 2
+                panic!("Cannot get struct size from its type.")
             }
             _ => 4,
         }

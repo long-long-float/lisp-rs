@@ -10,7 +10,7 @@ use crate::{
     bug,
     lispi::{
         ir::{basic_block::IrProgram, register_allocation::RegisterMap, tag::Tag},
-        ty::Type,
+        ty::{StructDefinition, Type},
     },
 };
 
@@ -244,6 +244,17 @@ fn replace_labels(inst: InstrWithIr, ctx: &Context) -> InstrWithIr {
     InstrWithIr(replaced, ir)
 }
 
+fn get_type_size(ty: &Type, structs: &Vec<StructDefinition>, align: usize) -> Result<usize> {
+    if let Type::Struct { name } = ty {
+        let Some(struct_def) = structs.iter().find(|s| &s.name == name) else {
+            return Err(Error::CompileError(format!("Struct {} is not defined", name)).into());
+        };
+        Ok(struct_def.size(align))
+    } else {
+        Ok(ty.size())
+    }
+}
+
 pub fn generate_code(
     program: IrProgram,
     register_maps: Vec<ra::RegisterMap>,
@@ -283,13 +294,27 @@ pub fn generate_code(
 
     let IrProgram { funcs, structs } = program;
 
+    let reg_size = (XLEN / 8) as usize;
+
     for (fun, register_map) in funcs.into_iter().zip(register_maps) {
         let mut frame = StackFrame::new(&register_map);
 
         ctx.reset_on_fun();
 
+        let result_size = fun
+            .ty
+            .fun_result_type()
+            .ok_or(
+                Error::CompileError("The type of function must be function type.".to_string())
+                    .into(),
+            )
+            .and_then(|ty| get_type_size(ty, &structs, reg_size))
+            .unwrap_or(0);
+
+        let args_offset = if result_size > reg_size * 2 { 1 } else { 0 };
         for (i, (arg, _)) in fun.args.iter().enumerate() {
-            ctx.arg_reg_map.insert(arg.clone(), Register::a(i as u32));
+            ctx.arg_reg_map
+                .insert(arg.clone(), Register::a((i + args_offset) as u32));
         }
 
         // Scan alloca with DontAllocateRegister
@@ -314,7 +339,7 @@ pub fn generate_code(
                         .any(|t| t.is_match_with(&Tag::DontAllocateRegister));
 
                     if has_dont_alloc_tag {
-                        frame.allocate_local_var(&result, ty.size());
+                        frame.allocate_local_var(&result, get_type_size(&ty, &structs, reg_size)?);
                     }
                 }
             }
@@ -385,19 +410,37 @@ pub fn generate_code(
                         })));
                     }
                     Ret(op) => {
-                        let result_size = fun.ty.fun_result_type().map(|ty| ty.size());
-                        println!("{:?} {:?}", fun.ty.fun_result_type(), result_size);
-                        if result_size.map_or(false, |size| size > (XLEN / 8) as usize) {
+                        if result_size > reg_size {
                             let reg =
                                 get_register_from_operand(&mut ctx, &register_map, op).unwrap();
 
-                            // TODO: Support size > XLEN * 2
-                            insts.push(
-                                Instruction::lw(Register::a(0), reg, Immediate::new(0)).into(),
-                            );
-                            insts.push(
-                                Instruction::lw(Register::a(1), reg, Immediate::new(4)).into(),
-                            );
+                            if result_size <= reg_size * 2 {
+                                insts.push(
+                                    Instruction::lw(Register::a(0), reg, Immediate::new(0)).into(),
+                                );
+                                insts.push(
+                                    Instruction::lw(Register::a(1), reg, Immediate::new(4)).into(),
+                                );
+                            } else {
+                                // result_size > reg_size * 2
+                                for i in 0..(result_size / reg_size) {
+                                    let offset = i as i32 * 4;
+                                    // We should be able to use register s2 at Ret instruction.
+                                    let tmp_reg = Register::s(2);
+                                    insts.push(
+                                        Instruction::lw(tmp_reg, reg, Immediate::new(offset))
+                                            .into(),
+                                    );
+                                    insts.push(
+                                        Instruction::sw(
+                                            tmp_reg,
+                                            Register::a(0),
+                                            Immediate::new(offset),
+                                        )
+                                        .into(),
+                                    );
+                                }
+                            }
                         } else {
                             load_operand_to(
                                 &mut ctx,
@@ -747,12 +790,45 @@ pub fn generate_code(
                             .into());
                         }
 
-                        let (mut save, mut restore) =
-                            frame.generate_insts_for_call(args.len(), &result_reg);
+                        let pass_struct_ref_at_1st_arg = if let Type::Struct { name } = &ty {
+                            let Some(struct_def) = structs.iter().find(|s| &s.name == name) else {
+                                return Err(Error::CompileError(format!(
+                                    "Struct {} is not defined",
+                                    name
+                                ))
+                                .into());
+                            };
+
+                            let size = struct_def.size(reg_size);
+                            if size > reg_size {
+                                let local_idx = frame.allocate_local_var(&result, size);
+                                insts.push(
+                                    Instruction::addi(result_reg, Register::fp(), local_idx as i32)
+                                        .into(),
+                                );
+                            }
+
+                            size > reg_size * 2
+                        } else {
+                            false
+                        };
+
+                        let (mut save, mut restore) = {
+                            let (args_len, result_reg) = if pass_struct_ref_at_1st_arg {
+                                (args.len() + 1, None)
+                            } else {
+                                (args.len(), Some(&result_reg))
+                            };
+                            frame.generate_insts_for_call(args_len, result_reg)
+                        };
 
                         insts.append(&mut save);
 
-                        ctx.arg_count = 0;
+                        if pass_struct_ref_at_1st_arg {
+                            insts.push(Instruction::mv(Register::a(0), result_reg).into());
+                        }
+
+                        ctx.arg_count = if pass_struct_ref_at_1st_arg { 1 } else { 0 };
                         for arg in args {
                             load_argument(&mut ctx, &mut insts, &register_map, arg);
                         }
@@ -797,20 +873,10 @@ pub fn generate_code(
                                     .into());
                                 };
 
-                                let reg_size = XLEN as usize / 8;
                                 let size = struct_def.size(reg_size);
                                 if size <= reg_size {
                                     insts.push(Instruction::mv(result_reg, Register::a(0)).into());
                                 } else if size <= reg_size * 2 {
-                                    let local_idx = frame.allocate_local_var(&result, size);
-                                    insts.push(
-                                        Instruction::addi(
-                                            result_reg,
-                                            Register::fp(),
-                                            local_idx as i32,
-                                        )
-                                        .into(),
-                                    );
                                     insts.push(
                                         Instruction::sw(
                                             Register::a(0),
@@ -828,11 +894,7 @@ pub fn generate_code(
                                         .into(),
                                     );
                                 } else {
-                                    return Err(Error::CompileError(format!(
-                                        "To return struct whose size is larger than {} is not supported now.",
-                                        reg_size * 2
-                                    ))
-                                    .into());
+                                    // Received the result through result_reg
                                 }
                             }
                             Type::Int | Type::Char => {
@@ -845,7 +907,7 @@ pub fn generate_code(
                     }
                     SysCall { number, args } => {
                         let (mut save, mut restore) =
-                            frame.generate_insts_for_call(args.len(), &result_reg);
+                            frame.generate_insts_for_call(args.len(), Some(&result_reg));
 
                         insts.append(&mut save);
 

@@ -116,15 +116,16 @@ impl<'a> StackFrame<'a> {
     pub fn generate_insts_for_call(
         &self,
         args_count: usize,
-        result_reg: &Register,
+        result_reg: Option<&Register>,
     ) -> (Vec<InstrWithIr>, Vec<InstrWithIr>) {
+        println!("{:#?}", self.register_map);
         let used_regs = self
             .register_map
             .values()
             .unique()
             .map(|id| Register::t(*id as u32))
             .chain((0..args_count).map(|i| Register::a(i as u32)))
-            .filter(|reg| reg != result_reg)
+            .filter(|reg| Some(reg) != result_reg)
             .collect_vec();
 
         let mut save = Vec::new();

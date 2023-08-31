@@ -236,6 +236,7 @@ impl Display for FunctionDisplay<'_> {
 
 pub struct IrProgram {
     pub funcs: Vec<Function>,
+    /// TODO: Make this type FxHashMap
     pub structs: Vec<StructDefinition>,
 }
 
