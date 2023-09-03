@@ -156,6 +156,14 @@ impl Display for InterferenceGraph {
 type VariableSet<'a> = FxHashSet<&'a Variable>;
 type AllInOuts<'a> = FxHashMap<Id<BasicBlock>, Vec<(VariableSet<'a>, VariableSet<'a>)>>;
 
+fn print_var_set(var_set: &FxHashSet<&Variable>) {
+    print!("  {{");
+    for v in var_set {
+        print!("{}, ", v);
+    }
+    println!("}}, ");
+}
+
 fn calculate_lifetime<'a>(func: &Function, ir_ctx: &'a IrContext) -> AllInOuts<'a> {
     let mut def_uses = FxHashMap::default();
 
@@ -186,9 +194,14 @@ fn calculate_lifetime<'a>(func: &Function, ir_ctx: &'a IrContext) -> AllInOuts<'
                 .collect_vec();
 
             let mut def_vars = FxHashSet::default();
-            if !annot_inst.inst.is_terminal() {
+            // if !annot_inst.inst.is_terminal() {
+            if annot_inst.has_result() {
                 def_vars.insert(&annot_inst.result);
             };
+
+            println!("{}", annot_inst.display(true));
+            print_var_set(&def_vars);
+            println!();
 
             def_uses_bb.push((def_vars, FxHashSet::from_iter(used_vars.into_iter())));
         }
@@ -238,9 +251,16 @@ fn calculate_lifetime<'a>(func: &Function, ir_ctx: &'a IrContext) -> AllInOuts<'
 
                 let uses = FxHashSet::from_iter(uses.into_iter());
                 let diff = FxHashSet::from_iter(out_vars.difference(&defs).copied());
-                let in_vars = FxHashSet::from_iter(uses.union(&diff).into_iter().copied());
+                let in_vars = FxHashSet::from_iter(uses.union(&diff).copied());
 
                 prev_in_vars = in_vars.clone();
+
+                println!("{}", bb.insts[bb.insts.len() - 1 - i].display(true));
+                print_var_set(&in_vars);
+                print_var_set(&out_vars);
+                print_var_set(&defs);
+                print_var_set(&uses);
+                println!();
 
                 in_outs.push((in_vars, out_vars));
             }
@@ -413,6 +433,8 @@ pub fn create_interference_graph(
 
             let mut inter_graph = build_inference_graph(&func, &all_in_outs, ir_ctx);
 
+            println!("{}", inter_graph);
+
             let vars = inter_graph.vars.clone();
 
             // A vector of (IGID, connected IGIDs).
@@ -436,7 +458,7 @@ pub fn create_interference_graph(
                 let mut allocation_map = FxHashMap::default();
 
                 for (&var, others) in removed_vars.iter().rev() {
-                    let mut allocated = vec![false].repeat(num_of_registers);
+                    let mut allocated = [false].repeat(num_of_registers);
                     for other in others {
                         if let Some(&reg_id) = allocation_map.get(other) {
                             allocated[reg_id] = true;
@@ -467,9 +489,12 @@ pub fn create_interference_graph(
 
                 return Ok(func);
             } else {
+                println!("{:#?}", spill_list);
                 for sv in spill_list {
                     spill_variable(sv, &func, ir_ctx);
                 }
+                func.dump(&ir_ctx.bb_arena);
+                println!();
             }
         }
 

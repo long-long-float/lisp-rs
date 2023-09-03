@@ -480,6 +480,14 @@ impl AnnotatedInstr {
         self.tags.iter().any(|t| t.is_match_with(&tag))
     }
 
+    pub fn has_result(&self) -> bool {
+        use Instruction::*;
+        !matches!(
+            &self.inst,
+            Branch { .. } | Jump(_, _) | Ret(_) | Nop | Store(_, _) | StoreElement { .. }
+        ) && (self.ty != Type::Void)
+    }
+
     pub fn display(&self, colored: bool) -> AnnotatedInstrDisplay {
         AnnotatedInstrDisplay {
             instr: self,
@@ -505,15 +513,11 @@ impl Display for AnnotatedInstrDisplay<'_> {
             tags,
         } = &self.instr;
 
-        let has_result = matches!(
-            inst,
-            Branch { .. } | Jump(_, _) | Ret(_) | Nop | Store(_, _) | StoreElement { .. }
-        );
-
         if let Label(_) = inst {
             write!(f, "{}:", inst)?;
-        } else if has_result || ty == &Type::Void {
-            write!(f, "  {}", inst)?;
+        } else if !self.instr.has_result() {
+            // write!(f, "  {}", inst)?;
+            write!(f, "  {}:{} = {}", result, ty, inst)?;
         } else {
             write!(f, "  {}:{} = {}", result, ty, inst)?;
         }
