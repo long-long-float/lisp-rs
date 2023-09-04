@@ -506,7 +506,7 @@ impl RelAddress {
 impl Display for RelAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RelAddress::Label(label) => write!(f, "{}", label),
+            RelAddress::Label(label) => write!(f, "{}", label.name),
             RelAddress::Immediate(imm) => write!(f, "{}", imm.value()),
         }
     }

@@ -339,65 +339,111 @@ impl Instruction {
             I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => self,
         }
     }
+
+    pub fn display(&self, colored: bool) -> InstructionDisplay {
+        InstructionDisplay {
+            instr: self,
+            colored,
+        }
+    }
 }
 
-impl Display for Instruction {
+#[derive(Clone, PartialEq, Debug)]
+pub struct InstructionDisplay<'a> {
+    instr: &'a Instruction,
+    colored: bool,
+}
+
+impl<'a> Display for InstructionDisplay<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Instruction::*;
 
-        match self {
+        let mut operands: Vec<Box<&dyn ColoredDisplay>> = Vec::new();
+
+        let name = match &self.instr {
             Branch {
                 cond,
                 then_label,
                 else_label,
                 ..
             } => {
-                write!(f, "branch {}, {}, {}", cond, then_label, else_label)
+                operands.push(Box::new(cond));
+                operands.push(Box::new(then_label));
+                operands.push(Box::new(else_label));
+                "branch"
             }
             Jump(label, _) => {
-                write!(f, "jump {}", label)
+                operands.push(Box::new(label));
+                "jump"
             }
             Ret(val) => {
-                write!(f, "ret {}", val)
+                operands.push(Box::new(val));
+                "ret"
             }
             Alloca { ty, count } => {
-                write!(f, "alloca {:?}, {}", ty, count)
+                operands.push(Box::new(ty));
+                operands.push(Box::new(count));
+                "alloca"
             }
             Add(left, right) => {
-                write!(f, "add {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "add"
             }
             Sub(left, right) => {
-                write!(f, "sub {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "sub"
             }
             Mul(left, right) => {
-                write!(f, "mul {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "mul"
             }
             Div(left, right) => {
-                write!(f, "div {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "div"
             }
             Mod(left, right) => {
-                write!(f, "mod {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "mod"
             }
             And(left, right) => {
-                write!(f, "and {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "and"
             }
             Or(left, right) => {
-                write!(f, "or {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "or"
             }
             Not(val) => {
-                write!(f, "not {}", val)
+                operands.push(Box::new(val));
+                "not"
             }
             Shift(ShiftOperator::LogicalRight, left, right) => {
-                write!(f, "lrshift {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "lrshift"
             }
             Shift(ShiftOperator::LogicalLeft, left, right) => {
-                write!(f, "llshift {}, {}", left, right)
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "llshift"
             }
             Store(addr, value) => {
-                write!(f, "store {}, {}", addr, value)
+                operands.push(Box::new(addr));
+                operands.push(Box::new(value));
+                "store"
             }
             LoadElement { addr, ty, index } => {
-                write!(f, "loadelement {}, {:?}, {}", addr, ty, index)
+                operands.push(Box::new(addr));
+                operands.push(Box::new(ty));
+                operands.push(Box::new(index));
+                "loadelement"
             }
             StoreElement {
                 addr,
@@ -405,46 +451,67 @@ impl Display for Instruction {
                 index,
                 value,
             } => {
-                write!(f, "storeelement {}, {:?}, {}, {}", addr, ty, index, value)
+                operands.push(Box::new(addr));
+                operands.push(Box::new(ty));
+                operands.push(Box::new(index));
+                operands.push(Box::new(value));
+                "storeelement"
             }
             Cmp(op, left, right) => {
-                write!(f, "cmp {}, {}, {}", op, left, right)
+                operands.push(Box::new(op));
+                operands.push(Box::new(left));
+                operands.push(Box::new(right));
+                "cmp"
             }
             Call { fun, args } => {
-                write!(f, "call {}", fun)?;
+                operands.push(Box::new(fun));
                 for arg in args {
-                    write!(f, ", {}", arg)?;
+                    operands.push(Box::new(arg));
                 }
-                Ok(())
+                "call"
             }
             SysCall { number, args } => {
-                write!(f, "syscall {}", number)?;
+                operands.push(Box::new(number));
                 for arg in args {
-                    write!(f, ", {}", arg)?;
+                    operands.push(Box::new(arg));
                 }
-
-                Ok(())
+                "syscall"
             }
             Phi(nodes) => {
-                write!(f, "phi ")?;
-                for (val, label) in nodes {
-                    write!(f, "[{}, {}], ", val, label)?;
+                for node in nodes {
+                    operands.push(Box::new(node));
                 }
-                Ok(())
+                "phi"
             }
             Reference(op) => {
-                write!(f, "ref {}", op)
+                operands.push(Box::new(op));
+                "ref"
             }
             Operand(op) => {
-                write!(f, "{}", op)
+                operands.push(Box::new(op));
+                ""
             }
             Label(label) => {
-                write!(f, "{}", label)
+                operands.push(Box::new(label));
+                ""
             }
-            Nop => {
-                write!(f, "nop")
+            Nop => "nop",
+        };
+
+        if self.colored {
+            write!(f, "{}", name.yellow())?;
+        } else {
+            write!(f, "{}", name)?;
+        }
+
+        if let Some((fst, rest)) = operands.split_first() {
+            write!(f, " {}", fst.display(self.colored))?;
+            for op in rest {
+                write!(f, ", {}", op.display(self.colored))?;
             }
         }
+
+        Ok(())
     }
 }
 
@@ -514,12 +581,12 @@ impl Display for AnnotatedInstrDisplay<'_> {
         } = &self.instr;
 
         if let Label(_) = inst {
-            write!(f, "{}:", inst)?;
+            write!(f, "{}:", inst.display(self.colored))?;
         } else if !self.instr.has_result() {
             // write!(f, "  {}", inst)?;
-            write!(f, "  {}:{} = {}", result, ty, inst)?;
+            write!(f, "  {}:{} = {}", result, ty, inst.display(self.colored))?;
         } else {
-            write!(f, "  {}:{} = {}", result, ty, inst)?;
+            write!(f, "  {}:{} = {}", result, ty, inst.display(self.colored))?;
         }
 
         if !tags.is_empty() && self.colored {
@@ -536,23 +603,63 @@ impl Display for AnnotatedInstrDisplay<'_> {
 
 pub type Instructions = Vec<AnnotatedInstr>;
 
+trait ColoredDisplay {
+    fn display<'a>(&'a self, colored: bool) -> Box<dyn Display + 'a>;
+}
+
+impl ColoredDisplay for Type {
+    fn display<'a>(&'a self, colored: bool) -> Box<dyn Display + 'a> {
+        Box::new(TypeDisplay { ty: self, colored })
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct TypeDisplay<'a> {
+    ty: &'a Type,
+    colored: bool,
+}
+
+impl Display for TypeDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.colored {
+            write!(f, "{}", self.ty.to_string().green())
+        } else {
+            write!(f, "{}", self.ty)
+        }
+    }
+}
+
+// Implementation for phi
+impl ColoredDisplay for (Operand, Label) {
+    fn display<'a>(&'a self, colored: bool) -> Box<dyn Display + 'a> {
+        Box::new(PhiNodeDisplay {
+            node: self,
+            colored,
+        })
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct PhiNodeDisplay<'a> {
+    node: &'a (Operand, Label),
+    colored: bool,
+}
+
+impl Display for PhiNodeDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{}, {}]",
+            self.node.0.display(self.colored),
+            self.node.1.display(self.colored)
+        )
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Operand {
     Variable(Variable),
     Immediate(Immediate),
-    // Label(Label),
-}
-
-impl Display for Operand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Operand::*;
-
-        match self {
-            Variable(v) => write!(f, "{}", v),
-            Immediate(v) => write!(f, "{}", v),
-            // Label(v) => write!(f, "{}", v),
-        }
-    }
 }
 
 impl From<Variable> for Operand {
@@ -573,6 +680,36 @@ impl From<usize> for Operand {
     }
 }
 
+impl ColoredDisplay for Operand {
+    fn display<'a>(&'a self, colored: bool) -> Box<dyn Display + 'a> {
+        Box::new(OperandDisplay { op: self, colored })
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct OperandDisplay<'a> {
+    op: &'a Operand,
+    colored: bool,
+}
+
+impl Display for OperandDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Operand::*;
+
+        if self.colored {
+            match &self.op {
+                Variable(v) => write!(f, "{}", format!("%{}", v.name).blue()),
+                Immediate(v) => write!(f, "{}", v.to_string().bright_red()),
+            }
+        } else {
+            match &self.op {
+                Variable(v) => write!(f, "{}", v),
+                Immediate(v) => write!(f, "{}", v),
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CmpOperator {
     Eq,
@@ -586,11 +723,23 @@ pub enum CmpOperator {
     SLT,
 }
 
-impl Display for CmpOperator {
+impl ColoredDisplay for CmpOperator {
+    fn display<'a>(&'a self, colored: bool) -> Box<dyn Display + 'a> {
+        Box::new(CmpOperatorDisplay { op: self, colored })
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct CmpOperatorDisplay<'a> {
+    op: &'a CmpOperator,
+    colored: bool,
+}
+
+impl<'a> Display for CmpOperatorDisplay<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use CmpOperator::*;
 
-        let str = match self {
+        let str = match self.op {
             Eq => "=",
             SGE => ">=",
             SLE => "<=",
@@ -606,9 +755,28 @@ pub struct Label {
     pub name: String,
 }
 
-impl Display for Label {
+impl ColoredDisplay for Label {
+    fn display<'a>(&'a self, colored: bool) -> Box<dyn Display + 'a> {
+        Box::new(LabelDisplay {
+            label: self,
+            colored,
+        })
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct LabelDisplay<'a> {
+    label: &'a Label,
+    colored: bool,
+}
+
+impl<'a> Display for LabelDisplay<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        if self.colored {
+            write!(f, "{}", self.label.name.cyan())
+        } else {
+            write!(f, "{}", self.label.name)
+        }
     }
 }
 
@@ -652,7 +820,7 @@ impl Display for Immediate {
         match self {
             Integer(v) => write!(f, "{}", v),
             Boolean(v) => write!(f, "{}", v),
-            Label(v) => write!(f, "{}", v),
+            Label(v) => write!(f, "{}", v.name),
             // Array(elems) => {
             //     write!(
             //         f,

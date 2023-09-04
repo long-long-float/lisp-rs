@@ -1,4 +1,5 @@
 use anyhow::Result;
+use colored::Colorize;
 use itertools::Itertools;
 use std::{collections::VecDeque, fmt::Display, fs::File, io::Write, path::Path, slice::Iter};
 
@@ -222,7 +223,11 @@ impl Display for FunctionDisplay<'_> {
 
         for bb in &self.func.basic_blocks {
             let bb = self.arena.get(*bb).unwrap();
-            writeln!(f, "  {}:", bb.label)?;
+            if self.colored {
+                writeln!(f, "  {}:", bb.label.cyan())?;
+            } else {
+                writeln!(f, "  {}:", bb.label)?;
+            }
             for inst in &bb.insts {
                 writeln!(f, "  {}", inst.display(self.colored))?;
             }
