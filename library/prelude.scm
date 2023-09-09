@@ -32,3 +32,23 @@
   (define str " ")
   (array->set str 0 ch)
   (syscall3 64 1 (array->data str) (array->len str)))
+
+(fn println-int (value)
+  (fn count-digit (value)
+    (define digit 0)
+    (for (i 1) (< 0 (/ value i)) (* i 10)
+      (set! digit (+ digit 1)))
+    digit)
+
+  (define digit (count-digit value))
+  (define buf (array->new digit))
+
+  (define d 1)
+  (for (i 0) (< i digit) (+ i 1) (begin
+    (array->set buf i (% (/ value d) 10))
+    (set! d (* d 10))))
+  
+  (for (i (- (array->len buf) 1)) (>= i 0) (- i 1) (begin
+    (print-char (int->char (array->get buf i)))))
+  (print "\n")
+  (array->len buf))

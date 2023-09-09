@@ -872,4 +872,19 @@ sum
         .run_raw_output();
         assert_eq!("Hello\nHello\nHello\nHello\nHello\nHello\n", output);
     }
+
+    #[test]
+    #[named]
+    fn prelude_println_int() {
+        let output = compile(
+            function_name!(),
+            r#"
+(include "library/prelude.scm")
+
+(println-int 12345)
+"#,
+        )
+        .run_raw_output();
+        assert_eq!("12345\n", output);
+    }
 }
