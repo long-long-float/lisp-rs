@@ -583,10 +583,20 @@ impl Display for AnnotatedInstrDisplay<'_> {
         if let Label(_) = inst {
             write!(f, "{}:", inst.display(self.colored))?;
         } else if !self.instr.has_result() {
-            // write!(f, "  {}", inst)?;
-            write!(f, "  {}:{} = {}", result, ty, inst.display(self.colored))?;
+            write!(f, "  {}", inst.display(self.colored))?;
         } else {
-            write!(f, "  {}:{} = {}", result, ty, inst.display(self.colored))?;
+            let result = if self.colored {
+                result.to_string().blue().to_string()
+            } else {
+                result.to_string()
+            };
+            write!(
+                f,
+                "  {}:{} = {}",
+                result,
+                ty.display(self.colored),
+                inst.display(self.colored)
+            )?;
         }
 
         if !tags.is_empty() && self.colored {
