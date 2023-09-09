@@ -164,7 +164,11 @@ fn print_var_set(var_set: &FxHashSet<&Variable>) {
     println!("}}, ");
 }
 
-fn calculate_lifetime<'a>(func: &Function, ir_ctx: &'a IrContext) -> AllInOuts<'a> {
+fn calculate_lifetime<'a>(
+    func: &Function,
+    ir_ctx: &'a IrContext,
+    opt: &CliOption,
+) -> AllInOuts<'a> {
     let mut def_uses = FxHashMap::default();
 
     let mut exclude_vars = Vec::new();
@@ -251,12 +255,14 @@ fn calculate_lifetime<'a>(func: &Function, ir_ctx: &'a IrContext) -> AllInOuts<'
 
                 prev_in_vars = in_vars.clone();
 
-                // println!("{}", bb.insts[bb.insts.len() - 1 - i].display(true));
-                // print_var_set(&in_vars);
-                // print_var_set(&out_vars);
-                // print_var_set(&defs);
-                // print_var_set(&uses);
-                // println!();
+                if opt.dump_register_allocation {
+                    println!("{}", bb.insts[bb.insts.len() - 1 - i].display(true));
+                    print_var_set(&in_vars);
+                    print_var_set(&out_vars);
+                    print_var_set(&defs);
+                    print_var_set(&uses);
+                    println!();
+                }
 
                 in_outs.push((in_vars, out_vars));
             }
@@ -416,7 +422,7 @@ fn spill_variable(spilled_var: &Variable, fun: &Function, ir_ctx: &mut IrContext
 pub fn create_interference_graph(
     program: IrProgram,
     ir_ctx: &mut IrContext,
-    _opt: &CliOption,
+    opt: &CliOption,
 ) -> Result<(IrProgram, Vec<RegisterMap>)> {
     // TODO: Take the number from outside
     let num_of_registers = 7;
@@ -425,9 +431,13 @@ pub fn create_interference_graph(
 
     let program = program.map_fun(|func| {
         for _ in 0..3 {
-            let all_in_outs = calculate_lifetime(&func, ir_ctx);
+            let all_in_outs = calculate_lifetime(&func, ir_ctx, opt);
 
             let mut inter_graph = build_inference_graph(&func, &all_in_outs, ir_ctx);
+
+            if opt.dump_register_allocation {
+                println!("{}", inter_graph);
+            }
 
             let vars = inter_graph.vars.clone();
 
@@ -435,7 +445,17 @@ pub fn create_interference_graph(
             let mut removed_vars = Vec::new();
             let mut spill_list = Vec::new();
 
-            let vars_sorted_by_register_pressure = vars
+            //
+            // Remove variables from inter_graph or decide spilled variables by following steps.
+            // 1. Split variables into two list by register pressure.
+            //   * low_pressure_vars: Register pressure is less than and equals number of registers.
+            //   * high_pressure_vars: Otherwise
+            // 2. Remove variables in low_pressure_vars from inter_graph.
+            // 3. Remove variables in high_pressure_vars from inter_graph if its register pressure is less than and equals number of registers.
+            //    Otherwise, add the variable to spill_list.
+            //
+
+            let mut vars_sorted_by_register_pressure = vars
                 .iter()
                 .map(|(var, id)| {
                     let register_pressure = inter_graph.get_connected_vars(var).len();
@@ -443,11 +463,23 @@ pub fn create_interference_graph(
                 })
                 .sorted_by_key(|(_, _, register_pressure)| *register_pressure);
 
-            for (var, id, _) in vars_sorted_by_register_pressure {
+            let low_pressure_vars = vars_sorted_by_register_pressure
+                .take_while_ref(|(_, _, rp)| *rp <= num_of_registers)
+                .collect_vec();
+
+            let high_pressure_vars = vars_sorted_by_register_pressure.rev();
+
+            for (var, id, _) in low_pressure_vars {
+                let connected_var = inter_graph.get_connected_vars(var);
+                removed_vars.push((id, connected_var));
+                inter_graph.remove(var);
+            }
+
+            for (var, id, _) in high_pressure_vars {
                 let connected_var = inter_graph.get_connected_vars(var);
                 let register_pressure = connected_var.len();
 
-                if register_pressure < num_of_registers {
+                if register_pressure <= num_of_registers {
                     removed_vars.push((id, connected_var));
                 } else {
                     spill_list.push(var);
@@ -491,12 +523,18 @@ pub fn create_interference_graph(
 
                 return Ok(func);
             } else {
-                // println!("{:#?}", spill_list);
+                if opt.dump_register_allocation {
+                    println!("{:#?}", spill_list);
+                }
+
                 for sv in spill_list {
                     spill_variable(sv, &func, ir_ctx);
                 }
-                // func.dump(&ir_ctx.bb_arena);
-                // println!();
+
+                if opt.dump_register_allocation {
+                    func.dump(&ir_ctx.bb_arena);
+                    println!();
+                }
             }
         }
 
