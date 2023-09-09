@@ -753,14 +753,15 @@ pub fn generate_code(
                             )
                         } else {
                             let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
-                            let index = match index {
-                                i::Operand::Immediate(index) => index.into(),
+                            let (addr, index) = match index {
+                                i::Operand::Immediate(index) => (addr, index.into()),
                                 _ => {
                                     let index =
                                         get_register_from_operand(&mut ctx, &register_map, index)?;
-                                    insts.push(Instruction::add(addr, addr, index).into());
+                                    let new_addr = Register::s(2);
+                                    insts.push(Instruction::add(new_addr, addr, index).into());
 
-                                    Immediate::Value(0)
+                                    (new_addr, Immediate::Value(0))
                                 }
                             };
 

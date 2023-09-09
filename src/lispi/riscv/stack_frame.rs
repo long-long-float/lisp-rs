@@ -47,6 +47,8 @@ impl<'a> StackFrame<'a> {
                 Register::ra(),
                 Register::fp(),
                 Register::s(1),
+                // Used for temporary register
+                Register::s(2),
             ],
             num_of_used_a_register: 10,
             local_var_size: 16 * 4,
