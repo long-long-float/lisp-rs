@@ -439,18 +439,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             ast_ty,
                         );
                     }
-                    "syscall0" => {
-                        let value = args[0].result.clone();
-                        add_instr(
-                            ctx,
-                            I::SysCall {
-                                number: value.into(),
-                                args: Vec::new(),
-                            },
-                            ast_ty,
-                        );
-                    }
-                    "syscall3" => {
+                    "syscall0" | "syscall1" | "syscall2" | "syscall3" => {
                         if let Some((value, args)) = args.split_first() {
                             let args = args
                                 .iter()

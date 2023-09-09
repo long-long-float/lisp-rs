@@ -1158,6 +1158,18 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
     insert_variable_as_symbol_and_type(
         env,
         ty_env,
+        s("syscall1"),
+        Type::function(vec![Type::Int, Type::Int], Type::Void),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
+        s("syscall2"),
+        Type::function(vec![Type::Int, Type::Int, Type::Int], Type::Void),
+    );
+    insert_variable_as_symbol_and_type(
+        env,
+        ty_env,
         s("syscall3"),
         Type::function(vec![Type::Int, Type::Int, Type::Int, Type::Int], Type::Void),
     );
