@@ -87,6 +87,7 @@ mod compiler_test {
                 filename: None,
                 compile: true,
                 dump,
+                dump_register_allocation: false,
                 without_opts: false,
             };
 
