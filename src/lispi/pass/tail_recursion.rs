@@ -182,9 +182,9 @@ fn optimize_tail_recursion(
                 let vs = optimize_tail_recursion(func_name, locals, vs)?;
                 Some(ast.clone().with_new_ast(Ast::ListLiteral(vs)))
             }
-            Ast::ArrayLiteral(vs) => {
+            Ast::ArrayLiteral(vs, is_fixed) => {
                 let vs = optimize_tail_recursion(func_name, locals, vs)?;
-                Some(ast.clone().with_new_ast(Ast::ArrayLiteral(vs)))
+                Some(ast.clone().with_new_ast(Ast::ArrayLiteral(vs, *is_fixed)))
             }
             Ast::Cond(Cond { clauses }) => {
                 let clauses = clauses
@@ -250,7 +250,7 @@ fn optimize_tail_recursion(
                     | body.iter().any(|b| includes_symbol(sym, &b.ast))
             }
             Ast::ListLiteral(vs) => vs.iter().any(|v| includes_symbol(sym, &v.ast)),
-            Ast::ArrayLiteral(vs) => vs.iter().any(|v| includes_symbol(sym, &v.ast)),
+            Ast::ArrayLiteral(vs, _) => vs.iter().any(|v| includes_symbol(sym, &v.ast)),
             Ast::Cond(Cond { clauses }) => clauses.iter().any(|CondClause { cond, body }| {
                 includes_symbol(sym, &cond.ast) || body.iter().any(|b| includes_symbol(sym, &b.ast))
             }),

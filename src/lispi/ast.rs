@@ -33,7 +33,7 @@ pub enum Ast {
     Let(Let),
     Begin(Begin),
     ListLiteral(Vec<AnnotatedAst>),
-    ArrayLiteral(Vec<AnnotatedAst>),
+    ArrayLiteral(Vec<AnnotatedAst>, /* is_fixed */ bool),
     As(Box<AnnotatedAst>, SymbolValue),
     DefineStruct(DefineStruct),
 
@@ -405,9 +405,9 @@ impl AnnotatedAst {
                 let vs = traverse_asts(vs, ctx, func)?;
                 Ast::ListLiteral(vs)
             }
-            Ast::ArrayLiteral(vs) => {
+            Ast::ArrayLiteral(vs, fixed) => {
                 let vs = traverse_asts(vs, ctx, func)?;
-                Ast::ArrayLiteral(vs)
+                Ast::ArrayLiteral(vs, fixed)
             }
             Ast::As(v, ty) => Ast::As(Box::new(func(*v, ctx)?), ty),
             Ast::Ref(v) => Ast::Ref(Box::new(func(*v, ctx)?)),
@@ -485,7 +485,7 @@ impl AnnotatedAst {
             }
             Ast::Continue(Continue { updates, .. }) => traverse_asts(updates, ctx, func)?,
             Ast::ListLiteral(vs) => traverse_asts(vs, ctx, func)?,
-            Ast::ArrayLiteral(vs) => traverse_asts(vs, ctx, func)?,
+            Ast::ArrayLiteral(vs, _) => traverse_asts(vs, ctx, func)?,
             Ast::As(v, _ty) => func(v, ctx)?,
             Ast::Ref(v) => func(v, ctx)?,
         }
@@ -649,8 +649,12 @@ impl Display for AnnotatedAst {
                 write_values(f, values)?;
                 write!(f, ")")
             }
-            Ast::ArrayLiteral(values) => {
-                write!(f, "(array ")?;
+            Ast::ArrayLiteral(values, is_fixed) => {
+                if *is_fixed {
+                    write!(f, "(fixed-array ")?;
+                } else {
+                    write!(f, "(array ")?;
+                }
                 write_values(f, values)?;
                 write!(f, ")")
             }

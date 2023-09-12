@@ -32,6 +32,8 @@ pub enum Type {
     },
     List(Box<Type>),
     Array(Box<Type>),
+    /// Element Type, Length Type (can be a number now not a type variable)
+    FixedArray(Box<Type>, usize),
     Function {
         args: Vec<Box<Type>>,
         result: Box<Type>,
@@ -111,7 +113,7 @@ impl Type {
             | Type::Struct { .. }
             | Type::None => false,
 
-            Type::List(e) | Type::Array(e) => e.has_free_var(tv),
+            Type::List(e) | Type::Array(e) | Type::FixedArray(e, _) => e.has_free_var(tv),
 
             Type::Composite { name: _, inner } => inner.iter().any(|i| i.has_free_var(tv)),
             Type::Function { args, result } => {
@@ -139,6 +141,7 @@ impl Type {
 
             Type::List(e) => Type::List(Box::new(e.replace(assign))),
             Type::Array(e) => Type::Array(Box::new(e.replace(assign))),
+            Type::FixedArray(e, n) => Type::FixedArray(Box::new(e.replace(assign)), n),
 
             Type::Composite { name, inner } => {
                 let inner = inner
@@ -210,6 +213,7 @@ impl std::fmt::Display for Type {
             Type::Scala(name) => write!(f, "{}", name),
             Type::List(e) => write!(f, "list<{}>", e),
             Type::Array(e) => write!(f, "array<{}>", e),
+            Type::FixedArray(e, n) => write!(f, "fixed-array<{}, {}>", e, n),
             Type::Composite { name, inner } => {
                 let inner = inner
                     .iter()
@@ -1002,13 +1006,21 @@ fn collect_constraints_from_ast(
             let vs = vs.clone();
             collect_constraints_from_collection_literal(ast, vs, Type::List, Ast::ListLiteral, ctx)
         }
-        Ast::ArrayLiteral(vs) => {
+        Ast::ArrayLiteral(vs, is_fixed) => {
             let vs = vs.clone();
+            let len = vs.len();
+            let is_fixed = *is_fixed;
             collect_constraints_from_collection_literal(
                 ast,
                 vs,
-                Type::Array,
-                Ast::ArrayLiteral,
+                |et| {
+                    if is_fixed {
+                        Type::FixedArray(et, len)
+                    } else {
+                        Type::Array(et)
+                    }
+                },
+                |vs| Ast::ArrayLiteral(vs, is_fixed),
                 ctx,
             )
         }
@@ -1285,9 +1297,9 @@ fn replace_ast(ast: AnnotatedAst, assign: &TypeAssignment) -> AnnotatedAst {
             let vs = replace_asts(vs, assign);
             ast.with_new_ast_and_type(Ast::ListLiteral(vs), new_ty)
         }
-        Ast::ArrayLiteral(vs) => {
+        Ast::ArrayLiteral(vs, is_fixed) => {
             let vs = replace_asts(vs, assign);
-            ast.with_new_ast_and_type(Ast::ArrayLiteral(vs), new_ty)
+            ast.with_new_ast_and_type(Ast::ArrayLiteral(vs, is_fixed), new_ty)
         }
         Ast::Ref(v) => {
             let v = replace_ast(*v, assign);

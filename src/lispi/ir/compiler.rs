@@ -839,7 +839,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             }
         }
         Ast::ListLiteral(_) => todo!(),
-        Ast::ArrayLiteral(vs) => compile_array_literal(vs, ast_ty, ctx)?,
+        Ast::ArrayLiteral(vs, _) => compile_array_literal(vs, ast_ty, ctx)?,
         Ast::Loop(Loop { inits, label, body }) => {
             if ctx.loop_label_map.contains_key(&label) {
                 return Err(Error::CompileError(format!(

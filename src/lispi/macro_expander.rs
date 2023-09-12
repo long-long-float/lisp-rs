@@ -130,12 +130,12 @@ pub fn expand_macros_ast(ast: AnnotatedAst, menv: &mut MacroEnv) -> Result<Annot
                 .collect::<Result<Vec<_>>>()?;
             Ast::ListLiteral(values)
         }
-        Ast::ArrayLiteral(values) => {
+        Ast::ArrayLiteral(values, is_fixed) => {
             let values = values
                 .into_iter()
                 .map(|value| expand_macros_ast(value, menv))
                 .collect::<Result<Vec<_>>>()?;
-            Ast::ArrayLiteral(values)
+            Ast::ArrayLiteral(values, is_fixed)
         }
         Ast::List(vs) => {
             if let Some((

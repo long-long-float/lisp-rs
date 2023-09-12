@@ -263,7 +263,7 @@ impl From<&Ast> for Value {
             | Ast::Begin(_)
             | Ast::Loop(_)
             | Ast::ListLiteral(_)
-            | Ast::ArrayLiteral(_)
+            | Ast::ArrayLiteral(_, _)
             | Ast::As(_, _)
             | Ast::Cond(_) => Value::nil(),
 
