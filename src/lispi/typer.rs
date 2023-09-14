@@ -87,7 +87,7 @@ impl Type {
 
     pub fn element_type(&self) -> Option<Type> {
         match self {
-            Type::List(et) | Type::Array(et) => Some(*et.clone()),
+            Type::List(et) | Type::Array(et) | Type::FixedArray(et, _) => Some(*et.clone()),
             _ => None,
         }
     }
@@ -1140,27 +1140,49 @@ fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
 
                 unify(rest)
             }
-            (t0, t1) => {
-                let (loc0, loc1) = if c.left.loc == c.right.loc {
-                    (
-                        if c.left.expected {
-                            TokenLocation::Null
-                        } else {
-                            c.left.loc[0]
-                        },
-                        if c.right.expected {
-                            TokenLocation::Null
-                        } else {
-                            c.right.loc[0]
-                        },
-                    )
-                } else {
-                    (c.left.loc[0], c.right.loc[0])
+            (left, right) => {
+                let mut rest = rest.to_vec();
+
+                // Check left <: right
+                // NOTE: It depends on which argument type is placed on the right.
+                let is_subtyping = match (left, right) {
+                    (Type::Array(lt), Type::FixedArray(rt, _)) => {
+                        rest.push(TypeEquality::new(
+                            lt.clone().with_location(c.left.loc[0], c.left.expected),
+                            rt.clone().with_location(c.right.loc[0], c.right.expected),
+                        ));
+
+                        true
+                    }
+                    _ => false,
                 };
 
-                Err(Error::TypeNotMatched(t0.clone(), t1.clone(), loc0, loc1)
-                    .with_null_location()
-                    .into())
+                if is_subtyping {
+                    unify(rest)
+                } else {
+                    let (loc0, loc1) = if c.left.loc == c.right.loc {
+                        (
+                            if c.left.expected {
+                                TokenLocation::Null
+                            } else {
+                                c.left.loc[0]
+                            },
+                            if c.right.expected {
+                                TokenLocation::Null
+                            } else {
+                                c.right.loc[0]
+                            },
+                        )
+                    } else {
+                        (c.left.loc[0], c.right.loc[0])
+                    };
+
+                    Err(
+                        Error::TypeNotMatched(left.clone(), right.clone(), loc0, loc1)
+                            .with_null_location()
+                            .into(),
+                    )
+                }
             }
         }
     } else {

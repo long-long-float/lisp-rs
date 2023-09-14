@@ -566,6 +566,101 @@ sum
 
     #[test]
     #[named]
+    fn fixed_array_len() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define ary (fixed-array 1 2 3))
+(array->len ary)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(3), a0);
+    }
+
+    #[test]
+    #[named]
+    fn fixed_array_in_function() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define f (lambda () 
+    (define ary (fixed-array 1 2 3))
+    (array->get ary 1)))
+(define g (lambda () (f)))
+(g)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(2), a0);
+    }
+
+    #[test]
+    #[named]
+    fn fixed_array_get_1() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define ary (fixed-array 1 2 3))
+(array->get ary 1)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(2), a0);
+    }
+
+    #[test]
+    #[named]
+    fn fixed_array_get_by_variable() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define f (lambda (i)
+    (define ary (fixed-array 1 2 3))
+    (array->get ary i)
+    ))
+(f 1)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(2), a0);
+    }
+
+    #[test]
+    #[named]
+    fn fixed_array_set_by_variable() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define f (lambda (i)
+    (define ary (fixed-array 1 2 3))
+    (array->set ary i 99)
+    (array->get ary i)
+    ))
+(f 1)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(99), a0);
+    }
+
+    #[test]
+    #[named]
+    fn fixed_array_set_1() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define ary (fixed-array 1 2 3))
+(array->set ary 1 99)
+(array->get ary 1)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(99), a0);
+    }
+
+    #[test]
+    #[named]
     fn string_len() {
         let a0 = compile(
             function_name!(),
