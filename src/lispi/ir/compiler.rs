@@ -1441,10 +1441,9 @@ pub fn compile(
 
     bb::build_connections_between_bbs(ctx.arena, &result);
 
-    let structs = struct_defs.values().map(|v| v.clone()).collect_vec();
     let result = IrProgram {
         funcs: result,
-        structs,
+        structs: struct_defs,
     };
 
     let result = insert_phi_nodes_for_loops(result, &mut ctx);

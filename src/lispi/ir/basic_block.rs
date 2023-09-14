@@ -4,11 +4,11 @@ use itertools::Itertools;
 use std::{collections::VecDeque, fmt::Display, fs::File, io::Write, path::Path, slice::Iter};
 
 use id_arena::{Arena, Id};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::instruction::{self as i, AnnotatedInstr};
 use crate::lispi::{
-    ty::{StructDefinition, Type},
+    ty::{StructDefinition, StructDefinitions, Type},
     SymbolValue,
 };
 
@@ -241,8 +241,7 @@ impl Display for FunctionDisplay<'_> {
 
 pub struct IrProgram {
     pub funcs: Vec<Function>,
-    /// TODO: Make this type FxHashMap
-    pub structs: Vec<StructDefinition>,
+    pub structs: StructDefinitions,
 }
 
 impl IrProgram {

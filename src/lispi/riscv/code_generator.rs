@@ -10,7 +10,7 @@ use crate::{
     bug,
     lispi::{
         ir::{basic_block::IrProgram, register_allocation::RegisterMap, tag::Tag},
-        ty::{StructDefinition, Type},
+        ty::{StructDefinition, StructDefinitions, Type},
     },
 };
 
@@ -244,9 +244,9 @@ fn replace_labels(inst: InstrWithIr, ctx: &Context) -> InstrWithIr {
     InstrWithIr(replaced, ir)
 }
 
-fn get_type_size(ty: &Type, structs: &Vec<StructDefinition>, align: usize) -> Result<usize> {
+fn get_type_size(ty: &Type, structs: &StructDefinitions, align: usize) -> Result<usize> {
     if let Type::Struct { name } = ty {
-        let Some(struct_def) = structs.iter().find(|s| &s.name == name) else {
+        let Some(struct_def) = structs.get(name) else {
             return Err(Error::CompileError(format!("Struct {} is not defined", name)).into());
         };
         Ok(struct_def.size(align))
@@ -255,12 +255,9 @@ fn get_type_size(ty: &Type, structs: &Vec<StructDefinition>, align: usize) -> Re
     }
 }
 
-fn get_struct_def<'a>(
-    ty: &Type,
-    structs: &'a Vec<StructDefinition>,
-) -> Option<&'a StructDefinition> {
+fn get_struct_def<'a>(ty: &Type, structs: &'a StructDefinitions) -> Option<&'a StructDefinition> {
     if let Type::Struct { name } = ty {
-        structs.iter().find(|s| &s.name == name)
+        structs.get(name)
     } else {
         None
     }
@@ -806,6 +803,7 @@ pub fn generate_code(
                                 | Type::Char
                                 | Type::Boolean
                                 | Type::Void
+                                | Type::FixedArray(_, _)
                                 | Type::Struct { .. }
                         ) {
                             return Err(Error::CompileError(format!(
@@ -815,31 +813,22 @@ pub fn generate_code(
                             .into());
                         }
 
-                        let pass_struct_ref_at_1st_arg = if let Type::Struct { name } = &ty {
-                            let Some(struct_def) = structs.iter().find(|s| &s.name == name) else {
-                                return Err(Error::CompileError(format!(
-                                    "Struct {} is not defined",
-                                    name
-                                ))
-                                .into());
-                            };
+                        let type_size = get_type_size(&ty, &structs, reg_size)?;
 
-                            let size = struct_def.size(reg_size);
-                            if size > reg_size {
-                                let local_idx = frame.allocate_local_var(&result, size);
-                                insts.push(
-                                    Instruction::addi(result_reg, Register::fp(), local_idx as i32)
-                                        .into(),
-                                );
-                            }
+                        if type_size > reg_size {
+                            let local_idx = frame.allocate_local_var(&result, type_size);
+                            insts.push(
+                                Instruction::addi(result_reg, Register::fp(), local_idx as i32)
+                                    .into(),
+                            );
+                        }
 
-                            size > reg_size * 2
-                        } else {
-                            false
-                        };
+                        // If the size of result value is greater than reg_size,
+                        // the result value is stored at the reference passed at the 1st argument.
+                        let pass_ref_as_returned_value = type_size > reg_size * 2;
 
                         let (mut save, mut restore) = {
-                            let (args_len, result_reg) = if pass_struct_ref_at_1st_arg {
+                            let (args_len, result_reg) = if pass_ref_as_returned_value {
                                 (args.len() + 1, None)
                             } else {
                                 (args.len(), Some(&result_reg))
@@ -849,11 +838,11 @@ pub fn generate_code(
 
                         insts.append(&mut save);
 
-                        if pass_struct_ref_at_1st_arg {
+                        if pass_ref_as_returned_value {
                             insts.push(Instruction::mv(Register::a(0), result_reg).into());
                         }
 
-                        ctx.arg_count = if pass_struct_ref_at_1st_arg { 1 } else { 0 };
+                        ctx.arg_count = if pass_ref_as_returned_value { 1 } else { 0 };
                         for arg in args {
                             load_argument(&mut ctx, &mut insts, &register_map, arg);
                         }
@@ -889,19 +878,9 @@ pub fn generate_code(
                                 // Drop the void result
                             }
                             Type::Struct { name } => {
-                                let Some(struct_def) = structs.iter().find(|s| s.name == name)
-                                else {
-                                    return Err(Error::CompileError(format!(
-                                        "Struct {} is not defined",
-                                        name
-                                    ))
-                                    .into());
-                                };
-
-                                let size = struct_def.size(reg_size);
-                                if size <= reg_size {
+                                if type_size <= reg_size {
                                     insts.push(Instruction::mv(result_reg, Register::a(0)).into());
-                                } else if size <= reg_size * 2 {
+                                } else if type_size <= reg_size * 2 {
                                     insts.push(
                                         Instruction::sw(
                                             Register::a(0),
