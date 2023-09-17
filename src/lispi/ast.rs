@@ -15,7 +15,7 @@ pub enum Ast {
     Integer(i32),
     Float(f32),
     Symbol(SymbolValue),
-    SymbolWithType(SymbolValue, SymbolValue),
+    SymbolWithType(SymbolValue, Type),
     Boolean(bool),
     Char(char),
     String(String),
@@ -144,7 +144,7 @@ pub struct DefineFunction {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Lambda {
     pub args: Vec<SymbolValue>,
-    pub arg_types: Vec<Option<SymbolValue>>,
+    pub arg_types: Vec<Option<Type>>,
     pub body: Vec<AnnotatedAst>,
 }
 
@@ -210,7 +210,7 @@ pub struct DefineStruct {
 #[derive(Clone, PartialEq, Debug)]
 pub struct StructField {
     pub name: String,
-    pub ty: SymbolValue,
+    pub ty: Type,
 }
 
 #[derive(Clone, PartialEq, Debug)]

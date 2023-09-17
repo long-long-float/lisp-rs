@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use itertools::Itertools;
 
 use crate::{ast_pat, lispi::ty::Type, match_special_args, match_special_args_with_rest};
 
@@ -33,14 +34,14 @@ fn consume<'a>(
 }
 
 /// Get tokens using consumer while pred returns true.
-fn consume_while<F, C>(
+fn consume_while<F, C, R>(
     tokens: &[TokenWithLocation],
     pred: F,
     mut consumer: C,
-) -> ParseResult<Vec<AnnotatedAst>>
+) -> ParseResult<Vec<R>>
 where
     F: Fn(&Token) -> bool,
-    C: FnMut(&[TokenWithLocation]) -> ParseResult<AnnotatedAst>,
+    C: FnMut(&[TokenWithLocation]) -> ParseResult<R>,
 {
     if let Some((first, _)) = tokens.split_first() {
         if pred(&first.token) {
@@ -99,21 +100,14 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
                     let fields = fields
                         .iter()
                         .map(|field| {
-                            if let ast_pat!(Ast::List(field)) = field {
-                                match_special_args!(
-                                    field,
-                                    ast_pat!(Ast::Symbol(name)),
-                                    ast_pat!(Ast::Symbol(ty)),
-                                    {
-                                        Ok(StructField {
-                                            name: name.to_owned(),
-                                            ty: ty.to_owned(),
-                                        })
-                                    }
-                                )
+                            if let ast_pat!(Ast::SymbolWithType(name, ty)) = field {
+                                Ok(StructField {
+                                    name: name.to_owned(),
+                                    ty: ty.to_owned(),
+                                })
                             } else {
-                                let err = Error::Eval(
-                                    "'struct' is formed as (struct id [id type] ...)".to_string(),
+                                let err = Error::Parse(
+                                    "'struct' is formed as (struct id id:type ...)".to_string(),
                                 )
                                 .with_location(location);
                                 Err(err.into())
@@ -337,43 +331,84 @@ fn parse_list(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
     ))
 }
 
-fn parse_identifier_or_type<'a>(
-    value: &String,
-    loc: LocationRange,
+fn parse_type<'a>(
     rest: &'a [TokenWithLocation],
-) -> ParseResult<'a, AnnotatedAst> {
-    if value.to_lowercase() == "nil" {
-        Ok((Ast::Nil.with_location(loc), rest))
-    } else {
-        let sym = value.clone();
-        if let Some((
+    prev_loc: &LocationRange,
+) -> ParseResult<'a, Type> {
+    if let Some((
+        TokenWithLocation {
+            token,
+            location: tyloc,
+        },
+        rest,
+    )) = rest.split_first()
+    {
+        let (inner_types, rest) = if let Some((
             TokenWithLocation {
-                token: Token::Colon,
-                ..
+                token: Token::LeftSquareBracket,
+                location: _,
             },
             rest,
         )) = rest.split_first()
         {
-            if let Some((
-                TokenWithLocation {
-                    token: Token::Identifier(ty),
-                    location: tyloc,
-                },
+            let (inner_types, rest) = consume_while(
                 rest,
-            )) = rest.split_first()
-            {
-                // TODO: Restrict type annotation in specific location
+                |token| token != &Token::RightSquareBracket,
+                |t| parse_type(t, tyloc),
+            )?;
+            let (_, rest) = consume(rest, &Token::RightSquareBracket)?;
 
-                Ok((
-                    Ast::SymbolWithType(sym, ty.clone()).with_location(loc.merge(tyloc)),
-                    rest,
-                ))
-            } else {
-                Err(Error::Parse("Expeced type".to_string()).into())
-            }
+            let inner_types = inner_types.into_iter().map(|t| Box::new(t)).collect_vec();
+
+            (inner_types, rest)
         } else {
-            Ok((Ast::Symbol(sym).with_location(loc), rest))
-        }
+            (Vec::new(), rest)
+        };
+
+        let ty = match token {
+            Token::Identifier(ty) => match ty.as_str() {
+                "int" => Type::Int,
+                "float" => Type::Float,
+                "bool" => Type::Boolean,
+                "char" => Type::Char,
+                "void" => Type::Void,
+                "fixed-array" => {
+                    let (Some(inner), Some(len)) = (inner_types.get(0), inner_types.get(1)) else {
+                        return Err(
+                            Error::Parse("fixed-array takes type and number".to_string()).into(),
+                        );
+                    };
+                    let Type::ConstantInt(len) = *len.as_ref() else {
+                        return Err(
+                            Error::Parse("fixed-array takes type and number".to_string()).into(),
+                        );
+                    };
+
+                    Type::FixedArray(inner.clone(), len as usize)
+                }
+                ty => Type::Composite {
+                    name: ty.to_string(),
+                    inner: inner_types,
+                },
+            },
+            Token::IntegerLiteral(n) => Type::ConstantInt(*n),
+            _ => {
+                return Err(Error::Parse(format!("Unexpected {:?}", token))
+                    .with_location(TokenLocation::Range(*tyloc))
+                    .into());
+            }
+        };
+
+        Ok((ty, rest))
+    } else {
+        let loc = if let Some(token) = rest.first() {
+            &token.location
+        } else {
+            prev_loc
+        };
+        Err(Error::Parse("Expeced type".to_string())
+            .with_location(TokenLocation::Range(loc.clone()))
+            .into())
     }
 }
 
@@ -389,7 +424,29 @@ fn parse_value(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
         let loc = *loc;
         match first {
             Token::Identifier(value) => {
-                parse_identifier_or_type(value, loc, rest)
+                if value.to_lowercase() == "nil" {
+                    Ok((Ast::Nil.with_location(loc), rest))
+                } else {
+                    let sym = value.clone();
+                    if let Some((
+                        TokenWithLocation {
+                            token: Token::Colon,
+                            location: colon_loc,
+                        },
+                        rest)) = rest.split_first()
+                    {
+                        // TODO: Restrict type annotation in specific location
+
+                        let (ty, rest) = parse_type(rest, colon_loc)?;
+
+                        Ok((
+                            Ast::SymbolWithType(sym, ty).with_location(loc),
+                            rest,
+                        ))
+                    } else {
+                        Ok((Ast::Symbol(sym).with_location(loc), rest))
+                    }
+                }
             }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value).with_location(loc), rest)),
             Token::FloatLiteral(value) => Ok((Ast::Float(*value).with_location(loc), rest)),

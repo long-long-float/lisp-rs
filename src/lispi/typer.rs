@@ -20,6 +20,8 @@ pub enum Type {
     Void,
     None,
 
+    ConstantInt(i32),
+
     ForAll {
         tv: TypeVariable,
         ty: Box<Type>,
@@ -111,7 +113,8 @@ impl Type {
             | Type::Scala(_)
             | Type::Symbol
             | Type::Struct { .. }
-            | Type::None => false,
+            | Type::None
+            | Type::ConstantInt(_) => false,
 
             Type::List(e) | Type::Array(e) | Type::FixedArray(e, _) => e.has_free_var(tv),
 
@@ -137,7 +140,8 @@ impl Type {
             | Type::Scala(_)
             | Type::Symbol
             | Type::Struct { .. }
-            | Type::None => self,
+            | Type::None
+            | Type::ConstantInt(_) => self,
 
             Type::List(e) => Type::List(Box::new(e.replace(assign))),
             Type::Array(e) => Type::Array(Box::new(e.replace(assign))),
@@ -210,6 +214,7 @@ impl std::fmt::Display for Type {
             Type::String => write!(f, "string"),
             Type::Symbol => write!(f, "symbol"),
             Type::Void => write!(f, "void"),
+            Type::ConstantInt(n) => write!(f, "{}", n),
             Type::Scala(name) => write!(f, "{}", name),
             Type::List(e) => write!(f, "list<{}>", e),
             Type::Array(e) => write!(f, "array<{}>", e),
@@ -558,12 +563,12 @@ fn collect_constraints_from_ast(
             .iter()
             .map(|ty| {
                 if let Some(ty) = ty {
-                    ctx.find_type(ty).map(Box::new)
+                    Box::new(ty.clone())
                 } else {
-                    Ok(Box::new(ctx.gen_tv()))
+                    Box::new(ctx.gen_tv())
                 }
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect_vec();
 
         ctx.env.push_local();
 
@@ -702,7 +707,7 @@ fn collect_constraints_from_ast(
                 .map(|StructField { name, ty }| {
                     Ok(TStructField {
                         name: name.to_owned(),
-                        ty: ctx.find_type(ty).map(Box::new)?,
+                        ty: Box::new(ty.clone()),
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -744,12 +749,12 @@ fn collect_constraints_from_ast(
                 .iter()
                 .map(|ty| {
                     if let Some(ty) = ty {
-                        ctx.find_type(ty).map(Box::new)
+                        Box::new(ty.clone())
                     } else {
-                        Ok(Box::new(ctx.gen_tv()))
+                        Box::new(ctx.gen_tv())
                     }
                 })
-                .collect::<Result<Vec<_>>>()?;
+                .collect_vec();
 
             ctx.env.push_local();
 

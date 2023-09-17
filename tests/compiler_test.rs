@@ -805,8 +805,8 @@ sum
             function_name!(),
             r#"
 (struct Point
-    (x int)
-    (y int))
+    x: int
+    y: int)
 (define pos (Point 10 20))
 (Point->x pos)
 "#,
@@ -822,8 +822,8 @@ sum
             function_name!(),
             r#"
 (struct Point
-    (x int)
-    (y int))
+    x: int
+    y: int)
 (define pos (Point 10 20))
 (Point->y pos)
 "#,
@@ -839,9 +839,9 @@ sum
             function_name!(),
             r#"
 (struct ABC
-    (a char)
-    (b int)
-    (c char))
+    a: char
+    b: int
+    c: char)
 (define abc (ABC \a 0xb \c))
 (ABC->c abc)
 "#,
