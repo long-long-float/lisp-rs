@@ -677,7 +677,9 @@ pub fn generate_code(
                     }
                     LoadElement { addr, ty, index } => {
                         let local_idx = if let i::Operand::Variable(addr) = &addr {
-                            frame.get_local_var(addr).map(|(idx, _)| idx)
+                            frame
+                                .get_local_var(addr)
+                                .map(|(idx, _)| Immediate::new(idx as i32))
                         } else {
                             None
                         };
@@ -691,16 +693,14 @@ pub fn generate_code(
                         let (addr, index) = if let Some(local_idx) = local_idx {
                             let addr = Register::fp();
                             match index {
-                                i::Operand::Immediate(index) => {
-                                    (addr, Immediate::new(local_idx as i32) + index.into())
-                                }
+                                i::Operand::Immediate(index) => (addr, local_idx + index.into()),
                                 _ => {
                                     let index =
                                         get_register_from_operand(&mut ctx, &register_map, index)?;
                                     let new_addr = Register::s(2);
                                     insts.push(Instruction::add(new_addr, addr, index).into());
 
-                                    (new_addr, Immediate::new(local_idx as i32))
+                                    (new_addr, local_idx)
                                 }
                             }
                         } else {
@@ -735,7 +735,9 @@ pub fn generate_code(
                         value,
                     } => {
                         let local_idx = if let i::Operand::Variable(addr) = &addr {
-                            frame.get_local_var(addr).map(|(idx, _)| idx)
+                            frame
+                                .get_local_var(addr)
+                                .map(|(idx, _)| Immediate::new(idx as i32))
                         } else {
                             None
                         };
@@ -748,19 +750,22 @@ pub fn generate_code(
                             _ => todo!(),
                         };
 
-                        if let Some(local_idx) = local_idx {
-                            insts.push(
-                                S(SInstruction {
-                                    op,
-                                    imm: Immediate::new(local_idx as i32),
-                                    rs1: Register::fp(),
-                                    rs2: value,
-                                })
-                                .into(),
-                            )
+                        let (addr, index) = if let Some(local_idx) = local_idx {
+                            let addr = Register::fp();
+                            match index {
+                                i::Operand::Immediate(index) => (addr, local_idx + index.into()),
+                                _ => {
+                                    let index =
+                                        get_register_from_operand(&mut ctx, &register_map, index)?;
+                                    let new_addr = Register::s(2);
+                                    insts.push(Instruction::add(new_addr, addr, index).into());
+
+                                    (new_addr, local_idx)
+                                }
+                            }
                         } else {
                             let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
-                            let (addr, index) = match index {
+                            match index {
                                 i::Operand::Immediate(index) => (addr, index.into()),
                                 _ => {
                                     let index =
@@ -770,18 +775,18 @@ pub fn generate_code(
 
                                     (new_addr, Immediate::Value(0))
                                 }
-                            };
+                            }
+                        };
 
-                            insts.push(
-                                S(SInstruction {
-                                    op,
-                                    imm: index,
-                                    rs1: addr,
-                                    rs2: value,
-                                })
-                                .into(),
-                            )
-                        }
+                        insts.push(
+                            S(SInstruction {
+                                op,
+                                imm: index,
+                                rs1: addr,
+                                rs2: value,
+                            })
+                            .into(),
+                        )
                     }
                     Cmp(op, left, right) => {
                         use i::CmpOperator::*;

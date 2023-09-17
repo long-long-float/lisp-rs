@@ -661,6 +661,43 @@ sum
 
     #[test]
     #[named]
+    fn fixed_array_get_1_from_returned_array() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(fn make-fixed-array ()
+    (define ary (fixed-array 10 11 12 13 14))
+    ary)
+
+(define ary (make-fixed-array))
+(array->get ary 1) 
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(11), a0);
+    }
+
+    #[test]
+    #[named]
+    fn fixed_array_set_1_to_returned_array() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(fn make-fixed-array ()
+    (define ary (fixed-array 10 11 12 13 14))
+    ary)
+
+(define ary (make-fixed-array))
+(array->set ary 1 42) 
+(array->get ary 1) 
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(42), a0);
+    }
+
+    #[test]
+    #[named]
     fn string_len() {
         let a0 = compile(
             function_name!(),
