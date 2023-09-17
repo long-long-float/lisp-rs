@@ -634,6 +634,15 @@ impl Immediate {
     }
 }
 
+impl ops::Add<Immediate> for Immediate {
+    type Output = Immediate;
+
+    fn add(self, rhs: Immediate) -> Self::Output {
+        // TODO: Take care for label
+        Immediate::new(self.value() + rhs.value())
+    }
+}
+
 impl ops::MulAssign<i32> for Immediate {
     fn mul_assign(&mut self, rhs: i32) {
         match self {

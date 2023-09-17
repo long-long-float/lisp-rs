@@ -17,7 +17,11 @@ impl Type {
             Struct { .. } => {
                 panic!("Cannot get struct size from its type.")
             }
-            _ => 4,
+            FixedArray(..) => {
+                panic!("Cannot get fixed array size from its type.")
+            }
+            Void => 4,
+            _ => todo!(),
         }
     }
 }

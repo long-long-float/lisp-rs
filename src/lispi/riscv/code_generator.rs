@@ -245,13 +245,17 @@ fn replace_labels(inst: InstrWithIr, ctx: &Context) -> InstrWithIr {
 }
 
 fn get_type_size(ty: &Type, structs: &StructDefinitions, align: usize) -> Result<usize> {
-    if let Type::Struct { name } = ty {
-        let Some(struct_def) = structs.get(name) else {
-            return Err(Error::CompileError(format!("Struct {} is not defined", name)).into());
-        };
-        Ok(struct_def.size(align))
-    } else {
-        Ok(ty.size())
+    match ty {
+        Type::Struct { name } => {
+            let Some(struct_def) = structs.get(name) else {
+                return Err(Error::CompileError(format!("Struct {} is not defined", name)).into());
+            };
+            Ok(struct_def.size(align))
+        }
+        Type::FixedArray(et, len) => {
+            Ok(Type::Int.size() + get_type_size(et, structs, align)? * len)
+        }
+        _ => Ok(ty.size()),
     }
 }
 
@@ -684,19 +688,24 @@ pub fn generate_code(
                             _ => todo!(),
                         };
 
-                        if let Some(local_idx) = local_idx {
-                            insts.push(
-                                I(IInstruction {
-                                    op,
-                                    imm: Immediate::new(local_idx as i32),
-                                    rs1: Register::fp(),
-                                    rd: result_reg,
-                                })
-                                .into(),
-                            )
+                        let (addr, index) = if let Some(local_idx) = local_idx {
+                            let addr = Register::fp();
+                            match index {
+                                i::Operand::Immediate(index) => {
+                                    (addr, Immediate::new(local_idx as i32) + index.into())
+                                }
+                                _ => {
+                                    let index =
+                                        get_register_from_operand(&mut ctx, &register_map, index)?;
+                                    let new_addr = Register::s(2);
+                                    insts.push(Instruction::add(new_addr, addr, index).into());
+
+                                    (new_addr, Immediate::new(local_idx as i32))
+                                }
+                            }
                         } else {
                             let addr = get_register_from_operand(&mut ctx, &register_map, addr)?;
-                            let (addr, index) = match index {
+                            match index {
                                 i::Operand::Immediate(index) => (addr, index.into()),
                                 _ => {
                                     let index =
@@ -706,18 +715,18 @@ pub fn generate_code(
 
                                     (new_addr, Immediate::Value(0))
                                 }
-                            };
+                            }
+                        };
 
-                            insts.push(
-                                I(IInstruction {
-                                    op,
-                                    imm: index,
-                                    rs1: addr,
-                                    rd: result_reg,
-                                })
-                                .into(),
-                            )
-                        }
+                        insts.push(
+                            I(IInstruction {
+                                op,
+                                imm: index,
+                                rs1: addr,
+                                rd: result_reg,
+                            })
+                            .into(),
+                        )
                     }
                     StoreElement {
                         addr,
@@ -873,38 +882,23 @@ pub fn generate_code(
                             _ => todo!(),
                         }
 
-                        match ty {
-                            Type::Void => {
-                                // Drop the void result
-                            }
-                            Type::Struct { name } => {
-                                if type_size <= reg_size {
-                                    insts.push(Instruction::mv(result_reg, Register::a(0)).into());
-                                } else if type_size <= reg_size * 2 {
-                                    insts.push(
-                                        Instruction::sw(
-                                            Register::a(0),
-                                            result_reg,
-                                            Immediate::new(0),
-                                        )
-                                        .into(),
-                                    );
-                                    insts.push(
-                                        Instruction::sw(
-                                            Register::a(1),
-                                            result_reg,
-                                            Immediate::new(4),
-                                        )
-                                        .into(),
-                                    );
-                                } else {
-                                    // Received the result through result_reg
-                                }
-                            }
-                            Type::Int | Type::Char | Type::Boolean => {
+                        if ty == Type::Void {
+                            // Drop the void result
+                        } else {
+                            if type_size <= reg_size {
                                 insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                            } else if type_size <= reg_size * 2 {
+                                insts.push(
+                                    Instruction::sw(Register::a(0), result_reg, Immediate::new(0))
+                                        .into(),
+                                );
+                                insts.push(
+                                    Instruction::sw(Register::a(1), result_reg, Immediate::new(4))
+                                        .into(),
+                                );
+                            } else {
+                                // Received the result through result_reg
                             }
-                            _ => todo!(),
                         }
 
                         insts.append(&mut restore);
