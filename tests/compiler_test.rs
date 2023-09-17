@@ -402,7 +402,7 @@ x
         let a0 = compile(
             function_name!(),
             r#"
-(let sum ([x 10]) 
+(let sum ((x 10)) 
   (if (< x 1)
       0
     (+ x (sum (- x 1)))))
@@ -418,7 +418,7 @@ x
         let a0 = compile(
             function_name!(),
             r#"
-(let* ([x 2] [y 3]) (+ x y))
+(let* ((x 2) (y 3)) (+ x y))
 "#,
         )
         .run_a0();
@@ -805,8 +805,8 @@ sum
             function_name!(),
             r#"
 (struct Point
-    [x int]
-    [y int])
+    (x int)
+    (y int))
 (define pos (Point 10 20))
 (Point->x pos)
 "#,
@@ -822,8 +822,8 @@ sum
             function_name!(),
             r#"
 (struct Point
-    [x int]
-    [y int])
+    (x int)
+    (y int))
 (define pos (Point 10 20))
 (Point->y pos)
 "#,
@@ -839,9 +839,9 @@ sum
             function_name!(),
             r#"
 (struct ABC
-    [a char]
-    [b int]
-    [c char])
+    (a char)
+    (b int)
+    (c char))
 (define abc (ABC \a 0xb \c))
 (ABC->c abc)
 "#,
@@ -907,7 +907,7 @@ sum
 (fn array->sum (ary)
     (define sum 0)
     (define len (- (array->len ary) 1))
-    (let loop ([i 0]) 
+    (let loop ((i 0)) 
         (set! sum (+ sum (array->get ary i)))
         (if (< i len)
             (loop (+ i 1))))
@@ -933,7 +933,7 @@ sum
     (define sum 0)
     (define len (- (array->len str) 1))
     (define digit 1)
-    (let loop ([i len]) 
+    (let loop ((i len)) 
         (define n (char->int (array->get str i)))
         (set! sum (+ sum (* n digit)))
         (set! digit (* digit 10))

@@ -337,6 +337,46 @@ fn parse_list(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
     ))
 }
 
+fn parse_identifier_or_type<'a>(
+    value: &String,
+    loc: LocationRange,
+    rest: &'a [TokenWithLocation],
+) -> ParseResult<'a, AnnotatedAst> {
+    if value.to_lowercase() == "nil" {
+        Ok((Ast::Nil.with_location(loc), rest))
+    } else {
+        let sym = value.clone();
+        if let Some((
+            TokenWithLocation {
+                token: Token::Colon,
+                ..
+            },
+            rest,
+        )) = rest.split_first()
+        {
+            if let Some((
+                TokenWithLocation {
+                    token: Token::Identifier(ty),
+                    location: tyloc,
+                },
+                rest,
+            )) = rest.split_first()
+            {
+                // TODO: Restrict type annotation in specific location
+
+                Ok((
+                    Ast::SymbolWithType(sym, ty.clone()).with_location(loc.merge(tyloc)),
+                    rest,
+                ))
+            } else {
+                Err(Error::Parse("Expeced type".to_string()).into())
+            }
+        } else {
+            Ok((Ast::Symbol(sym).with_location(loc), rest))
+        }
+    }
+}
+
 fn parse_value(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
     if let Some((
         TokenWithLocation {
@@ -349,44 +389,11 @@ fn parse_value(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
         let loc = *loc;
         match first {
             Token::Identifier(value) => {
-                if value.to_lowercase() == "nil" {
-                    Ok((Ast::Nil.with_location(loc), rest))
-                } else {
-                    let sym = value.clone();
-                    if let Some((
-                        TokenWithLocation {
-                            token: Token::Colon,
-                            ..
-                        },
-                        rest,
-                    )) = rest.split_first()
-                    {
-                        if let Some((
-                            TokenWithLocation {
-                                token: Token::Identifier(ty),
-                                location: tyloc,
-                            },
-                            rest,
-                        )) = rest.split_first()
-                        {
-                            // TODO: Restrict type annotation in specific location
-
-                            Ok((
-                                Ast::SymbolWithType(sym, ty.clone())
-                                    .with_location(loc.merge(tyloc)),
-                                rest,
-                            ))
-                        } else {
-                            Ok((Ast::Symbol(sym).with_location(loc), rest))
-                        }
-                    } else {
-                        Ok((Ast::Symbol(sym).with_location(loc), rest))
-                    }
-                }
+                parse_identifier_or_type(value, loc, rest)
             }
             Token::IntegerLiteral(value) => Ok((Ast::Integer(*value).with_location(loc), rest)),
             Token::FloatLiteral(value) => Ok((Ast::Float(*value).with_location(loc), rest)),
-            Token::LeftParen | Token::LeftSquareBracket => parse_list(tokens),
+            Token::LeftParen /* | Token::LeftSquareBracket */ => parse_list(tokens),
             Token::Quote => {
                 let (value, rest) = parse_value(rest)?;
                 Ok((Ast::Quoted(Box::new(value)).with_location(loc), rest))

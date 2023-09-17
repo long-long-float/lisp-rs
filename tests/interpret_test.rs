@@ -241,7 +241,7 @@ y
         Ok(Value::Integer(24)),
         interp(
             r#"
-(let fact ([x 4]) 
+(let fact ((x 4)) 
   (if (= x 0)
       1
     (* x (fact (- x 1)))))
@@ -305,14 +305,14 @@ stack"#
 
 #[test]
 fn let_test() {
-    assert_eq!(Ok(Value::Integer(3)), interp("(let ([a 1] [b 2]) (+ a b))"));
+    assert_eq!(Ok(Value::Integer(3)), interp("(let ((a 1) (b 2)) (+ a b))"));
 
     assert_eq!(
         Ok(Value::Integer(0)),
         interp(
             r#"
 (define a 0)
-(let ([a 1] [b 2])
+(let ((a 1) (b 2))
     (+ a b)
     (set! a 9))
 a"#
@@ -320,7 +320,7 @@ a"#
     );
 
     assert_error!(
-        interp("(let ([a 1] [b a]) (+ a b))"),
+        interp("(let ((a 1) (b a)) (+ a b))"),
         Error::UndefinedVariable(_, "typing")
     );
 }
