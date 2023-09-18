@@ -256,8 +256,12 @@ pub struct TStructField {
 }
 
 impl TStructField {
-    pub fn accessor_name(&self, struct_name: &String) -> String {
+    pub fn getter_name(&self, struct_name: &String) -> String {
         format!("{}->{}", struct_name, self.name)
+    }
+
+    pub fn setter_name(&self, struct_name: &String) -> String {
+        format!("{}->{}=", struct_name, self.name)
     }
 }
 
@@ -733,9 +737,13 @@ fn collect_constraints_from_ast(
             }
 
             // Define field accessors
-            for TStructField { name: fname, ty } in fields {
-                let acc_type = Type::function(vec![struct_type.clone()], *ty);
-                ctx.env.insert_var(format!("{}->{}", name, fname), acc_type);
+            for field in fields {
+                let getter_type = Type::function(vec![struct_type.clone()], *field.ty.clone());
+                ctx.env.insert_var(field.getter_name(name), getter_type);
+
+                let setter_type =
+                    Type::function(vec![struct_type.clone(), *field.ty.clone()], Type::Void);
+                ctx.env.insert_var(field.setter_name(name), setter_type);
             }
 
             Ok((ast, Vec::new()))

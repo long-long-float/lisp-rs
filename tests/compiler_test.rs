@@ -834,17 +834,35 @@ sum
 
     #[test]
     #[named]
-    fn struct_get_3rd_field_mixed_types() {
+    fn struct_set_2nd_field() {
         let a0 = compile(
             function_name!(),
             r#"
+(struct Point
+    x: int
+    y: int)
+(define pos (Point 10 20))
+(Point->y= pos 42)
+(Point->y pos)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(42), a0);
+    }
+
+    #[test]
+    #[named]
+    fn struct_get_3rd_field_mixed_types() {
+        let a0 = compile(
+            function_name!(),
+            r"
 (struct ABC
     a: char
     b: int
     c: char)
 (define abc (ABC \a 0xb \c))
 (ABC->c abc)
-"#,
+",
         )
         .run_a0();
         assert_eq!(Some('c' as i64), a0);

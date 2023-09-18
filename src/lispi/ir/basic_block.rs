@@ -4,11 +4,11 @@ use itertools::Itertools;
 use std::{collections::VecDeque, fmt::Display, fs::File, io::Write, path::Path, slice::Iter};
 
 use id_arena::{Arena, Id};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use super::instruction::{self as i, AnnotatedInstr};
 use crate::lispi::{
-    ty::{StructDefinition, StructDefinitions, Type},
+    ty::{StructDefinitions, Type},
     SymbolValue,
 };
 
