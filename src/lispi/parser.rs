@@ -310,18 +310,9 @@ pub fn parse_special_form(asts: &[AnnotatedAst], location: TokenLocation) -> Res
 }
 
 fn parse_list(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
-    let (left_token, right_token) = if let Some(&TokenWithLocation {
-        token: Token::LeftSquareBracket,
-        location: _,
-    }) = tokens.first()
-    {
-        (&Token::LeftSquareBracket, &Token::RightSquareBracket)
-    } else {
-        (&Token::LeftParen, &Token::RightParen)
-    };
-    let (head_loc, tokens) = consume(tokens, left_token)?;
-    let (items, tokens) = consume_while(tokens, |token| token != right_token, parse_value)?;
-    let (tail_loc, tokens) = consume(tokens, right_token)?;
+    let (head_loc, tokens) = consume(tokens, &Token::LeftParen)?;
+    let (items, tokens) = consume_while(tokens, |token| token != &Token::RightParen, parse_value)?;
+    let (tail_loc, tokens) = consume(tokens, &Token::RightParen)?;
 
     let location = LocationRange::new(head_loc.begin, tail_loc.end);
 
