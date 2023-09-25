@@ -58,6 +58,12 @@ struct Context<'a> {
     /// Map variable to assigned variables.
     assigned_map: FxHashMap<String, (AnnotatedInstr, Id<BasicBlock>)>,
 
+    /// Map accessor names such as 'Person->age' to a tuple that indicates:
+    /// * accessor is a getter
+    /// * the type of field
+    /// * the index of field
+    struct_accessors: FxHashMap<String, (bool, t::Type, usize)>,
+
     /// Arena for Function
     arena: &'a mut Arena<BasicBlock>,
 
@@ -84,6 +90,7 @@ impl<'a> Context<'a> {
             loop_label_map: FxHashMap::default(),
             loop_updates_map: FxHashMap::default(),
             assigned_map: FxHashMap::default(),
+            struct_accessors: FxHashMap::default(),
         }
     }
 
@@ -458,7 +465,40 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             panic!()
                         }
                     }
-                    _ => compile_apply_lambda(fun_ast.clone(), args, ast_ty, ctx)?,
+                    _ => {
+                        if let Some((is_getter, field_type, index)) =
+                            ctx.struct_accessors.get(fun_sym)
+                        {
+                            let obj = args[0].result.clone().into();
+                            let index = Operand::from(*index);
+
+                            if *is_getter {
+                                add_instr(
+                                    ctx,
+                                    Instruction::LoadElement {
+                                        addr: obj,
+                                        ty: field_type.clone(),
+                                        index,
+                                    },
+                                    t::Type::None,
+                                );
+                            } else {
+                                let value = args[1].result.clone().into();
+                                add_instr(
+                                    ctx,
+                                    Instruction::StoreElement {
+                                        addr: obj,
+                                        ty: field_type.clone(),
+                                        index,
+                                        value,
+                                    },
+                                    t::Type::None,
+                                );
+                            }
+                        } else {
+                            compile_apply_lambda(fun_ast.clone(), args, ast_ty, ctx)?;
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -1364,104 +1404,111 @@ pub fn compile(
             });
 
             let obj_type = t::Type::Struct { name: name.clone() };
+            let field_ty = *field.ty.clone();
 
             // getter
             {
                 let getter_name = field.getter_name(name);
 
-                let bb = ctx.new_bb(getter_name.to_owned());
-                ctx.add_bb(bb);
+                ctx.struct_accessors
+                    .insert(getter_name, (true, field_ty.clone(), idx));
 
-                let field_type = *field.ty.clone();
+                // let bb = ctx.new_bb(getter_name.to_owned());
+                // ctx.add_bb(bb);
 
-                let val = add_instr(
-                    &mut ctx,
-                    Instruction::LoadElement {
-                        addr: obj.clone(),
-                        ty: field_type.clone(),
-                        index: idx.into(),
-                    },
-                    t::Type::None,
-                );
-                add_instr(
-                    &mut ctx,
-                    Instruction::Ret(Operand::Variable(val.result)),
-                    t::Type::None,
-                );
+                // let field_type = *field.ty.clone();
 
-                let getter_type = t::Type::function(vec![obj_type.clone()], field_type);
+                // let val = add_instr(
+                //     &mut ctx,
+                //     Instruction::LoadElement {
+                //         addr: obj.clone(),
+                //         ty: field_type.clone(),
+                //         index: idx.into(),
+                //     },
+                //     t::Type::None,
+                // );
+                // add_instr(
+                //     &mut ctx,
+                //     Instruction::Ret(Operand::Variable(val.result)),
+                //     t::Type::None,
+                // );
 
-                let args = vec![(arg0_name.clone(), obj_type.clone())];
-                let getter = Function::new(
-                    getter_name.to_owned(),
-                    args,
-                    Vec::new(),
-                    getter_type,
-                    false,
-                    vec![bb],
-                );
+                // let getter_type = t::Type::function(vec![obj_type.clone()], field_type);
 
-                ctx.basic_blocks.clear();
+                // let args = vec![(arg0_name.clone(), obj_type.clone())];
+                // let getter = Function::new(
+                //     getter_name.to_owned(),
+                //     args,
+                //     Vec::new(),
+                //     getter_type,
+                //     false,
+                //     vec![bb],
+                // );
 
-                predefined_funcs.push(getter);
+                // ctx.basic_blocks.clear();
 
-                ctx.func_labels.insert_var(
-                    getter_name.to_owned(),
-                    Label {
-                        name: getter_name.to_owned(),
-                    },
-                );
+                // predefined_funcs.push(getter);
+
+                // ctx.func_labels.insert_var(
+                //     getter_name.to_owned(),
+                //     Label {
+                //         name: getter_name.to_owned(),
+                //     },
+                // );
             }
 
             // setter
             {
                 let setter_name = field.setter_name(name);
 
-                let bb = ctx.new_bb(setter_name.to_owned());
-                ctx.add_bb(bb);
+                ctx.struct_accessors
+                    .insert(setter_name, (false, field_ty, idx));
 
-                let arg1_name = "value".to_string();
-                let value = Operand::Variable(Variable {
-                    name: arg1_name.clone(),
-                });
+                // let bb = ctx.new_bb(setter_name.to_owned());
+                // ctx.add_bb(bb);
 
-                let value_type = *field.ty.clone();
+                // let arg1_name = "value".to_string();
+                // let value = Operand::Variable(Variable {
+                //     name: arg1_name.clone(),
+                // });
 
-                add_instr(
-                    &mut ctx,
-                    Instruction::StoreElement {
-                        addr: obj,
-                        ty: value_type.clone(),
-                        index: idx.into(),
-                        value,
-                    },
-                    t::Type::None,
-                );
-                add_instr(&mut ctx, Instruction::Ret(0.into()), t::Type::None);
+                // let value_type = *field.ty.clone();
 
-                let setter_type =
-                    t::Type::function(vec![obj_type.clone(), value_type.clone()], t::Type::Void);
+                // add_instr(
+                //     &mut ctx,
+                //     Instruction::StoreElement {
+                //         addr: obj,
+                //         ty: value_type.clone(),
+                //         index: idx.into(),
+                //         value,
+                //     },
+                //     t::Type::None,
+                // );
+                // add_instr(&mut ctx, Instruction::Ret(0.into()), t::Type::None);
 
-                let args = vec![(arg0_name, obj_type), (arg1_name, value_type)];
-                let setter = Function::new(
-                    setter_name.to_owned(),
-                    args,
-                    Vec::new(),
-                    setter_type,
-                    false,
-                    vec![bb],
-                );
+                // let setter_type =
+                //     t::Type::function(vec![obj_type.clone(), value_type.clone()], t::Type::Void);
 
-                ctx.basic_blocks.clear();
+                // let args = vec![(arg0_name, obj_type), (arg1_name, value_type)];
+                // let setter = Function::new(
+                //     setter_name.to_owned(),
+                //     args,
+                //     Vec::new(),
+                //     setter_type,
+                //     false,
+                //     vec![bb],
+                // );
 
-                predefined_funcs.push(setter);
+                // ctx.basic_blocks.clear();
 
-                ctx.func_labels.insert_var(
-                    setter_name.to_owned(),
-                    Label {
-                        name: setter_name.to_owned(),
-                    },
-                );
+                // predefined_funcs.push(setter);
+
+                // ctx.func_labels.insert_var(
+                //     setter_name.to_owned(),
+                //     Label {
+                //         name: setter_name.to_owned(),
+                //     },
+                // );
             }
         }
     }
