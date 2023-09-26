@@ -405,7 +405,7 @@ impl GenerateCode for JInstruction {
         let imm = imm >> 1;
 
         let imm = (imm & (0b1 << 19))
-            | ((imm & 0b1111_1111_11) << 9)
+            | ((imm & 0b11_1111_1111) << 9)
             | ((imm & (0b1 << 10)) >> 2)
             | ((imm & (0b1111_1111 << 11)) >> 11);
 

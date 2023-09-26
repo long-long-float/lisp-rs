@@ -349,7 +349,7 @@ fn parse_type<'a>(
             )?;
             let (_, rest) = consume(rest, &Token::RightSquareBracket)?;
 
-            let inner_types = inner_types.into_iter().map(|t| Box::new(t)).collect_vec();
+            let inner_types = inner_types.into_iter().map(Box::new).collect_vec();
 
             (inner_types, rest)
         } else {
@@ -398,7 +398,7 @@ fn parse_type<'a>(
             prev_loc
         };
         Err(Error::Parse("Expeced type".to_string())
-            .with_location(TokenLocation::Range(loc.clone()))
+            .with_location(TokenLocation::Range(*loc))
             .into())
     }
 }

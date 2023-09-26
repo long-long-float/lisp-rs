@@ -13,7 +13,7 @@ where
     if let Ok(file) = File::open(filename) {
         let lines = io::BufReader::new(file)
             .lines()
-            .filter_map(|line| line.ok())
+            .map_while(Result::ok)
             .collect::<Vec<String>>();
         Ok(lines)
     } else {

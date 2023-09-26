@@ -515,7 +515,7 @@ fn compile_array_literal(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Conte
 
     let elem_type = vs
         .first()
-        .map(|elem| elem.ty.clone().into())
+        .map(|elem| elem.ty.clone())
         .unwrap_or(t::Type::Int);
 
     let ary = Operand::Variable(
@@ -1023,82 +1023,6 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
 
     Ok(())
 }
-
-// fn compile_lambdas_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<AnnotatedAst> {
-//     let AnnotatedAst { ast, location, ty } = ast;
-
-//     match ast {
-//         Ast::Let(Let {
-//             sequential,
-//             proc_id,
-//             inits,
-//             body,
-//         }) => {
-//             if let Some(proc_id) = proc_id {
-//                 let label = Label {
-//                     name: proc_id.value.clone(),
-//                 };
-
-//                 let mut aargs = Vec::new();
-//                 let mut fargs = Vec::new();
-//                 for (id, init) in inits {
-//                     ctx.env.insert_var(
-//                         id.clone(),
-//                         Variable {
-//                             name: id.value.clone(),
-//                         },
-//                     );
-//                     fargs.push((id.value, init.ty.clone()));
-//                     aargs.push(init);
-//                 }
-
-//                 ctx.env.push_local();
-
-//                 let bb = ctx.new_bb(label.name.clone());
-
-//                 ctx.basic_blocks.clear();
-//                 ctx.add_bb(bb);
-
-//                 // ctx.func_labels.insert_var(proc_id.clone(), label);
-
-//                 // let insts = compile_asts(body, ctx)?;
-
-//                 let fun = Function::new(
-//                     proc_id.value.clone(),
-//                     fargs,
-//                     Type::None,
-//                     ctx.basic_blocks.drain(0..).collect(),
-//                 );
-
-//                 ctx.env.pop_local();
-
-//                 ctx.funcs.insert_var(proc_id.clone(), fun);
-
-//                 let mut apply = vec![Ast::Symbol(proc_id).with_null_location()];
-//                 apply.append(&mut aargs);
-
-//                 Ok(AnnotatedAst {
-//                     ast: Ast::List(apply),
-//                     location,
-//                     ty,
-//                 })
-//             } else {
-//                 AnnotatedAst {
-//                     ast: Ast::Let(Let {
-//                         sequential,
-//                         proc_id,
-//                         inits,
-//                         body,
-//                     }),
-//                     location,
-//                     ty,
-//                 }
-//                 .traverse(ctx, compile_lambdas_ast)
-//             }
-//         }
-//         _ => AnnotatedAst { ast, location, ty }.traverse(ctx, compile_lambdas_ast),
-//     }
-// }
 
 fn compile_asts(asts: Vec<AnnotatedAst>, ctx: &mut Context) -> Result<()> {
     for ast in asts {

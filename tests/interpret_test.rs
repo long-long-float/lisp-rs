@@ -150,7 +150,7 @@ fn if_test() {
 fn cond_test() {
     assert_eq!(
         Ok(Value::List(
-            vec!["zero", "one", "other"]
+            ["zero", "one", "other"]
                 .iter()
                 .map(|s| Value::String(s.to_string()))
                 .collect()

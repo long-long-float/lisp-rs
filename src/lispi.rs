@@ -198,7 +198,7 @@ pub fn interpret(program: Vec<String>, opt: &CliOption) -> Result<Vec<(e::Value,
 
 fn dump_program(title: &str, program: &IrProgram, ir_ctx: &IrContext) {
     printlnuw(&format!("{}:", title).red());
-    for (_, struct_def) in &program.structs {
+    for struct_def in program.structs.values() {
         printlnuw(&struct_def.to_string());
     }
     for fun in &program.funcs {

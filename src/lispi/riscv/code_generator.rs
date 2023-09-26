@@ -436,7 +436,7 @@ pub fn generate_code(
                             } else {
                                 // result_size > reg_size * 2
                                 let offsets = if let Some(struct_def @ StructDefinition { .. }) =
-                                    get_struct_def(&fun.ty.fun_result_type().unwrap(), &structs)
+                                    get_struct_def(fun.ty.fun_result_type().unwrap(), &structs)
                                 {
                                     struct_def.offsets(reg_size)
                                 } else {
@@ -893,21 +893,19 @@ pub fn generate_code(
 
                         if ty == Type::Void {
                             // Drop the void result
+                        } else if type_size <= reg_size {
+                            insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                        } else if type_size <= reg_size * 2 {
+                            insts.push(
+                                Instruction::sw(Register::a(0), result_reg, Immediate::new(0))
+                                    .into(),
+                            );
+                            insts.push(
+                                Instruction::sw(Register::a(1), result_reg, Immediate::new(4))
+                                    .into(),
+                            );
                         } else {
-                            if type_size <= reg_size {
-                                insts.push(Instruction::mv(result_reg, Register::a(0)).into());
-                            } else if type_size <= reg_size * 2 {
-                                insts.push(
-                                    Instruction::sw(Register::a(0), result_reg, Immediate::new(0))
-                                        .into(),
-                                );
-                                insts.push(
-                                    Instruction::sw(Register::a(1), result_reg, Immediate::new(4))
-                                        .into(),
-                                );
-                            } else {
-                                // Received the result through result_reg
-                            }
+                            // Received the result through result_reg
                         }
 
                         insts.append(&mut restore);

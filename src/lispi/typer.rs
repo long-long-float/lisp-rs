@@ -96,7 +96,7 @@ impl Type {
 
     pub fn fun_result_type(&self) -> Option<&Type> {
         match self {
-            Type::Function { args: _, result } => Some(&result),
+            Type::Function { args: _, result } => Some(result),
             _ => None,
         }
     }
@@ -453,14 +453,6 @@ impl Context {
     fn gen_tv(&mut self) -> Type {
         Type::Variable(TypeVariable {
             name: format!("T{}", self.tv_gen.gen()),
-        })
-    }
-
-    fn find_type(&mut self, ty: &String) -> Result<Type> {
-        self.type_env.find_var(ty).ok_or_else(|| {
-            Error::Type(format!("The type {} is not defined.", ty))
-                .with_null_location()
-                .into()
         })
     }
 }
