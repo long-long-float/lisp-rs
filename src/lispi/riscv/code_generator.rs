@@ -837,17 +837,19 @@ pub fn generate_code(
                             );
                         }
 
+                        let preserve_result_reg = reg_size < type_size && type_size <= reg_size * 2;
+
                         // If the size of result value is greater than reg_size,
                         // the result value is stored at the reference passed at the 1st argument.
                         let pass_ref_as_returned_value = type_size > reg_size * 2;
 
-                        let (mut save, mut restore) = {
+                        let (mut save, mut restore_preserved_result_reg, mut restore) = {
                             let (args_len, result_reg) = if pass_ref_as_returned_value {
                                 (args.len() + 1, None)
                             } else {
                                 (args.len(), Some(&result_reg))
                             };
-                            frame.generate_insts_for_call(args_len, result_reg)
+                            frame.generate_insts_for_call(args_len, result_reg, preserve_result_reg)
                         };
 
                         insts.append(&mut save);
@@ -887,6 +889,8 @@ pub fn generate_code(
                             _ => todo!(),
                         }
 
+                        insts.append(&mut restore_preserved_result_reg);
+
                         if ty == Type::Void {
                             // Drop the void result
                         } else {
@@ -909,8 +913,8 @@ pub fn generate_code(
                         insts.append(&mut restore);
                     }
                     SysCall { number, args } => {
-                        let (mut save, mut restore) =
-                            frame.generate_insts_for_call(args.len(), Some(&result_reg));
+                        let (mut save, mut restore_preserved_result_reg, mut restore) =
+                            frame.generate_insts_for_call(args.len(), Some(&result_reg), false);
 
                         insts.append(&mut save);
 
@@ -937,6 +941,7 @@ pub fn generate_code(
                             .into(),
                         );
 
+                        insts.append(&mut restore_preserved_result_reg);
                         insts.append(&mut restore);
                     }
                     Phi(_nodes) => {}

@@ -119,14 +119,21 @@ impl<'a> StackFrame<'a> {
         &self,
         args_count: usize,
         result_reg: Option<&Register>,
-    ) -> (Vec<InstrWithIr>, Vec<InstrWithIr>) {
+        preserve_result_reg: bool,
+    ) -> (Vec<InstrWithIr>, Vec<InstrWithIr>, Vec<InstrWithIr>) {
         let used_regs = self
             .register_map
             .values()
             .unique()
             .map(|id| Register::t(*id as u32))
             .chain((0..args_count).map(|i| Register::a(i as u32)))
-            .filter(|reg| Some(reg) != result_reg)
+            .filter(|reg| {
+                if preserve_result_reg {
+                    true
+                } else {
+                    Some(reg) != result_reg
+                }
+            })
             .collect_vec();
 
         let mut save = Vec::new();
@@ -137,13 +144,21 @@ impl<'a> StackFrame<'a> {
             );
         }
 
+        let mut restore_preserved_result_reg = Vec::new();
+
         let mut restore = Vec::new();
         for (i, reg) in used_regs.into_iter().enumerate() {
-            restore.push(
-                Instruction::lw(reg, Register::s(1), Immediate::new((i as i32 + 3) * 4)).into(),
-            );
+            if preserve_result_reg && Some(&reg) == result_reg {
+                restore_preserved_result_reg.push(
+                    Instruction::lw(reg, Register::s(1), Immediate::new((i as i32 + 3) * 4)).into(),
+                );
+            } else {
+                restore.push(
+                    Instruction::lw(reg, Register::s(1), Immediate::new((i as i32 + 3) * 4)).into(),
+                );
+            }
         }
 
-        (save, restore)
+        (save, restore_preserved_result_reg, restore)
     }
 }
