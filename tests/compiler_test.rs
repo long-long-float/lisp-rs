@@ -870,6 +870,29 @@ sum
 
     #[test]
     #[named]
+    fn struct_pass_reference_of_struct() {
+        let a0 = compile(
+            function_name!(),
+            r"
+(struct Person
+    id: int
+    age: int)
+
+(fn Person->inc_age (self)
+    (define age (Person->age (deref self)))
+    (Person->age= (deref self) (+ age 1)))
+
+(define person (Person 0 18))
+(Person->inc_age (ref person))
+(Person->age person)
+",
+        )
+        .run_a0();
+        assert_eq!(Some(19), a0);
+    }
+
+    #[test]
+    #[named]
     fn reference_ref() {
         let a0 = compile(
             function_name!(),
