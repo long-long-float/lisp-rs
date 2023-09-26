@@ -1398,118 +1398,19 @@ pub fn compile(
         }
 
         for (field, idx) in def.fields.iter().zip(def.offsets((XLEN / 8) as usize)) {
-            let arg0_name = "obj".to_string();
-            let obj = Operand::Variable(Variable {
-                name: arg0_name.clone(),
-            });
-
-            let obj_type = t::Type::Struct { name: name.clone() };
             let field_ty = *field.ty.clone();
 
             // getter
-            {
-                let getter_name = field.getter_name(name);
+            let getter_name = field.getter_name(name);
 
-                ctx.struct_accessors
-                    .insert(getter_name, (true, field_ty.clone(), idx));
-
-                // let bb = ctx.new_bb(getter_name.to_owned());
-                // ctx.add_bb(bb);
-
-                // let field_type = *field.ty.clone();
-
-                // let val = add_instr(
-                //     &mut ctx,
-                //     Instruction::LoadElement {
-                //         addr: obj.clone(),
-                //         ty: field_type.clone(),
-                //         index: idx.into(),
-                //     },
-                //     t::Type::None,
-                // );
-                // add_instr(
-                //     &mut ctx,
-                //     Instruction::Ret(Operand::Variable(val.result)),
-                //     t::Type::None,
-                // );
-
-                // let getter_type = t::Type::function(vec![obj_type.clone()], field_type);
-
-                // let args = vec![(arg0_name.clone(), obj_type.clone())];
-                // let getter = Function::new(
-                //     getter_name.to_owned(),
-                //     args,
-                //     Vec::new(),
-                //     getter_type,
-                //     false,
-                //     vec![bb],
-                // );
-
-                // ctx.basic_blocks.clear();
-
-                // predefined_funcs.push(getter);
-
-                // ctx.func_labels.insert_var(
-                //     getter_name.to_owned(),
-                //     Label {
-                //         name: getter_name.to_owned(),
-                //     },
-                // );
-            }
+            ctx.struct_accessors
+                .insert(getter_name, (true, field_ty.clone(), idx));
 
             // setter
-            {
-                let setter_name = field.setter_name(name);
+            let setter_name = field.setter_name(name);
 
-                ctx.struct_accessors
-                    .insert(setter_name, (false, field_ty, idx));
-
-                // let bb = ctx.new_bb(setter_name.to_owned());
-                // ctx.add_bb(bb);
-
-                // let arg1_name = "value".to_string();
-                // let value = Operand::Variable(Variable {
-                //     name: arg1_name.clone(),
-                // });
-
-                // let value_type = *field.ty.clone();
-
-                // add_instr(
-                //     &mut ctx,
-                //     Instruction::StoreElement {
-                //         addr: obj,
-                //         ty: value_type.clone(),
-                //         index: idx.into(),
-                //         value,
-                //     },
-                //     t::Type::None,
-                // );
-                // add_instr(&mut ctx, Instruction::Ret(0.into()), t::Type::None);
-
-                // let setter_type =
-                //     t::Type::function(vec![obj_type.clone(), value_type.clone()], t::Type::Void);
-
-                // let args = vec![(arg0_name, obj_type), (arg1_name, value_type)];
-                // let setter = Function::new(
-                //     setter_name.to_owned(),
-                //     args,
-                //     Vec::new(),
-                //     setter_type,
-                //     false,
-                //     vec![bb],
-                // );
-
-                // ctx.basic_blocks.clear();
-
-                // predefined_funcs.push(setter);
-
-                // ctx.func_labels.insert_var(
-                //     setter_name.to_owned(),
-                //     Label {
-                //         name: setter_name.to_owned(),
-                //     },
-                // );
-            }
+            ctx.struct_accessors
+                .insert(setter_name, (false, field_ty, idx));
         }
     }
 
