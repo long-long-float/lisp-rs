@@ -14,6 +14,7 @@ impl Type {
         match self {
             Int => 4,
             Char => 1,
+            Boolean => 1,
             Struct { .. } => {
                 panic!("Cannot get struct size from its type.")
             }
@@ -21,7 +22,7 @@ impl Type {
                 panic!("Cannot get fixed array size from its type.")
             }
             Void => 4,
-            _ => todo!(),
+            _ => todo!("Cannot get size of {} now.", self),
         }
     }
 }
