@@ -18,9 +18,7 @@ impl Type {
             Struct { .. } => {
                 panic!("Cannot get struct size from its type.")
             }
-            FixedArray(..) => {
-                panic!("Cannot get fixed array size from its type.")
-            }
+            FixedArray(et, n) => et.size() * n,
             Void => 4,
             _ => todo!("Cannot get size of {} now.", self),
         }
