@@ -1307,7 +1307,7 @@ fn unify_subtype_relation(c: &TypeEquality, rest: &[TypeEquality]) -> Result<Vec
 
             // Check left <: right
             let is_subtyping = match (left, right) {
-                (Type::Array(lt), Type::FixedArray(rt, _)) => {
+                (Type::FixedArray(lt, _), Type::Array(rt)) => {
                     rest.push(TypeEquality::new_subtyping(
                         lt.clone().with_location(c.left.loc[0], c.left.expected),
                         rt.clone().with_location(c.right.loc[0], c.right.expected),
@@ -1348,14 +1348,23 @@ fn unify_subtype_relation(c: &TypeEquality, rest: &[TypeEquality]) -> Result<Vec
     }
 }
 
-fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
+fn unify(mut constraints: Constraints) -> Result<Vec<TypeAssignment>> {
     println!("=============");
     for c in constraints.iter().rev().take(5).rev() {
         println!("{}", c);
     }
     println!("=============");
 
-    if let Some((c, rest)) = constraints.split_first() {
+    let first_equal_pos = constraints
+        .iter()
+        .find_position(|c| c.relation == TypeEqualityRelation::Equal)
+        .map(|(pos, _)| pos);
+
+    if let Some(pos) = first_equal_pos {
+        let c = constraints.remove(pos);
+        println!("{}", c);
+        unify_equal_relation(&c, &constraints)
+    } else if let Some((c, rest)) = constraints.split_first() {
         println!("{}", c);
 
         match &c.relation {
