@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{default, fmt::Display};
 
 use anyhow::Result;
 use itertools::Itertools;
@@ -318,11 +318,48 @@ pub struct TypeVariable {
 struct TypeEquality {
     left: TypeWithLocation,
     right: TypeWithLocation,
+    relation: TypeEqualityRelation,
 }
 
 impl TypeEquality {
     fn new(left: TypeWithLocation, right: TypeWithLocation) -> Self {
-        Self { left, right }
+        Self {
+            left,
+            right,
+            relation: TypeEqualityRelation::default(),
+        }
+    }
+
+    fn new_subtyping(left: TypeWithLocation, right: TypeWithLocation) -> Self {
+        Self {
+            left,
+            right,
+            relation: TypeEqualityRelation::Subtype,
+        }
+    }
+}
+
+impl Display for TypeEquality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.left, self.relation, self.right)
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Default)]
+enum TypeEqualityRelation {
+    #[default]
+    /// left == right
+    Equal,
+    /// left <: right
+    Subtype,
+}
+
+impl Display for TypeEqualityRelation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeEqualityRelation::Equal => write!(f, "="),
+            TypeEqualityRelation::Subtype => write!(f, "<:"),
+        }
     }
 }
 
@@ -610,17 +647,32 @@ fn collect_constraints_from_ast(
                 let fun_ty = resolve_for_all(fun.ty.clone(), ctx);
 
                 let mut fun_ty_locs = vec![ast.location];
-                let mut arg_locs = args.iter().map(|arg| arg.location).collect::<Vec<_>>();
-                fun_ty_locs.append(&mut arg_locs);
+                let arg_locs = args.iter().map(|arg| arg.location).collect::<Vec<_>>();
+                fun_ty_locs.append(&mut arg_locs.clone());
+
+                let fun_arg_types_tv = args.iter().map(|_| Box::new(ctx.gen_tv())).collect_vec();
+                let fun_result_type_tv = ctx.gen_tv();
+                let fun_ty_tv = Type::Function {
+                    args: fun_arg_types_tv.clone(),
+                    result: Box::new(fun_result_type_tv.clone()),
+                };
 
                 let mut ct = vec![TypeEquality::new(
                     fun_ty.with_locations(&fun_ty_locs, true),
-                    Type::Function {
-                        args: arg_types,
-                        result: Box::new(result_type.clone()),
-                    }
-                    .with_locations(&fun_ty_locs, false),
+                    fun_ty_tv.with_locations(&fun_ty_locs, false),
                 )];
+                for ((farg, aarg), aloc) in fun_arg_types_tv.iter().zip(arg_types).zip(arg_locs) {
+                    println!("{:#?} {:#?} {:#?}", farg, aarg, aloc);
+                    ct.push(TypeEquality::new_subtyping(
+                        aarg.clone().with_locations(&fun_ty_locs, true),
+                        farg.clone().with_location(aloc, false),
+                    ));
+                }
+                ct.push(TypeEquality::new(
+                    fun_result_type_tv.with_locations(&fun_ty_locs, true),
+                    result_type.clone().with_locations(&fun_ty_locs, false),
+                ));
+
                 ct.append(&mut fct);
                 ct.append(&mut act);
 
@@ -1066,129 +1118,249 @@ fn replace_constraints(
     constraints
         .iter()
         .map(|c| {
-            let c = c.clone();
-            TypeEquality::new(c.left.replace(assign, loc), c.right.replace(assign, loc))
+            let TypeEquality {
+                left,
+                right,
+                relation,
+            } = c.clone();
+            let left = left.replace(assign, loc);
+            let right = right.replace(assign, loc);
+            TypeEquality {
+                left,
+                right,
+                relation,
+            }
         })
         .collect()
 }
 
-fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
-    fn unify_type_var(
-        x: &TypeVariable,
-        t: &Type,
-        loc: &TypeWithLocation,
-        rest: &[TypeEquality],
-    ) -> Result<Vec<TypeAssignment>> {
-        let assign = TypeAssignment::new(x.clone(), t.clone());
-        let rest = replace_constraints(rest, &assign, loc);
-        let mut rest = unify(rest)?;
-        let mut ct = vec![assign];
-        ct.append(&mut rest);
-        Ok(ct)
+/// Replace type variable x with type t in rest.
+fn unify_type_var(
+    x: &TypeVariable,
+    t: &Type,
+    loc: &TypeWithLocation,
+    rest: &[TypeEquality],
+) -> Result<Vec<TypeAssignment>> {
+    let assign = TypeAssignment::new(x.clone(), t.clone());
+    let rest = replace_constraints(rest, &assign, loc);
+    let mut rest = unify(rest)?;
+    let mut ct = vec![assign];
+    ct.append(&mut rest);
+    Ok(ct)
+}
+
+fn unify_equal_relation(c: &TypeEquality, rest: &[TypeEquality]) -> Result<Vec<TypeAssignment>> {
+    match (&c.left.ty, &c.right.ty) {
+        (s, t) if s == t => unify(rest.to_vec()),
+
+        (Type::Variable(x), t) if !t.has_free_var(x) => unify_type_var(x, t, &c.right, rest),
+        (t, Type::Variable(x)) if !t.has_free_var(x) => unify_type_var(x, t, &c.left, rest),
+
+        (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
+
+        (Type::List(e0), Type::List(e1))
+        | (Type::Array(e0), Type::Array(e1))
+        | (Type::Reference(e0), Type::Reference(e1)) => {
+            let mut rest = rest.to_vec();
+            rest.push(TypeEquality::new(
+                e0.clone().with_locations(&c.left.loc, c.left.expected),
+                e1.clone().with_locations(&c.right.loc, c.right.expected),
+            ));
+            unify(rest)
+        }
+
+        (
+            f0 @ Type::Function {
+                args: args0,
+                result: result0,
+            },
+            f1 @ Type::Function {
+                args: args1,
+                result: result1,
+            },
+        ) => {
+            if args0.len() != args1.len() {
+                return Err(
+                    Error::Type(format!("Types {} and {} are not matched.", f0, f1))
+                        .with_null_location()
+                        .into(),
+                );
+            }
+
+            let mut rest = rest.to_vec();
+            let args0 = args0.iter().zip(c.left.loc.iter().skip(1));
+            let args1 = args1.iter().zip(c.right.loc.iter().skip(1));
+            for ((a0, l0), (a1, l1)) in args0.zip(args1) {
+                rest.push(TypeEquality::new(
+                    a0.clone().with_location(*l0, c.left.expected),
+                    a1.clone().with_location(*l1, c.right.expected),
+                ));
+            }
+            rest.push(TypeEquality::new(
+                result0
+                    .clone()
+                    .with_location(c.left.loc[0], c.left.expected),
+                result1
+                    .clone()
+                    .with_location(c.right.loc[0], c.right.expected),
+            ));
+
+            // println!("=============");
+            // for c in rest.iter().take(5) {
+            //     println!("{}", c);
+            // }
+            // println!("=============");
+
+            unify(rest)
+        }
+        // left != right
+        (left, right) => {
+            let (loc0, loc1) = if c.left.loc == c.right.loc {
+                (
+                    if c.left.expected {
+                        TokenLocation::Null
+                    } else {
+                        c.left.loc[0]
+                    },
+                    if c.right.expected {
+                        TokenLocation::Null
+                    } else {
+                        c.right.loc[0]
+                    },
+                )
+            } else {
+                (c.left.loc[0], c.right.loc[0])
+            };
+
+            Err(
+                Error::TypeNotMatched(left.clone(), right.clone(), loc0, loc1)
+                    .with_null_location()
+                    .into(),
+            )
+        }
     }
+}
 
-    if let Some((c, rest)) = constraints.split_first() {
-        match (&c.left.ty, &c.right.ty) {
-            (s, t) if s == t => unify(rest.to_vec()),
+fn unify_subtype_relation(c: &TypeEquality, rest: &[TypeEquality]) -> Result<Vec<TypeAssignment>> {
+    match (&c.left.ty, &c.right.ty) {
+        (s, t) if s == t => unify(rest.to_vec()),
 
-            (Type::Variable(x), t) if !t.has_free_var(x) => unify_type_var(x, t, &c.right, rest),
-            (t, Type::Variable(x)) if !t.has_free_var(x) => unify_type_var(x, t, &c.left, rest),
+        (Type::Variable(x), t) if !t.has_free_var(x) => unify_type_var(x, t, &c.right, rest),
+        (t, Type::Variable(x)) if !t.has_free_var(x) => unify_type_var(x, t, &c.left, rest),
 
-            (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
+        (Type::Any, _) | (_, Type::Any) => unify(rest.to_vec()),
 
-            (Type::List(e0), Type::List(e1))
-            | (Type::Array(e0), Type::Array(e1))
-            | (Type::Reference(e0), Type::Reference(e1)) => {
-                let mut rest = rest.to_vec();
-                rest.push(TypeEquality::new(
-                    e0.clone().with_locations(&c.left.loc, c.left.expected),
-                    e1.clone().with_locations(&c.right.loc, c.right.expected),
-                ));
-                unify(rest)
+        (Type::List(e0), Type::List(e1))
+        | (Type::Array(e0), Type::Array(e1))
+        | (Type::Reference(e0), Type::Reference(e1)) => {
+            let mut rest = rest.to_vec();
+            // Covariant
+            rest.push(TypeEquality::new_subtyping(
+                e0.clone().with_locations(&c.left.loc, c.left.expected),
+                e1.clone().with_locations(&c.right.loc, c.right.expected),
+            ));
+            unify(rest)
+        }
+
+        (
+            f0 @ Type::Function {
+                args: args0,
+                result: result0,
+            },
+            f1 @ Type::Function {
+                args: args1,
+                result: result1,
+            },
+        ) => {
+            if args0.len() != args1.len() {
+                return Err(
+                    Error::Type(format!("Types {} and {} are not matched.", f0, f1))
+                        .with_null_location()
+                        .into(),
+                );
             }
 
-            (
-                f0 @ Type::Function {
-                    args: args0,
-                    result: result0,
-                },
-                f1 @ Type::Function {
-                    args: args1,
-                    result: result1,
-                },
-            ) => {
-                if args0.len() != args1.len() {
-                    return Err(
-                        Error::Type(format!("Types {} and {} are not matched.", f0, f1))
-                            .with_null_location()
-                            .into(),
-                    );
-                }
+            let mut rest = rest.to_vec();
+            let args0 = args0.iter().zip(c.left.loc.iter().skip(1));
+            let args1 = args1.iter().zip(c.right.loc.iter().skip(1));
+            for ((a0, l0), (a1, l1)) in args0.zip(args1) {
+                // Contravariant in argment types
+                rest.push(TypeEquality::new_subtyping(
+                    a1.clone().with_location(*l1, c.right.expected),
+                    a0.clone().with_location(*l0, c.left.expected),
+                ));
+            }
+            // Covariant in return type
+            rest.push(TypeEquality::new_subtyping(
+                result0
+                    .clone()
+                    .with_location(c.left.loc[0], c.left.expected),
+                result1
+                    .clone()
+                    .with_location(c.right.loc[0], c.right.expected),
+            ));
 
-                let mut rest = rest.to_vec();
-                let args0 = args0.iter().zip(c.left.loc.iter().skip(1));
-                let args1 = args1.iter().zip(c.right.loc.iter().skip(1));
-                for ((a0, l0), (a1, l1)) in args0.zip(args1) {
-                    rest.push(TypeEquality::new(
-                        a0.clone().with_location(*l0, c.left.expected),
-                        a1.clone().with_location(*l1, c.right.expected),
+            unify(rest)
+        }
+        (left, right) => {
+            let mut rest = rest.to_vec();
+
+            // Check left <: right
+            let is_subtyping = match (left, right) {
+                (Type::Array(lt), Type::FixedArray(rt, _)) => {
+                    rest.push(TypeEquality::new_subtyping(
+                        lt.clone().with_location(c.left.loc[0], c.left.expected),
+                        rt.clone().with_location(c.right.loc[0], c.right.expected),
                     ));
+
+                    true
                 }
-                rest.push(TypeEquality::new(
-                    result0
-                        .clone()
-                        .with_location(c.left.loc[0], c.left.expected),
-                    result1
-                        .clone()
-                        .with_location(c.right.loc[0], c.right.expected),
-                ));
+                _ => false,
+            };
 
+            if is_subtyping {
                 unify(rest)
-            }
-            (left, right) => {
-                let mut rest = rest.to_vec();
-
-                // Check left <: right
-                // NOTE: It depends on which argument type is placed on the right.
-                let is_subtyping = match (left, right) {
-                    (Type::Array(lt), Type::FixedArray(rt, _)) => {
-                        rest.push(TypeEquality::new(
-                            lt.clone().with_location(c.left.loc[0], c.left.expected),
-                            rt.clone().with_location(c.right.loc[0], c.right.expected),
-                        ));
-
-                        true
-                    }
-                    _ => false,
+            } else {
+                let (loc0, loc1) = if c.left.loc == c.right.loc {
+                    (
+                        if c.left.expected {
+                            TokenLocation::Null
+                        } else {
+                            c.left.loc[0]
+                        },
+                        if c.right.expected {
+                            TokenLocation::Null
+                        } else {
+                            c.right.loc[0]
+                        },
+                    )
+                } else {
+                    (c.left.loc[0], c.right.loc[0])
                 };
 
-                if is_subtyping {
-                    unify(rest)
-                } else {
-                    let (loc0, loc1) = if c.left.loc == c.right.loc {
-                        (
-                            if c.left.expected {
-                                TokenLocation::Null
-                            } else {
-                                c.left.loc[0]
-                            },
-                            if c.right.expected {
-                                TokenLocation::Null
-                            } else {
-                                c.right.loc[0]
-                            },
-                        )
-                    } else {
-                        (c.left.loc[0], c.right.loc[0])
-                    };
-
-                    Err(
-                        Error::TypeNotMatched(left.clone(), right.clone(), loc0, loc1)
-                            .with_null_location()
-                            .into(),
-                    )
-                }
+                Err(
+                    Error::TypeNotMatched(left.clone(), right.clone(), loc0, loc1)
+                        .with_null_location()
+                        .into(),
+                )
             }
+        }
+    }
+}
+
+fn unify(constraints: Constraints) -> Result<Vec<TypeAssignment>> {
+    println!("=============");
+    for c in constraints.iter().rev().take(5).rev() {
+        println!("{}", c);
+    }
+    println!("=============");
+
+    if let Some((c, rest)) = constraints.split_first() {
+        println!("{}", c);
+
+        match &c.relation {
+            TypeEqualityRelation::Equal => unify_equal_relation(c, rest),
+            TypeEqualityRelation::Subtype => unify_subtype_relation(c, rest),
         }
     } else {
         Ok(Vec::new())
@@ -1352,6 +1524,12 @@ pub fn check_and_inference_type(
     }
 
     let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
+
+    for c in &constraints {
+        println!("{}", c);
+    }
+    println!();
+
     let assigns = unify(constraints)?;
     let mut asts = asts;
     for assign in &assigns {
