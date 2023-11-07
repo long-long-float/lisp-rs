@@ -25,7 +25,25 @@ pub fn translate(program: &IrProgram, ir_ctx: &mut IrContext) -> Result<()> {
                     use CmpOperator::*;
 
                     match op {
-                        Eq => todo!(),
+                        // left == right <=> !(left - right)
+                        Eq => {
+                            let iresult = Variable {
+                                name: format!("{}-ct", result.name),
+                            };
+                            insts.push(
+                                AnnotatedInstr::new(
+                                    iresult.clone(),
+                                    I::Sub(left.clone(), right.clone()),
+                                    ty,
+                                )
+                                .with_tags(tags),
+                            );
+                            insts.push(AnnotatedInstr::new(
+                                result,
+                                I::Not(iresult.into()),
+                                Type::Boolean,
+                            ));
+                        }
                         // left >= right <=> !(left < right)
                         SGE => {
                             let iresult = Variable {

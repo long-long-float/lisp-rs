@@ -25,6 +25,7 @@ pub enum Token {
     RightSquareBracket,
     Quote,
     Colon,
+    Ampersand,
     IntegerLiteral(i32),
     FloatLiteral(f32),
     Identifier(String),
@@ -79,8 +80,8 @@ impl CharExt for char {
     fn is_identifier_head(&self) -> bool {
         match *self {
             c if c.is_ascii_alphabetic() => true,
-            '!' | '$' | '%' | '&' | '*' | '/' | '<' | '=' | '>' | '?' | '@' | '^' | '_' | '~'
-            | '+' | '-' | '.' => true,
+            '!' | '$' | '%' | '*' | '/' | '<' | '=' | '>' | '?' | '@' | '^' | '_' | '~' | '+'
+            | '-' | '.' => true,
             _ => false,
         }
     }
@@ -318,6 +319,10 @@ fn tokenize_single<'a>(
                 } else {
                     Token::Identifier(op.to_string()).with_location(begin, end)
                 }
+            }
+            '&' => {
+                succ(program, line, loc);
+                Token::Ampersand.with_location(begin, *loc)
             }
             c if c.is_ascii_digit() => tokenize_number(program, line, loc, begin, true)?,
             c if c.is_identifier_head() => tokenize_identifier(program, line, loc, begin)?,

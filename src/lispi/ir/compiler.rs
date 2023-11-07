@@ -374,6 +374,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let index = args[1].result.clone().into();
                         let value = args[2].result.clone().into();
 
+                        println!("{:?}", args[0]);
                         let elem_type = args[0].ty.element_type().unwrap();
 
                         let index =
@@ -480,7 +481,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                                         ty: field_type.clone(),
                                         index,
                                     },
-                                    t::Type::None,
+                                    field_type.clone(),
                                 );
                             } else {
                                 let value = args[1].result.clone().into();

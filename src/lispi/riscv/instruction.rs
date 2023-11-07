@@ -190,6 +190,8 @@ pub enum IInstructionOp {
     Xori,
     /// Set Less Than Immediate
     Slti,
+    /// Set Less Than Immediate Unsigned
+    Sltiu,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -321,6 +323,7 @@ impl GenerateCode for IInstruction {
             Lb => (0b000, 0b0000011),
             Xori => (0b100, 0b0010011),
             Slti => (0b010, 0b0010011),
+            Sltiu => (0b011, 0b0010011),
         };
 
         let rd = self.rd.as_int();
@@ -336,7 +339,7 @@ impl GenerateCode for IInstruction {
         }
 
         match self.op {
-            Andi | Ori | Addi | Jalr | Xori | Slti => {
+            Andi | Ori | Addi | Jalr | Xori | Slti | Sltiu => {
                 let mut imm = self.imm.value();
                 if imm >> 11 & 1 == 1 {
                     // sign extension
@@ -349,6 +352,7 @@ impl GenerateCode for IInstruction {
                     Jalr => "jalr",
                     Xori => "xori",
                     Slti => "slti",
+                    Sltiu => "sltiu",
                     _ => panic!("Unknown op: {:?}", self.op),
                 };
                 format!("{} {}, {}, {}", name, self.rd, self.rs1, imm)
