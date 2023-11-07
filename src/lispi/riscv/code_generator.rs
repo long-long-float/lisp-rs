@@ -634,7 +634,7 @@ pub fn generate_code(
                         let op = get_register_from_operand(&mut ctx, &register_map, op)?;
                         insts.push(
                             I(IInstruction {
-                                op: IInstructionOp::Xori,
+                                op: IInstructionOp::Sltiu,
                                 imm: Immediate::new(0x1),
                                 rs1: op,
                                 rd: result_reg,
@@ -687,7 +687,7 @@ pub fn generate_code(
                         let op = match ty {
                             Type::Int => IInstructionOp::Lw,
                             Type::Char => IInstructionOp::Lb,
-                            _ => todo!(),
+                            _ => todo!("type = {}", ty),
                         };
 
                         let (addr, index) = if let Some(local_idx) = local_idx {

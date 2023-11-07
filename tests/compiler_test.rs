@@ -908,6 +908,21 @@ sum
 
     #[test]
     #[named]
+    fn reference_ref_shorthand() {
+        // Shorthand notation
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define x 10)
+(= &x (ref x))
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(1), a0);
+    }
+
+    #[test]
+    #[named]
     fn reference_deref() {
         let a0 = compile(
             function_name!(),

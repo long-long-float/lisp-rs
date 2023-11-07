@@ -414,6 +414,10 @@ fn parse_value(tokens: &[TokenWithLocation]) -> ParseResult<AnnotatedAst> {
     {
         let loc = *loc;
         match first {
+Token::Ampersand => {
+                let (value, rest) = parse_value(rest)?;
+                Ok((Ast::Ref(Box::new(value)).with_location(loc), rest))
+            }
             Token::Identifier(value) => {
                 if value.to_lowercase() == "nil" {
                     Ok((Ast::Nil.with_location(loc), rest))

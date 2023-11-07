@@ -662,7 +662,6 @@ fn collect_constraints_from_ast(
                     fun_ty_tv.with_locations(&fun_ty_locs, false),
                 )];
                 for ((farg, aarg), aloc) in fun_arg_types_tv.iter().zip(arg_types).zip(arg_locs) {
-                    println!("{:#?} {:#?} {:#?}", farg, aarg, aloc);
                     ct.push(TypeEquality::new_subtyping(
                         aarg.clone().with_locations(&fun_ty_locs, true),
                         farg.clone().with_location(aloc, false),
@@ -1349,12 +1348,6 @@ fn unify_subtype_relation(c: &TypeEquality, rest: &[TypeEquality]) -> Result<Vec
 }
 
 fn unify(mut constraints: Constraints) -> Result<Vec<TypeAssignment>> {
-    println!("=============");
-    for c in constraints.iter().rev().take(5).rev() {
-        println!("{}", c);
-    }
-    println!("=============");
-
     let first_equal_pos = constraints
         .iter()
         .find_position(|c| c.relation == TypeEqualityRelation::Equal)
@@ -1362,11 +1355,8 @@ fn unify(mut constraints: Constraints) -> Result<Vec<TypeAssignment>> {
 
     if let Some(pos) = first_equal_pos {
         let c = constraints.remove(pos);
-        println!("{}", c);
         unify_equal_relation(&c, &constraints)
     } else if let Some((c, rest)) = constraints.split_first() {
-        println!("{}", c);
-
         match &c.relation {
             TypeEqualityRelation::Equal => unify_equal_relation(c, rest),
             TypeEqualityRelation::Subtype => unify_subtype_relation(c, rest),
