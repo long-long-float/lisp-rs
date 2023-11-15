@@ -59,6 +59,14 @@ impl Type {
         Type::Array(Box::new(Type::Char))
     }
 
+    pub fn array(ty: Type) -> Type {
+        Type::Array(Box::new(ty))
+    }
+
+    pub fn reference(ty: Type) -> Type {
+        Type::Reference(Box::new(ty))
+    }
+
     pub fn function(args: Vec<Type>, result: Type) -> Type {
         Type::Function {
             args: args.iter().map(|a| Box::new(a.clone())).collect(),
@@ -87,10 +95,18 @@ impl Type {
         }
     }
 
-    pub fn element_type(&self) -> Option<Type> {
+    pub fn element_type(&self) -> Option<&Type> {
         match self {
-            Type::List(et) | Type::Array(et) | Type::FixedArray(et, _) => Some(*et.clone()),
+            Type::List(et) | Type::Array(et) | Type::FixedArray(et, _) => Some(et),
             _ => None,
+        }
+    }
+
+    pub fn dereference(&self) -> Option<&Type> {
+        if let Type::Reference(ty) = self {
+            Some(ty)
+        } else {
+            None
         }
     }
 

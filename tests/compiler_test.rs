@@ -507,7 +507,7 @@ sum
             function_name!(),
             r#"
 (define ary (array 1 2 3))
-(array->get ary 1)
+(array->get &ary 1)
 "#,
         )
         .run_a0();
@@ -522,7 +522,7 @@ sum
             r#"
 (define f (lambda (i)
     (define ary (array 1 2 3))
-    (array->get ary i)
+    (array->get &ary i)
     ))
 (f 1)
 "#,
@@ -539,8 +539,8 @@ sum
             r#"
 (define f (lambda (i)
     (define ary (array 1 2 3))
-    (array->set ary i 99)
-    (array->get ary i)
+    (array->set &ary i 99)
+    (array->get &ary i)
     ))
 (f 1)
 "#,
@@ -556,8 +556,8 @@ sum
             function_name!(),
             r#"
 (define ary (array 1 2 3))
-(array->set ary 1 99)
-(array->get ary 1)
+(array->set &ary 1 99)
+(array->get &ary 1)
 "#,
         )
         .run_a0();
@@ -571,7 +571,7 @@ sum
             function_name!(),
             r#"
 (define ary (fixed-array 1 2 3))
-(array->len ary)
+(array->len &ary)
 "#,
         )
         .run_a0();
@@ -586,7 +586,7 @@ sum
             r#"
 (define f (lambda () 
     (define ary (fixed-array 1 2 3))
-    (array->get ary 1)))
+    (array->get &ary 1)))
 (define g (lambda () (f)))
 (g)
 "#,
@@ -602,7 +602,7 @@ sum
             function_name!(),
             r#"
 (define ary (fixed-array 1 2 3))
-(array->get ary 1)
+(array->get &ary 1)
 "#,
         )
         .run_a0();
@@ -617,7 +617,7 @@ sum
             r#"
 (define f (lambda (i)
     (define ary (fixed-array 1 2 3))
-    (array->get ary i)
+    (array->get &ary i)
     ))
 (f 1)
 "#,
@@ -634,8 +634,8 @@ sum
             r#"
 (define f (lambda (i)
     (define ary (fixed-array 1 2 3))
-    (array->set ary i 99)
-    (array->get ary i)
+    (array->set &ary i 99)
+    (array->get &ary i)
     ))
 (f 1)
 "#,
@@ -651,8 +651,8 @@ sum
             function_name!(),
             r#"
 (define ary (fixed-array 1 2 3))
-(array->set ary 1 99)
-(array->get ary 1)
+(array->set &ary 1 99)
+(array->get &ary 1)
 "#,
         )
         .run_a0();
@@ -670,7 +670,7 @@ sum
     ary)
 
 (define ary (make-fixed-array))
-(array->get ary 1) 
+(array->get &ary 1) 
 "#,
         )
         .run_a0();
@@ -688,8 +688,8 @@ sum
     ary)
 
 (define ary (make-fixed-array))
-(array->set ary 1 42) 
-(array->get ary 1) 
+(array->set &ary 1 42) 
+(array->get &ary 1) 
 "#,
         )
         .run_a0();
@@ -703,7 +703,7 @@ sum
             function_name!(),
             r#"
 (define str "Hello")
-(array->len str)
+(array->len &str)
 "#,
         )
         .run_a0();
@@ -718,7 +718,7 @@ sum
             r#"
 (define f (lambda () 
     (define str "Hello")
-    (array->get str 1)))
+    (array->get &str 1)))
 (define g (lambda () (f)))
 (g)
 "#,
@@ -734,7 +734,7 @@ sum
             function_name!(),
             r#"
 (define str "Hello")
-(array->get str 1)
+(array->get &str 1)
 "#,
         )
         .run_a0();
@@ -749,7 +749,7 @@ sum
             r#"
 (define f (lambda (i)
     (define str "Hello")
-    (array->get str i)
+    (array->get &str i)
     ))
 (f 1)
 "#,
@@ -766,8 +766,8 @@ sum
             r#"
 (define f (lambda (i)
     (define str "Hello")
-    (array->set str i \x)
-    (array->get str i)
+    (array->set &str i \x)
+    (array->get &str i)
     ))
 (f 1)
 "#,
@@ -783,8 +783,8 @@ sum
             function_name!(),
             r#"
 (define str "Hello")
-(array->set str 1 \x)
-(array->get str 1)
+(array->set &str 1 \x)
+(array->get &str 1)
 "#,
         )
         .run_a0();
