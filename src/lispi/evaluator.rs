@@ -1036,7 +1036,12 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("array->get"),
-        Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv.clone())), Type::Int], tv)),
+        Type::for_all(|tv| {
+            Type::function(
+                vec![Type::reference(Type::array(tv.clone())), Type::Int],
+                tv,
+            )
+        }),
         |args| {
             match_call_args!(args, Value::List(vs), Value::Integer(idx), {
                 if let Some(v) = vs.get(*idx as usize) {

@@ -342,10 +342,11 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         add_instr(ctx, I::Operand(ary), ast_ty);
                     }
                     "array->get" => {
-                        let ary = args[0].result.clone().into();
+                        let ary_ref = args[0].result.clone().into();
                         let index = args[1].result.clone().into();
 
-                        let elem_type = args[0].ty.element_type().unwrap();
+                        let ary_type = args[0].ty.dereference().unwrap();
+                        let elem_type = ary_type.element_type().unwrap();
 
                         let index =
                             add_instr(ctx, I::Mul(index, elem_type.size().into()), t::Type::None)
@@ -359,11 +360,23 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         .result
                         .into();
 
+                        let ary = add_instr(
+                            ctx,
+                            I::LoadElement {
+                                addr: ary_ref,
+                                ty: ary_type.clone(),
+                                index: 0.into(),
+                            },
+                            ary_type.clone(),
+                        )
+                        .result
+                        .into();
+
                         add_instr(
                             ctx,
                             I::LoadElement {
                                 addr: ary,
-                                ty: elem_type,
+                                ty: elem_type.clone(),
                                 index,
                             },
                             ast_ty,
@@ -374,7 +387,6 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         let index = args[1].result.clone().into();
                         let value = args[2].result.clone().into();
 
-                        println!("{:?}", args[0]);
                         let elem_type = args[0].ty.element_type().unwrap();
 
                         let index =
@@ -393,7 +405,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             ctx,
                             I::StoreElement {
                                 addr: ary,
-                                ty: elem_type,
+                                ty: elem_type.clone(),
                                 index,
                                 value,
                             },
