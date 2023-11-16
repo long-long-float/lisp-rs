@@ -3,8 +3,6 @@ use std::fmt::Display;
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::lispi::ir::instruction::Variable;
-
 /// ID in Interference Graph
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Igid(usize);
@@ -21,22 +19,23 @@ impl From<usize> for Igid {
     }
 }
 
-#[derive(Default)]
-/// Undirected graph for interference analyzation.
-pub struct InterferenceGraph {
-    pub vars: FxHashMap<Variable, Igid>,
+pub struct UndirectedGraph<T> {
+    pub vars: FxHashMap<T, Igid>,
 
     /// Adjacency list
     nodes: Vec<FxHashSet<Igid>>,
 }
 
-impl InterferenceGraph {
-    pub fn add_node(&mut self, var: &Variable) -> Igid {
+impl<T> UndirectedGraph<T>
+where
+    T: Eq + PartialEq + Clone + std::hash::Hash,
+{
+    pub fn add_node(&mut self, var: &T) -> Igid {
         if let Some(id) = self.vars.get(var) {
             *id
         } else {
             let id = self.nodes.len().into();
-            self.vars.insert(var.to_owned(), id);
+            self.vars.insert(var.clone(), id);
 
             self.nodes.push(FxHashSet::default());
 
@@ -46,7 +45,7 @@ impl InterferenceGraph {
 
     /// Add an edge between node1 and node2.
     /// If node1 or node2 don't exist, they will be created.
-    pub fn connect(&mut self, node1: &Variable, node2: &Variable) {
+    pub fn connect(&mut self, node1: &T, node2: &T) {
         let node1 = self.get_id_or_add_node(node1);
         let node2 = self.get_id_or_add_node(node2);
 
@@ -59,7 +58,7 @@ impl InterferenceGraph {
     }
 
     /// Remove var node and edges from/to var.
-    pub fn remove(&mut self, var: &Variable) {
+    pub fn remove(&mut self, var: &T) {
         if let Some(&id) = self.get_id(var) {
             self.nodes[id.value()].clear();
             for node in &mut self.nodes {
@@ -70,7 +69,7 @@ impl InterferenceGraph {
         }
     }
 
-    fn get_id_or_add_node(&mut self, var: &Variable) -> Igid {
+    fn get_id_or_add_node(&mut self, var: &T) -> Igid {
         if let Some(id) = self.get_id(var) {
             *id
         } else {
@@ -78,17 +77,17 @@ impl InterferenceGraph {
         }
     }
 
-    fn get_id(&self, var: &Variable) -> Option<&Igid> {
+    fn get_id(&self, var: &T) -> Option<&Igid> {
         self.vars.get(var)
     }
 
-    fn get_var(&self, id: Igid) -> Option<&Variable> {
+    fn get_var(&self, id: Igid) -> Option<&T> {
         self.vars
             .iter()
             .find_map(|(var, iid)| if *iid == id { Some(var) } else { None })
     }
 
-    pub fn get_connected_vars(&self, var: &Variable) -> Vec<Igid> {
+    pub fn get_connected_vars(&self, var: &T) -> Vec<Igid> {
         if let Some(&id) = self.get_id(var) {
             self.nodes[id.value()]
                 .iter()
@@ -100,12 +99,12 @@ impl InterferenceGraph {
     }
 
     #[allow(dead_code)]
-    fn exists(&self, var: &Variable) -> bool {
+    fn exists(&self, var: &T) -> bool {
         self.vars.contains_key(var)
     }
 
     #[allow(dead_code)]
-    fn is_connected_to(&self, src: &Variable, dest: &Variable) -> bool {
+    fn is_connected_to(&self, src: &T, dest: &T) -> bool {
         if let (Some(&src), Some(dest)) = (self.get_id(src), self.get_id(dest)) {
             self.nodes[src.value()].contains(dest)
         } else {
@@ -114,18 +113,27 @@ impl InterferenceGraph {
     }
 }
 
-impl Display for InterferenceGraph {
+impl<T> Default for UndirectedGraph<T> {
+    fn default() -> Self {
+        Self {
+            vars: FxHashMap::default(),
+            nodes: Vec::default(),
+        }
+    }
+}
+
+impl<T> Display for UndirectedGraph<T>
+where
+    T: Eq + PartialEq + Display + Clone + std::hash::Hash,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (id, connected) in self.nodes.iter().enumerate() {
             let var = self.get_var(id.into()).unwrap();
-            write!(f, "{} -> ", var.name)?;
+            write!(f, "{} -> ", var)?;
 
             let connected = connected
                 .iter()
-                .map(|id| {
-                    let other = self.get_var(*id).unwrap();
-                    other.name.clone()
-                })
+                .map(|id| self.get_var(*id).unwrap().to_string())
                 .join(", ");
             writeln!(f, "{}", connected)?;
         }
@@ -136,11 +144,13 @@ impl Display for InterferenceGraph {
 
 #[cfg(test)]
 mod tests {
+    use crate::lispi::ir::instruction::Variable;
+
     use super::*;
 
     #[test]
-    fn interference_graph() {
-        let mut graph = InterferenceGraph::default();
+    fn undirected_graph_test() {
+        let mut graph = UndirectedGraph::default();
         let vars = (0..5)
             .map(|i| Variable {
                 name: format!("var{}", i),

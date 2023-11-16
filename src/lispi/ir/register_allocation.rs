@@ -7,7 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     bug,
-    data_structure::graph::InterferenceGraph,
+    data_structure::graph::UndirectedGraph,
     lispi::{
         cli_option::CliOption,
         error::Error,
@@ -158,8 +158,8 @@ fn build_inference_graph(
     func: &Function,
     all_in_outs: &AllInOuts,
     ir_ctx: &IrContext,
-) -> InterferenceGraph {
-    let mut inter_graph = InterferenceGraph::default();
+) -> UndirectedGraph<Variable> {
+    let mut inter_graph: UndirectedGraph<Variable> = UndirectedGraph::default();
 
     for bb_id in &func.basic_blocks {
         let bb = ir_ctx.bb_arena.get(*bb_id).unwrap();
