@@ -19,14 +19,14 @@ impl From<usize> for Igid {
     }
 }
 
-pub struct UndirectedGraph<T> {
+pub struct DirectedGraph<T> {
     pub vars: FxHashMap<T, Igid>,
 
     /// Adjacency list
     nodes: Vec<FxHashSet<Igid>>,
 }
 
-impl<T> UndirectedGraph<T>
+impl<T> DirectedGraph<T>
 where
     T: Eq + PartialEq + Clone + std::hash::Hash,
 {
@@ -43,18 +43,17 @@ where
         }
     }
 
-    /// Add an edge between node1 and node2.
-    /// If node1 or node2 don't exist, they will be created.
-    pub fn connect(&mut self, node1: &T, node2: &T) {
-        let node1 = self.get_id_or_add_node(node1);
-        let node2 = self.get_id_or_add_node(node2);
+    /// Add an edge from src to dest.
+    /// If src or dest don't exist, they will be created.
+    pub fn connect(&mut self, src: &T, dest: &T) {
+        let src = self.get_id_or_add_node(src);
+        let dest = self.get_id_or_add_node(dest);
 
-        if node1 == node2 {
+        if src == dest {
             return;
         }
 
-        self.nodes[node1.value()].insert(node2);
-        self.nodes[node2.value()].insert(node1);
+        self.nodes[src.value()].insert(dest);
     }
 
     /// Remove var node and edges from/to var.
@@ -67,6 +66,10 @@ where
 
             self.vars.remove(var);
         }
+    }
+
+    pub fn values(&self) -> FxHashMap<T, Igid> {
+        self.vars.clone()
     }
 
     fn get_id_or_add_node(&mut self, var: &T) -> Igid {
@@ -113,7 +116,7 @@ where
     }
 }
 
-impl<T> Default for UndirectedGraph<T> {
+impl<T> Default for DirectedGraph<T> {
     fn default() -> Self {
         Self {
             vars: FxHashMap::default(),
@@ -122,7 +125,7 @@ impl<T> Default for UndirectedGraph<T> {
     }
 }
 
-impl<T> Display for UndirectedGraph<T>
+impl<T> Display for DirectedGraph<T>
 where
     T: Eq + PartialEq + Display + Clone + std::hash::Hash,
 {
@@ -142,11 +145,104 @@ where
     }
 }
 
+pub struct UndirectedGraph<T> {
+    directed_graph: DirectedGraph<T>,
+}
+
+impl<T> UndirectedGraph<T>
+where
+    T: Eq + PartialEq + Clone + std::hash::Hash,
+{
+    pub fn add_node(&mut self, var: &T) -> Igid {
+        self.directed_graph.add_node(var)
+    }
+
+    /// Add an edge between node1 and node2.
+    /// If node1 or node2 don't exist, they will be created.
+    pub fn connect(&mut self, node1: &T, node2: &T) {
+        self.directed_graph.connect(node1, node2);
+        self.directed_graph.connect(node2, node1);
+    }
+
+    /// Remove var node and edges from/to var.
+    pub fn remove(&mut self, var: &T) {
+        self.directed_graph.remove(var)
+    }
+
+    pub fn values(&self) -> FxHashMap<T, Igid> {
+        self.directed_graph.values()
+    }
+
+    pub fn get_connected_vars(&self, var: &T) -> Vec<Igid> {
+        self.directed_graph.get_connected_vars(var)
+    }
+
+    #[allow(dead_code)]
+    fn exists(&self, var: &T) -> bool {
+        self.directed_graph.exists(var)
+    }
+
+    #[allow(dead_code)]
+    fn is_connected_to(&self, src: &T, dest: &T) -> bool {
+        self.directed_graph.is_connected_to(src, dest)
+    }
+}
+
+impl<T> Default for UndirectedGraph<T> {
+    fn default() -> Self {
+        Self {
+            directed_graph: DirectedGraph::default(),
+        }
+    }
+}
+
+impl<T> Display for UndirectedGraph<T>
+where
+    T: Eq + PartialEq + Display + Clone + std::hash::Hash,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.directed_graph.fmt(f)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::lispi::ir::instruction::Variable;
 
     use super::*;
+
+    #[test]
+    fn directed_graph_test() {
+        let mut graph = DirectedGraph::default();
+        let vars = (0..5)
+            .map(|i| Variable {
+                name: format!("var{}", i),
+            })
+            .collect::<Vec<_>>();
+
+        graph.connect(&vars[0], &vars[1]);
+        assert!(!graph.is_connected_to(&vars[0], &vars[0]));
+        assert!(graph.is_connected_to(&vars[0], &vars[1]));
+        assert!(!graph.is_connected_to(&vars[1], &vars[0]));
+        assert!(!graph.is_connected_to(&vars[0], &vars[2]));
+        assert_eq!(2, graph.values().len());
+
+        graph.remove(&vars[0]);
+        assert!(!graph.is_connected_to(&vars[0], &vars[1]));
+        assert!(!graph.is_connected_to(&vars[1], &vars[0]));
+        assert!(!graph.exists(&vars[0]));
+        assert!(graph.exists(&vars[1]));
+        assert_eq!(1, graph.values().len());
+
+        graph.connect(&vars[0], &vars[1]);
+        graph.connect(&vars[1], &vars[2]);
+        graph.connect(&vars[2], &vars[0]);
+        assert_eq!(3, graph.values().len());
+        graph.remove(&vars[0]);
+        assert!(!graph.is_connected_to(&vars[1], &vars[0]));
+        assert!(!graph.is_connected_to(&vars[2], &vars[0]));
+        assert_eq!(2, graph.values().len());
+    }
 
     #[test]
     fn undirected_graph_test() {
@@ -162,22 +258,22 @@ mod tests {
         assert!(graph.is_connected_to(&vars[0], &vars[1]));
         assert!(graph.is_connected_to(&vars[1], &vars[0]));
         assert!(!graph.is_connected_to(&vars[0], &vars[2]));
-        assert_eq!(2, graph.vars.len());
+        assert_eq!(2, graph.values().len());
 
         graph.remove(&vars[0]);
         assert!(!graph.is_connected_to(&vars[0], &vars[1]));
         assert!(!graph.is_connected_to(&vars[1], &vars[0]));
         assert!(!graph.exists(&vars[0]));
         assert!(graph.exists(&vars[1]));
-        assert_eq!(1, graph.vars.len());
+        assert_eq!(1, graph.values().len());
 
         graph.connect(&vars[0], &vars[1]);
         graph.connect(&vars[1], &vars[2]);
         graph.connect(&vars[2], &vars[0]);
-        assert_eq!(3, graph.vars.len());
+        assert_eq!(3, graph.values().len());
         graph.remove(&vars[0]);
         assert!(!graph.is_connected_to(&vars[1], &vars[0]));
         assert!(!graph.is_connected_to(&vars[2], &vars[0]));
-        assert_eq!(2, graph.vars.len());
+        assert_eq!(2, graph.values().len());
     }
 }

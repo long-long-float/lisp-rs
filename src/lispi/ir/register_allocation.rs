@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use anyhow::Result;
 use id_arena::Id;
 use itertools::Itertools;
@@ -311,7 +309,7 @@ pub fn create_interference_graph(
                 println!("{}", inter_graph);
             }
 
-            let vars = inter_graph.vars.clone();
+            let vars = inter_graph.values();
 
             // A vector of (IGID, connected IGIDs).
             let mut removed_vars = Vec::new();
