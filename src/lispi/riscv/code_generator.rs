@@ -946,6 +946,9 @@ pub fn generate_code(
                     Reference(_) => {
                         panic!("ref must be removed before code generating.")
                     }
+                    Dereference(_) => {
+                        panic!("deref must be removed before code generating.")
+                    }
                     Operand(op) => {
                         load_operand_to(&mut ctx, &mut insts, &register_map, op, result_reg);
                     }

@@ -342,6 +342,7 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
                 I::Ret(op) => Some(I::Ret(fold_imm(ctx, op))),
 
                 I::Reference(op) => Some(I::Reference(fold_imm(ctx, op))),
+                I::Dereference(op) => Some(I::Dereference(fold_imm(ctx, op))),
 
                 I::Jump(_, _) | I::Phi(_) | I::Label(_) | I::Nop => Some(inst),
             };

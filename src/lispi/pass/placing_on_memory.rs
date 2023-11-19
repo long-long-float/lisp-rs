@@ -1,6 +1,7 @@
 //! Place `ref`erenced variables on the stack memory.
+//! And replace `deref` to `loadelement`.
 //!
-//! ## Example
+//! ## Example of `ref`
 //!
 //! Translate:
 //! ```txt
@@ -22,6 +23,19 @@
 //!
 //!   %var3 = %var1
 //! ```
+//!
+//! ## Example of `deref`
+//!
+//! Translate:
+//! ```txt
+//!   %var1 = deref %var0
+//! ```
+//!
+//! to:
+//! ```txt
+//!   %var1 = loadelement %var0, (Type of dereferenced %var0), 0
+//! ```
+//!
 
 use anyhow::Result;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -51,6 +65,9 @@ pub fn optimize(program: &IrProgram, ctx: &mut IrContext) -> Result<()> {
 
         let mut gen = UniqueGenerator::new("pom".to_string());
 
+        //
+        // Processing of `ref`
+        //
         for bb in &fun.basic_blocks {
             let bb = ctx.bb_arena.get_mut(*bb).unwrap();
 
@@ -136,6 +153,36 @@ pub fn optimize(program: &IrProgram, ctx: &mut IrContext) -> Result<()> {
                         result.push(AnnotatedInstr::new(result_var, inst.replace_var(&vmap), ty));
                     }
                 }
+            }
+
+            bb.insts = result;
+        }
+
+        //
+        // Processing of `deref`
+        //
+        for bb in &fun.basic_blocks {
+            let bb = ctx.bb_arena.get_mut(*bb).unwrap();
+
+            let mut result = Vec::new();
+
+            for AnnotatedInstr {
+                result: result_var,
+                inst,
+                ty,
+                tags: _,
+            } in bb.insts.clone()
+            {
+                let inst = if let Instruction::Dereference(op) = inst {
+                    Instruction::LoadElement {
+                        addr: op,
+                        ty: ty.clone(),
+                        index: 0.into(),
+                    }
+                } else {
+                    inst
+                };
+                result.push(AnnotatedInstr::new(result_var, inst, ty));
             }
 
             bb.insts = result;

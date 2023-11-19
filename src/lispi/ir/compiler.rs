@@ -360,17 +360,9 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         .result
                         .into();
 
-                        let ary = add_instr(
-                            ctx,
-                            I::LoadElement {
-                                addr: ary_ref,
-                                ty: ary_type.clone(),
-                                index: 0.into(),
-                            },
-                            ary_type.clone(),
-                        )
-                        .result
-                        .into();
+                        let ary = add_instr(ctx, I::Dereference(ary_ref), ary_type.clone())
+                            .result
+                            .into();
 
                         add_instr(
                             ctx,
@@ -434,16 +426,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                     }
                     "deref" => {
                         let ptr = args[0].result.clone().into();
-                        add_instr(
-                            ctx,
-                            I::LoadElement {
-                                addr: ptr,
-                                // TODO: Set type
-                                ty: t::Type::Int,
-                                index: 0.into(),
-                            },
-                            ast_ty,
-                        );
+                        add_instr(ctx, I::Dereference(ptr), ast_ty);
                     }
                     "ref-set" => {
                         let ptr = args[0].result.clone().into();

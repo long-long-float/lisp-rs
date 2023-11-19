@@ -8,7 +8,7 @@
 //! %var2 = deref %var1
 //! ````
 //!
-//! Are converted into:
+//! Are converted to:
 //!
 //! ```
 //! ; some instructions...
@@ -24,6 +24,8 @@ use crate::lispi::ir::{
 };
 
 pub fn remove_ref_and_deref(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
+    for inst in fun.walk_instructions(&ir_ctx.bb_arena) {}
+
     Ok(())
 }
 

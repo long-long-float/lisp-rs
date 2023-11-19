@@ -83,6 +83,7 @@ pub enum Instruction {
     Phi(Vec<(Operand, Label)>),
 
     Reference(Operand),
+    Dereference(Operand),
 
     Operand(Operand),
     /// TODO: Remove this
@@ -207,7 +208,9 @@ impl Instruction {
                 }
             }
             Instruction::Operand(op) => add_only_var(op, &mut vars),
-            Instruction::Reference(op) => add_only_var(op, &mut vars),
+            Instruction::Reference(op) | Instruction::Dereference(op) => {
+                add_only_var(op, &mut vars)
+            }
             Instruction::Label(_) => {}
             Instruction::Nop => {}
         }
@@ -336,6 +339,7 @@ impl Instruction {
             }
 
             I::Reference(op) => I::Reference(replace_var(replace_var_map, op)),
+            I::Dereference(op) => I::Dereference(replace_var(replace_var_map, op)),
 
             I::Ret(op) => I::Ret(replace_var(replace_var_map, op)),
 
@@ -489,6 +493,10 @@ impl<'a> Display for InstructionDisplay<'a> {
             Reference(op) => {
                 operands.push(Box::new(op));
                 "ref"
+            }
+            Dereference(op) => {
+                operands.push(Box::new(op));
+                "deref"
             }
             Operand(op) => {
                 operands.push(Box::new(op));

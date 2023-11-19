@@ -232,6 +232,9 @@ pub fn optimize(
                     I::Reference(op) => {
                         Some(I::Reference(unfold_immediate(op, &mut insts, &mut ctx)))
                     }
+                    I::Dereference(op) => {
+                        Some(I::Dereference(unfold_immediate(op, &mut insts, &mut ctx)))
+                    }
                 };
 
                 if let Some(inst) = inst {
