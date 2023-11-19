@@ -6,6 +6,7 @@ pub mod immediate_unfolding;
 pub mod placing_on_memory;
 pub mod removing_duplicated_assignments;
 pub mod removing_redundant_assignments;
+pub mod removing_ref_and_deref;
 pub mod removing_uncalled_functions;
 pub mod tail_recursion;
 

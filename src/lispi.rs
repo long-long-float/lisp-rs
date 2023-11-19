@@ -227,6 +227,11 @@ pub fn compile(
         dump_program("Translate Cmp", &program, &ir_ctx);
     }
 
+    pass::removing_ref_and_deref::optimize(&program, &mut ir_ctx)?;
+    if opt.dump {
+        dump_program("Remove ref and deref", &program, &ir_ctx);
+    }
+
     pass::placing_on_memory::optimize(&program, &mut ir_ctx)?;
     if opt.dump {
         dump_program("Place on memory", &program, &ir_ctx);
