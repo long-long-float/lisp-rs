@@ -27,11 +27,20 @@ use crate::lispi::ir::{
 };
 
 pub fn remove_ref_and_deref(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
-    let mut ref_mapping = FxHashMap::default();
+    let mut ref_mapping_candidates = FxHashMap::default();
 
     for inst in fun.walk_instructions(&ir_ctx.bb_arena) {
         if let Instruction::Reference(Operand::Variable(op)) = &inst.inst {
-            ref_mapping.insert(inst.result.clone(), op.clone());
+            ref_mapping_candidates.insert(inst.result.clone(), op.clone());
+        }
+    }
+
+    let mut ref_mapping = FxHashMap::default();
+    for inst in fun.walk_instructions(&ir_ctx.bb_arena) {
+        if let Instruction::Dereference(Operand::Variable(op)) = &inst.inst {
+            if let Some(referenced_var) = ref_mapping_candidates.get(&op) {
+                ref_mapping.insert(op.clone(), referenced_var.clone());
+            }
         }
     }
 
@@ -50,14 +59,23 @@ pub fn remove_ref_and_deref(fun: &Function, ir_ctx: &mut IrContext) -> Result<()
                  }| {
                     match inst {
                         Instruction::Dereference(Operand::Variable(var)) => {
-                            ref_mapping.get(&var).map(|referenced_var| AnnotatedInstr {
-                                result: result_var,
-                                inst: Instruction::Operand(Operand::Variable(
-                                    referenced_var.clone(),
-                                )),
-                                ty,
-                                tags,
-                            })
+                            if let Some(referenced_var) = ref_mapping.get(&var) {
+                                Some(AnnotatedInstr {
+                                    result: result_var,
+                                    inst: Instruction::Operand(Operand::Variable(
+                                        referenced_var.clone(),
+                                    )),
+                                    ty,
+                                    tags,
+                                })
+                            } else {
+                                Some(AnnotatedInstr {
+                                    result: result_var,
+                                    inst: Instruction::Dereference(Operand::Variable(var)),
+                                    ty,
+                                    tags,
+                                })
+                            }
                         }
                         Instruction::Reference(Operand::Variable(var)) => {
                             if ref_mapping.contains_key(&result_var) {
