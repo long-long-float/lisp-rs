@@ -476,7 +476,7 @@ sum
             function_name!(),
             r#"
 (define ary (array 1 2 3))
-(array->len ary)
+(array->len &ary)
 "#,
         )
         .run_a0();
@@ -491,7 +491,7 @@ sum
             r#"
 (define f (lambda () 
     (define ary (array 1 2 3))
-    (array->get ary 1)))
+    (array->get &ary 1)))
 (define g (lambda () (f)))
 (g)
 "#,

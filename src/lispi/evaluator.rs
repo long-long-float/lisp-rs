@@ -1015,7 +1015,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("array->len"),
-        Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv))], Type::Int)),
+        Type::for_all(|tv| Type::function(vec![Type::reference(Type::array(tv))], Type::Int)),
         |args| {
             match_call_args!(args, Value::List(vs), {
                 Ok(Value::Integer(vs.len() as i32))
@@ -1026,7 +1026,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("array->data"),
-        Type::for_all(|tv| Type::function(vec![Type::Array(Box::new(tv))], Type::Int)),
+        Type::for_all(|tv| Type::function(vec![Type::reference(Type::array(tv))], Type::Int)),
         |_| {
             printlnuw("Cannot call array->len in interpreter mode.");
             Ok(Value::Integer(0))
@@ -1068,7 +1068,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         s("array->set"),
         Type::for_all(|tv| {
             Type::function(
-                vec![Type::Array(Box::new(tv.clone())), Type::Int, tv],
+                vec![Type::reference(Type::array(tv.clone())), Type::Int, tv],
                 Type::Void,
             )
         }),

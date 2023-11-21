@@ -284,6 +284,15 @@ fn compile_array_constructor(
     Ok(ary)
 }
 
+fn deference_array<'a>(inst: &'a AnnotatedInstr, ctx: &mut Context) -> (Operand, &'a t::Type) {
+    let ary_ref = inst.result.clone().into();
+    let ary_type = inst.ty.dereference().unwrap();
+    let ary = add_instr(ctx, Instruction::Dereference(ary_ref), ary_type.clone())
+        .result
+        .into();
+    (ary, ary_type)
+}
+
 fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> Result<()> {
     use Instruction as I;
 
@@ -342,10 +351,9 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         add_instr(ctx, I::Operand(ary), ast_ty);
                     }
                     "array->get" => {
-                        let ary_ref = args[0].result.clone().into();
+                        let (ary, ary_type) = deference_array(&args[0], ctx);
                         let index = args[1].result.clone().into();
 
-                        let ary_type = args[0].ty.dereference().unwrap();
                         let elem_type = ary_type.element_type().unwrap();
 
                         let index =
@@ -360,10 +368,6 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         .result
                         .into();
 
-                        let ary = add_instr(ctx, I::Dereference(ary_ref), ary_type.clone())
-                            .result
-                            .into();
-
                         add_instr(
                             ctx,
                             I::LoadElement {
@@ -375,11 +379,11 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         );
                     }
                     "array->set" => {
-                        let ary = args[0].result.clone().into();
+                        let (ary, ary_type) = deference_array(&args[0], ctx);
                         let index = args[1].result.clone().into();
                         let value = args[2].result.clone().into();
 
-                        let elem_type = args[0].ty.element_type().unwrap();
+                        let elem_type = ary_type.element_type().unwrap();
 
                         let index =
                             add_instr(ctx, I::Mul(index, elem_type.size().into()), t::Type::None)
@@ -405,7 +409,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         );
                     }
                     "array->len" => {
-                        let ary = args[0].result.clone().into();
+                        let (ary, _) = deference_array(&args[0], ctx);
                         add_instr(
                             ctx,
                             I::LoadElement {
@@ -417,7 +421,7 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                         );
                     }
                     "array->data" => {
-                        let ary = args[0].result.clone().into();
+                        let (ary, _) = deference_array(&args[0], ctx);
                         add_instr(ctx, I::Add(ary, t::Type::Int.size().into()), ast_ty);
                     }
                     "not" => {
