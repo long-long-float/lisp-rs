@@ -808,7 +808,7 @@ sum
     x: int
     y: int)
 (define pos (Point 10 20))
-(Point->x pos)
+(Point->x &pos)
 "#,
         )
         .run_a0();
@@ -825,7 +825,7 @@ sum
     x: int
     y: int)
 (define pos (Point 10 20))
-(Point->y pos)
+(Point->y &pos)
 "#,
         )
         .run_a0();
@@ -842,8 +842,8 @@ sum
     x: int
     y: int)
 (define pos (Point 10 20))
-(Point->y= pos 42)
-(Point->y pos)
+(Point->y= &pos 42)
+(Point->y &pos)
 "#,
         )
         .run_a0();
@@ -861,7 +861,7 @@ sum
     b: int
     c: char)
 (define abc (ABC \a 0xb \c))
-(ABC->c abc)
+(ABC->c &abc)
 ",
         )
         .run_a0();
@@ -879,12 +879,12 @@ sum
     age: int)
 
 (fn Person->inc_age (self)
-    (define age (Person->age (deref self)))
-    (Person->age= (deref self) (+ age 1)))
+    (define age (Person->age self))
+    (Person->age= self (+ age 1)))
 
 (define person (Person 0 18))
-(Person->inc_age (ref person))
-(Person->age person)
+(Person->inc_age &person)
+(Person->age &person)
 ",
         )
         .run_a0();
@@ -962,9 +962,9 @@ sum
 
 (fn array->sum (ary)
     (define sum 0)
-    (define len (- (array->len ary) 1))
+    (define len (- (array->len &ary) 1))
     (let loop ((i 0)) 
-        (set! sum (+ sum (array->get ary i)))
+        (set! sum (+ sum (array->get &ary i)))
         (if (< i len)
             (loop (+ i 1))))
     sum)
@@ -987,10 +987,10 @@ sum
 
 (fn string->int (str)
     (define sum 0)
-    (define len (- (array->len str) 1))
+    (define len (- (array->len &str) 1))
     (define digit 1)
     (let loop ((i len)) 
-        (define n (char->int (array->get str i)))
+        (define n (char->int (array->get &str i)))
         (set! sum (+ sum (* n digit)))
         (set! digit (* digit 10))
         (if (< 0 i)

@@ -797,11 +797,16 @@ fn collect_constraints_from_ast(
 
             // Define field accessors
             for field in fields {
-                let getter_type = Type::function(vec![struct_type.clone()], *field.ty.clone());
+                let getter_type = Type::function(
+                    vec![Type::reference(struct_type.clone())],
+                    *field.ty.clone(),
+                );
                 ctx.env.insert_var(field.getter_name(name), getter_type);
 
-                let setter_type =
-                    Type::function(vec![struct_type.clone(), *field.ty.clone()], Type::Void);
+                let setter_type = Type::function(
+                    vec![Type::reference(struct_type.clone()), *field.ty.clone()],
+                    Type::Void,
+                );
                 ctx.env.insert_var(field.setter_name(name), setter_type);
             }
 

@@ -12,7 +12,7 @@
 ; Functions
 
 (fn print (str)
-  (syscall3 64 1 (array->data str) (array->len str)))
+  (syscall3 64 1 (array->data &str) (array->len &str)))
 
 (fn println (str)
   (print str)
@@ -30,8 +30,8 @@
 
 (fn print-char (ch)
   (define str " ")
-  (array->set str 0 ch)
-  (syscall3 64 1 (array->data str) (array->len str)))
+  (array->set &str 0 ch)
+  (syscall3 64 1 (array->data &str) (array->len &str)))
 
 (fn println-int (value)
   (fn count-digit (value)
@@ -45,10 +45,10 @@
 
   (define d 1)
   (for (i 0) (< i digit) (+ i 1) (begin
-    (array->set buf i (% (/ value d) 10))
+    (array->set &buf i (% (/ value d) 10))
     (set! d (* d 10))))
   
-  (for (i (- (array->len buf) 1)) (>= i 0) (- i 1) (begin
-    (print-char (int->char (array->get buf i)))))
+  (for (i (- (array->len &buf) 1)) (>= i 0) (- i 1) (begin
+    (print-char (int->char (array->get &buf i)))))
   (print "\n")
-  (array->len buf))
+  (array->len &buf))

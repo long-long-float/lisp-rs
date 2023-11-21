@@ -687,6 +687,7 @@ pub fn generate_code(
                         let op = match ty {
                             Type::Int => IInstructionOp::Lw,
                             Type::Char => IInstructionOp::Lb,
+                            Type::Reference(_) => IInstructionOp::Lw,
                             _ => todo!("type = {}", ty),
                         };
 

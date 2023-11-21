@@ -467,12 +467,18 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                     }
                     _ => {
                         if let Some((is_getter, field_type, index)) =
-                            ctx.struct_accessors.get(fun_sym)
+                            ctx.struct_accessors.get(fun_sym).cloned()
                         {
-                            let obj = args[0].result.clone().into();
-                            let index = Operand::from(*index);
+                            let obj_ref = args[0].result.clone().into();
+                            let obj_type = args[0].ty.clone();
+                            let index = Operand::from(index);
 
-                            if *is_getter {
+                            let obj =
+                                add_instr(ctx, Instruction::Dereference(obj_ref), obj_type.clone())
+                                    .result
+                                    .into();
+
+                            if is_getter {
                                 add_instr(
                                     ctx,
                                     Instruction::LoadElement {
