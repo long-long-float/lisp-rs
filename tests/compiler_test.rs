@@ -954,6 +954,24 @@ sum
 
     #[test]
     #[named]
+    fn reference_result_of_accessor() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(struct Struct
+    inner: fixed-array[int 5])
+
+(define s (Struct (fixed-array 0 0 0 0 0)))
+(array->set &(Struct->inner &s) 2 42)
+(array->get &(Struct->inner &s) 2)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(42), a0);
+    }
+
+    #[test]
+    #[named]
     fn complex_program_array_sum() {
         let a0 = compile(
             function_name!(),

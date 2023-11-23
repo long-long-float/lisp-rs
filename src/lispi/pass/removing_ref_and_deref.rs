@@ -1,5 +1,6 @@
 //!
-//! Removing reference and dereference instructions for the same variable.
+//! Removes reference and dereference instructions for the same variable.
+//! This also removes loadelement and reference for the same variable.
 //!
 //! For example, following instructions:
 //! ```
@@ -9,10 +10,22 @@
 //! ````
 //!
 //! Are converted to:
-//!
 //! ```
 //! ; some instructions...
 //! %var2 = %var0
+//! ```
+//!
+//! Following instructions:
+//! ```
+//! %var1 = loadelement %var0, int, 4
+//! ; some instructions...
+//! %var2 = deref %var1
+//! ````
+//!
+//! Are converted to:
+//! ```
+//! ; some instructions...
+//! %var2 = addi %var0, 4
 //! ```
 //!
 
@@ -28,18 +41,32 @@ use crate::lispi::ir::{
 
 pub fn remove_ref_and_deref(fun: &Function, ir_ctx: &mut IrContext) -> Result<()> {
     let mut ref_mapping_candidates = FxHashMap::default();
+    let mut le_mapping_candidates = FxHashMap::default();
 
     for inst in fun.walk_instructions(&ir_ctx.bb_arena) {
         if let Instruction::Reference(Operand::Variable(op)) = &inst.inst {
             ref_mapping_candidates.insert(inst.result.clone(), op.clone());
+        } else if let Instruction::LoadElement {
+            addr: Operand::Variable(addr),
+            ty: _,
+            index,
+        } = &inst.inst
+        {
+            le_mapping_candidates.insert(inst.result.clone(), (addr.clone(), index.clone()));
         }
     }
 
     let mut ref_mapping = FxHashMap::default();
+    let mut le_mapping = FxHashMap::default();
+
     for inst in fun.walk_instructions(&ir_ctx.bb_arena) {
         if let Instruction::Dereference(Operand::Variable(op)) = &inst.inst {
             if let Some(referenced_var) = ref_mapping_candidates.get(&op) {
                 ref_mapping.insert(op.clone(), referenced_var.clone());
+            }
+        } else if let Instruction::Reference(Operand::Variable(op)) = &inst.inst {
+            if let Some(referenced_var) = le_mapping_candidates.get(&op) {
+                le_mapping.insert(op.clone(), referenced_var.clone());
             }
         }
     }
@@ -57,6 +84,8 @@ pub fn remove_ref_and_deref(fun: &Function, ir_ctx: &mut IrContext) -> Result<()
                      ty,
                      tags,
                  }| {
+                    // Remove ref and deref
+
                     match inst {
                         Instruction::Dereference(Operand::Variable(var)) => {
                             if let Some(referenced_var) = ref_mapping.get(&var) {
@@ -84,6 +113,65 @@ pub fn remove_ref_and_deref(fun: &Function, ir_ctx: &mut IrContext) -> Result<()
                                 Some(AnnotatedInstr {
                                     result: result_var,
                                     inst: Instruction::Reference(Operand::Variable(var)),
+                                    ty,
+                                    tags,
+                                })
+                            }
+                        }
+                        _ => Some(AnnotatedInstr {
+                            result: result_var,
+                            inst,
+                            ty,
+                            tags,
+                        }),
+                    }
+                },
+            )
+            .filter_map(
+                |AnnotatedInstr {
+                     result: result_var,
+                     inst,
+                     ty,
+                     tags,
+                 }| {
+                    // Remove loadelement and ref
+
+                    match inst {
+                        Instruction::Reference(Operand::Variable(var)) => {
+                            if let Some((referenced_var, offset)) = le_mapping.get(&var) {
+                                Some(AnnotatedInstr {
+                                    result: result_var,
+                                    inst: Instruction::Add(
+                                        Operand::Variable(referenced_var.clone()),
+                                        offset.clone(),
+                                    ),
+                                    ty,
+                                    tags,
+                                })
+                            } else {
+                                Some(AnnotatedInstr {
+                                    result: result_var,
+                                    inst: Instruction::Reference(Operand::Variable(var)),
+                                    ty,
+                                    tags,
+                                })
+                            }
+                        }
+                        Instruction::LoadElement {
+                            addr,
+                            ty: ety,
+                            index,
+                        } => {
+                            if le_mapping.contains_key(&result_var) {
+                                None
+                            } else {
+                                Some(AnnotatedInstr {
+                                    result: result_var,
+                                    inst: Instruction::LoadElement {
+                                        addr,
+                                        ty: ety,
+                                        index,
+                                    },
                                     ty,
                                     tags,
                                 })
