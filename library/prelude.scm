@@ -40,15 +40,22 @@
       (set! digit (+ digit 1)))
     digit)
 
-  (define digit (count-digit value))
-  (define buf (array->new digit))
+  (if (= value 0)
+    ; Special case for 0
+    (begin 
+      (print-char #\0)
+      (print "\n")
+      1)
+    (begin 
+      (define digit (count-digit value))
+      (define buf (array->new digit))
 
-  (define d 1)
-  (for (i 0) (< i digit) (+ i 1) (begin
-    (array->set &buf i (% (/ value d) 10))
-    (set! d (* d 10))))
-  
-  (for (i (- (array->len &buf) 1)) (>= i 0) (- i 1) (begin
-    (print-char (int->char (array->get &buf i)))))
-  (print "\n")
-  (array->len &buf))
+      (define d 1)
+      (for (i 0) (< i digit) (+ i 1) (begin
+        (array->set &buf i (% (/ value d) 10))
+        (set! d (* d 10))))
+      
+      (for (i (- (array->len &buf) 1)) (>= i 0) (- i 1) (begin
+        (print-char (int->char (array->get &buf i)))))
+      (print "\n")
+      (array->len &buf))))
