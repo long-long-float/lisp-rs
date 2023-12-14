@@ -1038,6 +1038,7 @@ sum
     }
 
     #[test]
+    #[ignore] // This causes stack overflow and needs `RUST_MIN_STACK=104857600`.
     #[named]
     fn complex_program_println_int() {
         let output = compile(
@@ -1045,7 +1046,7 @@ sum
             r#"
 (include "library/prelude.scm")
 
-(fn println-int (value)
+(fn println-int2 (value)
     (define digit 1)
     (for (i 1) (< 0 (/ value i)) (* i 10)
         (set! digit i))
@@ -1055,7 +1056,7 @@ sum
         (set! value (% value d))
         ))
     (println ""))
-(println-int 1995)
+(println-int2 1995)
 "#,
         )
         .run_raw_output();
@@ -1078,6 +1079,46 @@ sum
         )
         .run_raw_output();
         assert_eq!("Hello\nHello\nHello\nHello\nHello\nHello\n", output);
+    }
+
+    #[test]
+    #[ignore] // This causes stack overflow and needs `RUST_MIN_STACK=104857600`.
+    #[named]
+    fn complex_program_stack() {
+        let output = compile(
+            function_name!(),
+            r#"
+    (include "library/prelude.scm")
+
+    (struct Stack
+        buffer: fixed-array[int 5]
+        cursor: int)
+
+    (fn Stack->push (self value)
+        (array->set &(Stack->buffer self) (Stack->cursor self) value)
+        (Stack->cursor= self (+ (Stack->cursor self) 1)))
+
+    (fn Stack->top (self)
+        (array->get &(Stack->buffer self) (- (Stack->cursor self) 1)))
+
+    (fn Stack->pop (self)
+        (if (>= (Stack->cursor self) 1)
+            (begin
+                (define value (Stack->top self))
+                (Stack->cursor= self (- (Stack->cursor self) 1))
+                value)
+            0))
+
+    (define stack (Stack (fixed-array 0 0 0 0 0) 0))
+    (Stack->push &stack 42)
+    (Stack->push &stack 43)
+    (println-int (Stack->pop &stack))
+    (println-int (Stack->pop &stack))
+    (println-int (Stack->pop &stack))
+    "#,
+        )
+        .run_raw_output();
+        assert_eq!("43\n42\n0\n", output);
     }
 
     #[test]
