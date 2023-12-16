@@ -1263,6 +1263,7 @@ fn unify_equal_relation(c: &TypeEquality, rest: &[TypeEquality]) -> Result<Vec<T
 
 fn unify_subtype_relation(c: &TypeEquality, rest: &[TypeEquality]) -> Result<Vec<TypeAssignment>> {
     match (&c.left.ty, &c.right.ty) {
+        // FIXME: SIGSEGV (Segmentation fault) occurs here in a test case `complex_program_stack`.
         (s, t) if s == t => unify(rest.to_vec()),
 
         (Type::Variable(x), t) if !t.has_free_var(x) => unify_type_var(x, t, &c.right, rest),
