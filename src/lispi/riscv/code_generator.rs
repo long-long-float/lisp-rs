@@ -688,6 +688,7 @@ pub fn generate_code(
                             Type::Int => IInstructionOp::Lw,
                             Type::Char => IInstructionOp::Lb,
                             Type::Reference(_) => IInstructionOp::Lw,
+                            Type::Array(_) => IInstructionOp::Lw,
                             _ => todo!("type = {}", ty),
                         };
 

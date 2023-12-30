@@ -972,6 +972,39 @@ sum
 
     #[test]
     #[named]
+    fn reference_array_ref() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(define ary &"123")
+(if (< 0 (array->len ary))
+    (array->get ary 0)
+    #\0)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some('1' as i64), a0);
+    }
+
+    #[test]
+    #[named]
+    fn reference_array_ref_through_fun() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(fn first-or (ary default)
+    (if (< 0 (array->len ary))
+        (array->get ary 0)
+        default))
+(first-or &"123" #\0)
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some('1' as i64), a0);
+    }
+
+    #[test]
+    #[named]
     fn complex_program_array_sum() {
         let a0 = compile(
             function_name!(),
