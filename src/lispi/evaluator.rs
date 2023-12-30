@@ -867,7 +867,7 @@ pub fn init_env(env: &mut Env, ty_env: &mut Environment<Type>) {
         env,
         ty_env,
         s("="),
-        Type::function(vec![Type::Any, Type::Any], Type::Boolean),
+        Type::for_all(|tv| Type::function(vec![tv.clone(), tv], Type::Boolean)),
         |args| match_call_args!(args, v1, v2, { Ok(Value::from(v1 == v2)) }),
     );
     insert_function(
