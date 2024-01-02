@@ -1,5 +1,6 @@
 use core::panic;
-use std::collections::HashSet;
+use std::io::Write;
+use std::{collections::HashSet, fs::File};
 
 use anyhow::Result;
 use colored::*;
@@ -1014,23 +1015,31 @@ pub fn generate_code(
         })
         .collect_vec();
 
-    if opt.dump {
-        dump_instructions(&mut ctx, &insts);
-    }
-
-    let asm = insts
-        .iter()
-        .map(|InstrWithIr(inst, _)| match inst {
+    let mut asm = File::create("out.s")?;
+    for (addr, InstrWithIr(inst, ir)) in insts.iter().enumerate() {
+        let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
+            if *laddr == addr as i32 {
+                Some(label)
+            } else {
+                None
+            }
+        });
+        if let Some(label) = label {
+            writeln!(asm, "# {} @0x{:x}", label, addr * 4)?;
+        }
+        if let Some(ir) = ir {
+            writeln!(asm, "# {}", ir)?;
+        }
+        let a = match inst {
             R(ri) => ri.generate_asm(),
             I(ii) => ii.generate_asm(),
             S(si) => si.generate_asm(),
             J(ji) => ji.generate_asm(),
             U(ui) => ui.generate_asm(),
             SB(sbi) => sbi.generate_asm(),
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    std::fs::write("out.s", asm)?;
+        };
+        writeln!(asm, "{}", a)?;
+    }
 
     let result = insts
         .into_iter()
