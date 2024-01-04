@@ -7,6 +7,7 @@ use colored::*;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
+use crate::lispi::ir::instruction::Operand;
 use crate::{
     bug,
     lispi::{
@@ -28,6 +29,7 @@ use super::{instruction::*, stack_frame::*};
 struct Context {
     arg_reg_map: FxHashMap<String, Register>,
     arg_count: u32,
+    vars: FxHashMap<String, Type>,
 
     label_addrs: FxHashMap<String, i32>,
 }
@@ -37,6 +39,7 @@ impl Context {
         Context {
             arg_reg_map: FxHashMap::default(),
             arg_count: 0,
+            vars: FxHashMap::default(),
             label_addrs: FxHashMap::default(),
         }
     }
@@ -44,6 +47,7 @@ impl Context {
     fn reset_on_fun(&mut self) {
         self.arg_reg_map.clear();
         self.arg_count = 0;
+        self.vars.clear();
     }
 
     fn allocate_arg_reg(&mut self) -> Register {
@@ -389,6 +393,8 @@ pub fn generate_code(
                     Register::zero()
                 };
 
+                ctx.vars.insert(result.name.clone(), ty.clone());
+
                 let ir_insertion_idx = insts.len();
 
                 match inst {
@@ -461,6 +467,26 @@ pub fn generate_code(
                                         .into(),
                                     );
                                 }
+                            }
+                        } else if let i::Operand::Variable(ref v) = op {
+                            let reg =
+                                get_register_from_operand(&mut ctx, &register_map, op.clone())
+                                    .unwrap();
+
+                            let var_ty = ctx.vars.get(&v.name).unwrap();
+
+                            if let Type::Struct { .. } = var_ty {
+                                insts.push(
+                                    Instruction::lw(Register::a(0), reg, Immediate::new(0)).into(),
+                                );
+                            } else {
+                                load_operand_to(
+                                    &mut ctx,
+                                    &mut insts,
+                                    &register_map,
+                                    op,
+                                    Register::a(0),
+                                );
                             }
                         } else {
                             load_operand_to(
@@ -1025,10 +1051,10 @@ pub fn generate_code(
             }
         });
         if let Some(label) = label {
-            writeln!(asm, "# {} @0x{:x}", label, addr * 4)?;
+            writeln!(asm, "{}: # 0x{:x}", label, addr * 4)?;
         }
         if let Some(ir) = ir {
-            writeln!(asm, "# {}", ir)?;
+            writeln!(asm, "  #{}", ir)?;
         }
         let a = match inst {
             R(ri) => ri.generate_asm(),
@@ -1038,7 +1064,7 @@ pub fn generate_code(
             U(ui) => ui.generate_asm(),
             SB(sbi) => sbi.generate_asm(),
         };
-        writeln!(asm, "{}", a)?;
+        writeln!(asm, "  {}", a)?;
     }
 
     let result = insts

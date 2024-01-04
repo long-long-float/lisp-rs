@@ -1030,6 +1030,33 @@ sum
 
     #[test]
     #[named]
+    fn complex_program_nested_count_digit() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(struct Context
+    cursor: int)
+
+(fn count-digit (ctx input)
+    (define digit 0)
+    (for (i (Context->cursor ctx))
+        (and (= (array->get input i) #\0) (< i 2)) 
+        (+ i 1)
+        (set! digit (+ digit 1)))
+    digit)
+
+(fn count-digit2 (ctx input)
+    (count-digit ctx input))
+
+(count-digit2 &(Context 0) &"00")
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(2), a0);
+    }
+
+    #[test]
+    #[named]
     fn complex_program_string_to_int() {
         let a0 = compile(
             function_name!(),

@@ -1224,7 +1224,9 @@ pub fn compile(
                         ty: t::Type::Int,
                         count: (def.fields.len() * t::Type::Int.size()).into(),
                     },
-                    t::Type::None,
+                    t::Type::Struct {
+                        name: def.name.clone(),
+                    },
                 )
                 .result,
             );
