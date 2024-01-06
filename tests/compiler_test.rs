@@ -1030,6 +1030,38 @@ sum
 
     #[test]
     #[named]
+    fn complex_program_count_digit() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(include "library/prelude.scm")
+
+(struct Context
+    cursor: int)
+
+(fn is_digit (ch) (begin
+    (define chi (as ch int))
+    (and (<= (as #\0 int) chi) (<= chi (as #\9 int)))))
+
+(fn count-digit (ctx input)
+    (define digit 0)
+    (for (i (Context->cursor ctx)) 
+        (and (is_digit (array->get input i)) (< i (array->len input))) 
+        (+ i 1)
+        (begin
+            (println-int digit)
+            (set! digit (+ digit 1))))
+    digit)
+
+(count-digit &(Context 0) &"123")
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(123), a0);
+    }
+
+    #[test]
+    #[named]
     fn complex_program_returning_32bits_struct() {
         let a0 = compile(
             function_name!(),
