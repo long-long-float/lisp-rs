@@ -1030,10 +1030,12 @@ sum
 
     #[test]
     #[named]
-    fn complex_program_nested_count_digit() {
+    fn complex_program_returning_32bits_struct() {
         let a0 = compile(
             function_name!(),
             r#"
+(include "library/prelude.scm")
+
 (struct Context
     cursor: int)
 

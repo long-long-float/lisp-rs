@@ -858,7 +858,9 @@ pub fn generate_code(
 
                         let type_size = get_type_size(&ty, &structs, reg_size)?;
 
-                        if type_size > reg_size {
+                        let is_result_struct = matches!(ty, Type::Struct { .. });
+
+                        if type_size > reg_size || is_result_struct {
                             let local_idx = frame.allocate_local_var(&result, type_size);
                             insts.push(
                                 Instruction::addi(result_reg, Register::fp(), local_idx as i32)
@@ -923,7 +925,14 @@ pub fn generate_code(
                         if ty == Type::Void {
                             // Drop the void result
                         } else if type_size <= reg_size {
-                            insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                            if is_result_struct {
+                                insts.push(
+                                    Instruction::sw(Register::a(0), result_reg, Immediate::new(0))
+                                        .into(),
+                                );
+                            } else {
+                                insts.push(Instruction::mv(result_reg, Register::a(0)).into());
+                            }
                         } else if type_size <= reg_size * 2 {
                             insts.push(
                                 Instruction::sw(Register::a(0), result_reg, Immediate::new(0))
