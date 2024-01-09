@@ -18,6 +18,7 @@ fn is_called_from_main(
         if current == func_name {
             true
         } else if let Some(funcs) = calling_relations.get(current) {
+            // TODO: Fix not to check again functions that is checked once to avoid infinite loop.
             funcs
                 .iter()
                 .any(|f| is_called_internal(calling_relations, func_name, f))

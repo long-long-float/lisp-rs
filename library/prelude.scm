@@ -34,7 +34,8 @@
   (syscall3 64 1 (array->data &str) (array->len &str)))
 
 (fn println-int (value)
-  (fn count-digit (value)
+  ; TODO: Remove `_` and then fix to refer inner function
+  (fn _count-digit (value)
     (define digit 0)
     (for (i 1) (< 0 (/ value i)) (* i 10)
       (set! digit (+ digit 1)))
@@ -47,7 +48,7 @@
       (print "\n")
       1)
     (begin 
-      (define digit (count-digit value))
+      (define digit (_count-digit value))
       (define buf (array->new digit))
 
       (define d 1)
