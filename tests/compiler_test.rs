@@ -1030,6 +1030,29 @@ sum
 
     #[test]
     #[named]
+    fn complex_program_nested_for() {
+        let a0 = compile(
+            function_name!(),
+            r#"
+(include "library/prelude.scm")
+
+(define sum 0)
+(for (i 0) (< i 5) (+ i 1) (begin
+    (for (j 0) (< j 5) (+ j 1) (begin
+        (for (k 0) (< k 5) (+ k 1) (begin
+            (set! sum (+ sum 1))
+        ))  
+    ))   
+))
+sum
+"#,
+        )
+        .run_a0();
+        assert_eq!(Some(125), a0);
+    }
+
+    #[test]
+    #[named]
     fn complex_program_count_digit() {
         let a0 = compile(
             function_name!(),

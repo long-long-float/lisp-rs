@@ -700,6 +700,7 @@ pub fn dump_asts(asts: &Vec<AnnotatedAst>) {
 /// Collect free variables from asts with binds
 pub fn collect_free_vars(asts: &[AnnotatedAst], binds: Vec<SymbolValue>) -> FxHashSet<SymbolValue> {
     struct Context {
+        // TODO: Use stack
         binds: Vec<SymbolValue>,
         frees: FxHashSet<SymbolValue>,
     }
@@ -710,6 +711,12 @@ pub fn collect_free_vars(asts: &[AnnotatedAst], binds: Vec<SymbolValue>) -> FxHa
                 if !ctx.binds.iter().any(|var| var == sym) {
                     ctx.frees.insert(sym.clone());
                 }
+            }
+            Ast::Loop(Loop { ref inits, .. }) => {
+                for (id, _) in inits {
+                    ctx.binds.push(id.clone());
+                }
+                ast.traverse_ref(ctx, collect_free_vars_inner)?;
             }
             _ => ast.traverse_ref(ctx, collect_free_vars_inner)?,
         }
