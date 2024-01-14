@@ -31,7 +31,7 @@ use colored::*;
 use anyhow::Result;
 
 use crate::lispi::ast::dump_asts;
-use crate::lispi::cli_option::CliOption;
+use crate::lispi::cli_option::{CliOption, DumpOptions};
 use crate::lispi::{
     environment as env, evaluator as e, include_expander as ie, ir::instruction as i,
     macro_expander as me, parser as p, tokenizer as t, typer as ty,
@@ -132,7 +132,9 @@ pub fn frontend(
 ) -> Result<(Program, Environment<Value>, ty::StructDefinitions)> {
     let tokens = t::tokenize(program)?;
 
-    if opt.dump {
+    let dump_opts = opt.dump_opts();
+
+    if dump_opts.contains(&DumpOptions::Tokens) {
         println!("{}", "Tokens:".red());
         for token in &tokens {
             println!("{}", token);
@@ -142,7 +144,7 @@ pub fn frontend(
 
     let program = p::parse(tokens)?;
 
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::AST) {
         println!("{}", "Parsed AST:".red());
         dump_asts(&program);
         println!();
@@ -151,7 +153,7 @@ pub fn frontend(
     let program = ie::expand_includes(program)?;
     let program = me::expand_macros(program)?;
 
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::PreprocessedAST) {
         println!("{}", "Preprocessed AST:".red());
         dump_asts(&program);
         println!();
@@ -161,12 +163,9 @@ pub fn frontend(
     let mut ty_env = env::Environment::default();
 
     e::init_env(&mut env, &mut ty_env);
-    // sym_table.dump();
 
-    let (program, struct_defs) = ty::check_and_inference_type(program, &ty_env)?;
-    // for ast in &program {
-    //     println!("{}", ast);
-    // }
+    let (program, struct_defs) =
+        ty::check_and_inference_type(program, &ty_env, dump_opts.contains(&DumpOptions::Type))?;
 
     let program = if applied_opts.contains(&pass::Optimize::TailRecursion) {
         pass::tail_recursion::optimize(program)?
@@ -174,7 +173,7 @@ pub fn frontend(
         program
     };
 
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::OptimizedAST) {
         println!("{}", "Optimized AST:".red());
         dump_asts(&program);
         println!();
@@ -218,53 +217,55 @@ pub fn compile(
 
     let program = ir::compiler::compile(program, &mut ir_ctx, struct_defs, opt)?;
 
-    if opt.dump {
+    let dump_opts = opt.dump_opts();
+
+    if dump_opts.contains(&DumpOptions::RawIR) {
         dump_program("Raw IR instructions", &program, &ir_ctx);
     }
 
     riscv::cmp_translator::translate(&program, &mut ir_ctx)?;
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::TranslateCmp) {
         dump_program("Translate Cmp", &program, &ir_ctx);
     }
 
     pass::removing_ref_and_deref::optimize(&program, &mut ir_ctx)?;
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::RemoveRefAndDeref) {
         dump_program("Remove ref and deref", &program, &ir_ctx);
     }
 
     pass::placing_on_memory::optimize(&program, &mut ir_ctx)?;
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::PlaceOnMemory) {
         dump_program("Place on memory", &program, &ir_ctx);
     }
 
     if applied_opts.contains(&pass::Optimize::RemovingRedundantAssignments) {
         pass::removing_redundant_assignments::optimize(&program, &mut ir_ctx)?;
-        if opt.dump {
+        if dump_opts.contains(&DumpOptions::RemoveRedundantAssignments) {
             dump_program("Remove redundant assignments", &program, &ir_ctx);
         }
     }
 
     if applied_opts.contains(&pass::Optimize::ConstantFolding) {
         pass::constant_folding::optimize(&program, &mut ir_ctx)?;
-        if opt.dump {
+        if dump_opts.contains(&DumpOptions::ConstantFolding) {
             dump_program("Constant folding", &program, &ir_ctx);
         }
     }
 
     if applied_opts.contains(&pass::Optimize::ImmediateUnfolding) {
         pass::immediate_unfolding::optimize(&program, &mut ir_ctx, true)?;
-        if opt.dump {
+        if dump_opts.contains(&DumpOptions::ImmediateUnfolding) {
             dump_program("Immediate unfolding", &program, &ir_ctx);
         }
     }
 
     let program = pass::removing_uncalled_functions::optimize(program, &mut ir_ctx);
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::RemoveUncalledFunctions) {
         dump_program("Remove uncalled functions", &program, &ir_ctx);
     }
 
     ir::removing_phi_instructions::remove_phi_instructions(&program, &mut ir_ctx);
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::RemovePhiNodes) {
         dump_program("Remove phi nodes", &program, &ir_ctx);
     }
 
@@ -284,14 +285,14 @@ pub fn compile(
         }
     }
 
-    if opt.dump {
+    if opt.dump_files {
         ir::basic_block::dump_functions_as_dot(&mut ir_ctx.bb_arena, &program.funcs, "cfg.gv")?;
     }
 
     let (program, reg_maps) =
         ir::register_allocation::create_interference_graph(program, &mut ir_ctx, opt)?;
 
-    if opt.dump {
+    if dump_opts.contains(&DumpOptions::RegisterAllocation) {
         printlnuw(&"Register allocation:".red());
         for (fun, reg_map) in program.funcs.iter().zip(&reg_maps) {
             printlnuw(&format!("{}:", fun.name));
@@ -416,7 +417,7 @@ pub fn interpret_with_env(
     let tokens = t::tokenize(program)?;
     let program = p::parse_with_env(tokens)?;
     let program = me::expand_macros(program)?;
-    let (program, _struct_defs) = ty::check_and_inference_type(program, ty_env)?;
+    let (program, _struct_defs) = ty::check_and_inference_type(program, ty_env, false)?;
     let program = pass::tail_recursion::optimize(program)?;
     e::eval_program(&program, env)
 }

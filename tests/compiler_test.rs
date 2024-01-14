@@ -14,7 +14,7 @@ mod compiler_test {
 
     use function_name::named;
     use lisp_rs::lispi;
-    use lisp_rs::lispi::cli_option::CliOption;
+    use lisp_rs::lispi::cli_option::{CliOption, DumpOptions};
     use lisp_rs::lispi::pass;
 
     /// Timeout for execution the emulator in seconds
@@ -84,11 +84,13 @@ mod compiler_test {
             let dump = env::var("DUMP").is_ok();
 
             let opt = CliOption {
-                filename: None,
                 compile: true,
-                dump,
-                dump_register_allocation: false,
-                without_opts: false,
+                dump: if dump {
+                    vec![DumpOptions::All]
+                } else {
+                    Vec::new()
+                },
+                ..Default::default()
             };
 
             assert!(lispi::compile(program, &opt, optimizations).is_ok());

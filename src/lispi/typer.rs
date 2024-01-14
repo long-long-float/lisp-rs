@@ -1537,6 +1537,7 @@ fn replace_asts(asts: Program, assign: &TypeAssignment) -> Program {
 pub fn check_and_inference_type(
     asts: Program,
     env: &Environment<Type>,
+    dump: bool,
 ) -> Result<(Program, StructDefinitions)> {
     let mut ctx = Context::default();
 
@@ -1546,10 +1547,12 @@ pub fn check_and_inference_type(
 
     let (asts, constraints) = collect_constraints_from_asts(asts, &mut ctx)?;
 
-    for c in &constraints {
-        println!("{}", c);
+    if dump {
+        for c in &constraints {
+            println!("{}", c);
+        }
+        println!();
     }
-    println!();
 
     let assigns = unify(constraints)?;
     let mut asts = asts;

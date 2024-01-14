@@ -12,13 +12,7 @@ use lisp_rs::lispi::{
 fn interp(program: &str) -> Result<Value, Error> {
     let lines = program.split('\n').map(|l| l.to_string()).collect();
 
-    let opt = CliOption {
-        filename: None,
-        compile: false,
-        dump: false,
-        dump_register_allocation: false,
-        without_opts: false,
-    };
+    let opt = CliOption::default();
 
     let result = interpret(lines, &opt);
     match result {
