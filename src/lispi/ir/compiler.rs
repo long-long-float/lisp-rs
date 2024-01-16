@@ -44,6 +44,8 @@ struct Context<'a> {
     /// Used to list functions
     funcs: Environment<Function>,
 
+    current_func_name: String,
+
     /// Free variables of a function
     func_fvs: Environment<Vec<SymbolValue>>,
 
@@ -55,8 +57,9 @@ struct Context<'a> {
 
     /// Map loop label to updated loop variables.
     loop_updates_map: FxHashMap<String, Vec<(AnnotatedInstr, Id<BasicBlock>)>>,
-    /// Map variable to assigned variables.
-    assigned_map: FxHashMap<String, (AnnotatedInstr, Id<BasicBlock>)>,
+    /// Map function name and variable to assigned variables.
+    /// TODO: Identify variable name and remove function name
+    assigned_map: FxHashMap<(String, String), (AnnotatedInstr, Id<BasicBlock>)>,
 
     /// Map accessor names such as 'Person->age' to a tuple that indicates:
     /// * accessor is a getter
@@ -83,6 +86,7 @@ impl<'a> Context<'a> {
             preludes,
             func_labels: Environment::default(),
             funcs: Environment::default(),
+            current_func_name: "".to_string(),
             func_fvs,
             var_gen: UniqueGenerator::default(),
             arena,
@@ -576,6 +580,9 @@ fn compile_lambda(
     ast_ty: t::Type,
     ctx: &mut Context,
 ) -> Result<()> {
+    let current_func_name: String = ctx.current_func_name.drain(..).collect();
+
+    ctx.current_func_name = name.clone();
     let label = Label { name: name.clone() };
 
     let mut free_vars = collect_free_vars(&body, args.clone());
@@ -600,11 +607,6 @@ fn compile_lambda(
             .insert_var(arg.clone(), Variable { name: arg.clone() });
     }
 
-    // for fv in &free_vars {
-    //     ctx.env
-    //         .insert_var(fv.clone(), Variable { name: fv.clone() });
-    // }
-
     ctx.add_bb(bb);
     compile_asts(body, ctx)?;
     ctx.env.pop_local();
@@ -621,6 +623,8 @@ fn compile_lambda(
     ctx.basic_blocks.append(&mut old_bbs);
 
     ctx.funcs.insert_var(name, fun);
+
+    ctx.current_func_name = current_func_name;
 
     Ok(())
 }
@@ -748,7 +752,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
             ctx.env.update_var(var.clone(), &value.result)?;
 
             let bb = ctx.current_bb_id();
-            ctx.assigned_map.insert(var, (value, bb));
+            ctx.assigned_map
+                .insert((ctx.current_func_name.clone(), var), (value, bb));
         }
         Ast::IfExpr(IfExpr {
             cond,
@@ -1044,6 +1049,7 @@ fn compile_main_function(
     ctx: &mut Context,
 ) -> Result<()> {
     ctx.basic_blocks.clear();
+    ctx.current_func_name = "main".to_string();
     ctx.add_bb(main_bb);
 
     for ast in asts {
@@ -1119,7 +1125,7 @@ fn insert_phi_nodes_for_loops(program: IrProgram, ctx: &mut Context) -> IrProgra
                                             loop_updates_map[&tag.label][*index].clone()
                                         }
                                         LoopPhiFunctionSiteIndex::FreeVar(var) => {
-                                            assigned_map[&var.name].clone()
+                                            assigned_map[&(name.clone(), var.name.clone())].clone()
                                         }
                                     };
 

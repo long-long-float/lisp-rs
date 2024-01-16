@@ -1054,6 +1054,7 @@ sum
     }
 
     #[test]
+    #[ignore] // This causes stack overflow and needs `RUST_MIN_STACK=104857600`.
     #[named]
     fn complex_program_count_digit() {
         let a0 = compile(
