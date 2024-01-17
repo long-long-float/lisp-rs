@@ -20,6 +20,7 @@ impl Type {
             }
             FixedArray(et, n) => et.size() * n,
             Void => 4,
+            Reference(_) => 4,
             _ => todo!("Cannot get size of {} now.", self),
         }
     }

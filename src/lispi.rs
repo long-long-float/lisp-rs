@@ -302,7 +302,9 @@ pub fn compile(
         }
         printlnuw("");
 
-        ir::basic_block::dump_functions(&mut ir_ctx.bb_arena, &program.funcs, "ir.txt")?;
+        dump_program("Register allocation (Spilled IR)", &program, &ir_ctx);
+
+        // ir::basic_block::dump_functions(&mut ir_ctx.bb_arena, &program.funcs, "ir.txt")?;
     }
 
     let codes = riscv::code_generator::generate_code(
