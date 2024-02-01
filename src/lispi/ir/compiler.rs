@@ -811,7 +811,49 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
         Ast::As(expr, _) => {
             compile_and_add(*expr, ctx)?;
         }
-        Ast::Cond(_) => todo!(),
+        Ast::Cond(Cond { clauses }) => {
+            let end_label = ctx.gen_label();
+            let end_bb = ctx.new_bb(end_label.name.clone());
+
+            let mut next_label: Label;
+            let mut next_bb: Id<BasicBlock>;
+
+            let mut phi_nodes = Vec::new();
+
+            for CondClause { cond, body } in clauses {
+                let cond = compile_and_add(*cond, ctx)?;
+                let then_label = ctx.gen_label();
+                next_label = ctx.gen_label();
+
+                let then_bb = ctx.new_bb(then_label.name.clone());
+                next_bb = ctx.new_bb(next_label.name.clone());
+
+                add_instr(
+                    ctx,
+                    I::Branch {
+                        cond: Operand::Variable(cond.result),
+                        then_label: then_label.clone(),
+                        else_label: next_label.clone(),
+                        then_bb,
+                        else_bb: next_bb,
+                    },
+                    t::Type::None,
+                );
+
+                ctx.add_bb(then_bb);
+                compile_asts(body, ctx)?;
+                let result = ctx.last_inst()?;
+
+                add_instr(ctx, I::Jump(end_label.clone(), end_bb), t::Type::None);
+                ctx.add_bb(next_bb);
+
+                phi_nodes.push((Operand::Variable(result.result), then_label));
+            }
+
+            ctx.add_bb(end_bb);
+
+            add_instr(ctx, I::Phi(phi_nodes), ast_ty);
+        }
         Ast::Let(Let {
             sequential,
             proc_id,

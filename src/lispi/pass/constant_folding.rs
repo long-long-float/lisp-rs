@@ -296,10 +296,16 @@ fn fold_constants_insts(fun: &Function, ctx: &mut Context, ir_ctx: &mut IrContex
                 }),
                 I::Not(op) => {
                     let op = fold_imm(ctx, op);
-                    if let Operand::Immediate(Immediate::Boolean(op)) = &op {
-                        let not_op = Operand::Immediate(Immediate::Boolean(!op));
-                        insert_imm(ctx, &not_op, &var);
-                        Some(I::Operand(not_op))
+                    if let Operand::Immediate(imm) = &op {
+                        match imm {
+                            Immediate::Boolean(op) => {
+                                let not_op = Operand::Immediate(Immediate::Boolean(!op));
+                                insert_imm(ctx, &not_op, &var);
+                                Some(I::Operand(not_op))
+                            }
+                            Immediate::Integer(op) => Some(I::Operand((op == &0).into())),
+                            _ => Some(I::Not(op)),
+                        }
                     } else {
                         Some(I::Not(op))
                     }

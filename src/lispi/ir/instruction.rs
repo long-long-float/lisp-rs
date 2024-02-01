@@ -696,6 +696,12 @@ impl From<i32> for Operand {
     }
 }
 
+impl From<bool> for Operand {
+    fn from(value: bool) -> Self {
+        Operand::Immediate(Immediate::Boolean(value))
+    }
+}
+
 impl From<usize> for Operand {
     fn from(value: usize) -> Self {
         Self::from(value as i32)

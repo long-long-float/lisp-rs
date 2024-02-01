@@ -20,13 +20,13 @@ mod compiler_test {
     /// Timeout for execution the emulator in seconds
     const TIMEOUT_EMU: u32 = 5;
 
-    struct Compiler {
+    struct Compiler<'a> {
         name: &'static str,
-        program: &'static str,
+        program: &'a str,
         optimizations: HashSet<pass::Optimize>,
     }
 
-    impl Compiler {
+    impl<'a> Compiler<'a> {
         fn min_opts(self) -> Self {
             Self {
                 optimizations: pass::Optimize::minimum(),
@@ -140,7 +140,7 @@ mod compiler_test {
         }
     }
 
-    fn compile(name: &'static str, program: &'static str) -> Compiler {
+    fn compile<'a>(name: &'static str, program: &'a str) -> Compiler<'a> {
         Compiler {
             name,
             program,
@@ -469,6 +469,28 @@ sum
         )
         .run_a0();
         assert_eq!(Some(55), a0);
+    }
+
+    #[test]
+    #[named]
+    fn cond_eq_char() {
+        fn run_cond(input: char) -> Option<i64> {
+            let program = format!(
+                r#"
+(define op #\{input})
+(cond
+    ((= op #\+) 1)
+    ((= op #\-) 2)
+    (#t 0))
+"#
+            );
+
+            compile(function_name!(), &program).run_a0()
+        }
+
+        assert_eq!(Some(1), run_cond('+'));
+        assert_eq!(Some(2), run_cond('-'));
+        assert_eq!(Some(0), run_cond('*'));
     }
 
     #[test]
@@ -1202,6 +1224,7 @@ sum
     }
 
     #[test]
+    #[ignore] // This causes stack overflow and needs `RUST_MIN_STACK=104857600`.
     #[named]
     fn complex_program_calc_v1() {
         let output = compile(
