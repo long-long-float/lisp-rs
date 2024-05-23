@@ -23,7 +23,7 @@ crossterm = "0.23"
 object = { version = "0.30", features = ["write"] }
 id-arena = "2.2"
 colored = "2"
-itertools = "0.10.5" 
+itertools = "0.13" 
 uuid = { version = "1.4.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
 strum = "0.25"
 strum_macros = "0.25"

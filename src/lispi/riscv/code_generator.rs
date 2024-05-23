@@ -1,5 +1,5 @@
 use core::panic;
-use rv32_asm::*;
+use rv32_asm::instruction::*;
 use std::io::Write;
 use std::{collections::HashSet, fs::File};
 

@@ -5,7 +5,7 @@ use anyhow::Result;
 use id_arena::{Arena, Id};
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
-use rv32_asm::XLEN;
+use rv32_asm::instruction::XLEN;
 
 use super::{
     super::{

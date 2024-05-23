@@ -22,7 +22,7 @@
 
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
-use rv32_asm::*;
+use rv32_asm::instruction::*;
 
 use crate::lispi::ir::{instruction::Variable, register_allocation::RegisterMap};
 
