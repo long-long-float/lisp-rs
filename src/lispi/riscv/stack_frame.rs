@@ -22,8 +22,8 @@
 
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
+use rv32_asm::*;
 
-use super::instruction::*;
 use crate::lispi::ir::{instruction::Variable, register_allocation::RegisterMap};
 
 pub struct StackFrame<'a> {

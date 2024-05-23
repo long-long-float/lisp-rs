@@ -1,4 +1,5 @@
 use core::panic;
+use rv32_asm::*;
 use std::io::Write;
 use std::{collections::HashSet, fs::File};
 
@@ -7,7 +8,6 @@ use colored::*;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
-use crate::lispi::ir::instruction::Operand;
 use crate::{
     bug,
     lispi::{
@@ -16,6 +16,7 @@ use crate::{
     },
 };
 
+use super::stack_frame::*;
 use super::{
     super::{
         cli_option::CliOption,
@@ -24,7 +25,6 @@ use super::{
     },
     Spec,
 };
-use super::{instruction::*, stack_frame::*};
 
 struct Context {
     arg_reg_map: FxHashMap<String, Register>,
@@ -60,6 +60,7 @@ impl Context {
 type Code = u32;
 type Codes = Vec<Code>;
 
+#[allow(dead_code)]
 fn dump_instructions(ctx: &mut Context, insts: &[InstrWithIr]) {
     println!("{}", "RISC-V Instructions:".red());
     for (addr, InstrWithIr(inst, ir)) in insts.iter().enumerate() {
@@ -276,7 +277,7 @@ pub fn generate_code(
     program: IrProgram,
     register_maps: Vec<ra::RegisterMap>,
     ir_ctx: &mut IrContext,
-    opt: &CliOption,
+    _opt: &CliOption,
     specs: HashSet<Spec>,
 ) -> Result<Codes> {
     if !specs.contains(&Spec::Integer32) {
@@ -408,14 +409,14 @@ pub fn generate_code(
                         let cond = get_register_from_operand(&mut ctx, &register_map, cond)?;
                         insts.push(InstrWithIr::from(SB(SBInstruction {
                             op: SBInstructionOp::Bne,
-                            imm: RelAddress::Label(then_label),
+                            imm: RelAddress::Label(then_label.into()),
                             rs1: cond,
                             rs2: Register::zero(),
                         })));
                         insts.push(
                             J(JInstruction {
                                 op: JInstructionOp::Jal,
-                                imm: RelAddress::Label(else_label),
+                                imm: RelAddress::Label(else_label.into()),
                                 rd: Register::zero(),
                             })
                             .into(),
@@ -424,7 +425,7 @@ pub fn generate_code(
                     Jump(label, _) => {
                         insts.push(InstrWithIr::from(J(JInstruction {
                             op: JInstructionOp::Jal,
-                            imm: RelAddress::Label(label),
+                            imm: RelAddress::Label(label.into()),
                             rd: Register::zero(),
                         })));
                     }
@@ -911,7 +912,7 @@ pub fn generate_code(
                                 insts.push(
                                     J(JInstruction {
                                         op: JInstructionOp::Jal,
-                                        imm: RelAddress::Label(label),
+                                        imm: RelAddress::Label(label.into()),
                                         rd: Register::ra(),
                                     })
                                     .into(),
@@ -1089,4 +1090,21 @@ pub fn generate_code(
         .collect();
 
     Ok(result)
+}
+
+impl From<i::Immediate> for Immediate {
+    fn from(imm: i::Immediate) -> Self {
+        use i::Immediate::*;
+        match imm {
+            Integer(v) => Immediate::new(v),
+            Boolean(v) => Immediate::new(v as i32),
+            Label(label) => Immediate::Label(label.into()),
+        }
+    }
+}
+
+impl From<i::Label> for Label {
+    fn from(value: i::Label) -> Self {
+        Label::new(value.name)
+    }
 }

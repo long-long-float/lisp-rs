@@ -5,6 +5,7 @@ use anyhow::Result;
 use id_arena::{Arena, Id};
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
+use rv32_asm::XLEN;
 
 use super::{
     super::{
@@ -24,7 +25,6 @@ use crate::{
             basic_block::BasicBlockIdExtension,
             tag::{LoopPhiFunctionSiteIndex, Tag},
         },
-        riscv::instruction::XLEN,
         SymbolValue,
     },
     unimplemented,

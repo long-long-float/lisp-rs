@@ -1,6 +1,5 @@
 pub mod cmp_translator;
 pub mod code_generator;
-pub mod instruction;
 pub mod stack_frame;
 
 #[derive(Eq, PartialEq, Hash)]
