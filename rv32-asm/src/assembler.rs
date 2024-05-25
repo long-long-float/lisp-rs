@@ -1,38 +1,32 @@
+use std::fs::File;
 use std::io::Write;
-use std::{collections::HashSet, fs::File};
+use std::path::Path;
 
 use anyhow::Result;
 use colored::*;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
+use crate::error::*;
 use crate::instruction::*;
 
 struct Context {
-    arg_reg_map: FxHashMap<String, Register>,
-    arg_count: u32,
-
-    label_addrs: FxHashMap<String, i32>,
+    label_addrs: FxHashMap<String, usize>,
 }
 
 impl Context {
     fn new() -> Context {
         Context {
-            arg_reg_map: FxHashMap::default(),
-            arg_count: 0,
             label_addrs: FxHashMap::default(),
         }
     }
 
-    fn reset_on_fun(&mut self) {
-        self.arg_reg_map.clear();
-        self.arg_count = 0;
-    }
-
-    fn allocate_arg_reg(&mut self) -> Register {
-        let reg = Register::a(self.arg_count);
-        self.arg_count += 1;
-        reg
+    fn get_addr_by_label(&self, name: &str) -> Result<usize> {
+        Ok(self
+            .label_addrs
+            .get(name)
+            .cloned()
+            .ok_or_else(|| Error::LabelNotDefined(name.to_string()))?)
     }
 }
 
@@ -43,13 +37,16 @@ type Codes = Vec<Code>;
 fn dump_instructions(ctx: &mut Context, insts: &[InstrWithIr]) {
     println!("{}", "RISC-V Instructions:".red());
     for (addr, InstrWithIr(inst, ir)) in insts.iter().enumerate() {
-        let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
-            if *laddr == addr as i32 {
-                Some(label)
-            } else {
-                None
-            }
-        });
+        let label =
+            ctx.label_addrs.iter().find_map(
+                |(label, laddr)| {
+                    if *laddr == addr {
+                        Some(label)
+                    } else {
+                        None
+                    }
+                },
+            );
         if let Some(label) = label {
             let addr = format!("; 0x{:x}", addr * 4);
             println!("{}: {}", label, addr.dimmed());
@@ -63,125 +60,141 @@ fn dump_instructions(ctx: &mut Context, insts: &[InstrWithIr]) {
     println!();
 }
 
-fn replace_label(imm: Immediate, ctx: &Context) -> Immediate {
+fn replace_label(imm: Immediate, ctx: &Context) -> Result<Immediate> {
     match imm {
-        Immediate::Value(_) => imm,
-        Immediate::Label(label) => {
-            let addr = ctx.label_addrs.get(&label.name).unwrap();
-            Immediate::new(*addr * 4)
-        }
+        Immediate::Value(_) => Ok(imm),
+        Immediate::Label(label) => Ok(Immediate::new(ctx.get_addr_by_label(&label.name)? as i32)),
     }
 }
 
-fn replace_labels(inst: InstrWithIr, ctx: &Context) -> InstrWithIr {
+fn replace_redaddr_label(rel_addr: RelAddress, addr: usize, ctx: &Context) -> Result<RelAddress> {
+    match rel_addr {
+        RelAddress::Immediate(_) => Ok(rel_addr),
+        RelAddress::Label(label) => Ok(RelAddress::Immediate(Immediate::Value(
+            (ctx.get_addr_by_label(&label.name)? - addr) as i32,
+        ))),
+    }
+}
+
+fn replace_labels(inst: InstructionWithLabel, ctx: &Context) -> Result<InstructionWithLabel> {
     use Instruction::*;
 
-    let InstrWithIr(inst, ir) = inst;
+    let InstructionWithLabel { inst, label, ir } = inst;
     let replaced = match inst {
         R(_) => inst,
         I(IInstruction { op, imm, rs1, rd }) => I(IInstruction {
             op,
-            imm: replace_label(imm, ctx),
+            imm: replace_label(imm, ctx)?,
             rs1,
             rd,
         }),
         S(SInstruction { op, imm, rs1, rs2 }) => S(SInstruction {
             op,
-            imm: replace_label(imm, ctx),
+            imm: replace_label(imm, ctx)?,
             rs1,
             rs2,
         }),
         J(_) => inst,
         U(UInstruction { op, imm, rd }) => U(UInstruction {
             op,
-            imm: replace_label(imm, ctx),
+            imm: replace_label(imm, ctx)?,
             rd,
         }),
         SB(_) => inst,
     };
-    InstrWithIr(replaced, ir)
+    Ok(InstructionWithLabel::new(replaced, label, ir))
 }
 
-pub fn assemble(instructions: &[Instruction]) -> Result<Codes> {
+fn replace_reladdr_labels(
+    inst: InstructionWithLabel,
+    addr: usize,
+    ctx: &Context,
+) -> Result<InstructionWithLabel> {
+    use Instruction::*;
+
+    let InstructionWithLabel { inst, label, ir } = inst;
+    let replaced = match inst {
+        J(JInstruction { op, imm, rd }) => J(JInstruction {
+            op,
+            imm: replace_redaddr_label(imm, addr, ctx)?,
+            rd,
+        }),
+        SB(SBInstruction { op, imm, rs1, rs2 }) => SB(SBInstruction {
+            op,
+            imm: replace_redaddr_label(imm, addr, ctx)?,
+            rs1,
+            rs2,
+        }),
+        _ => inst,
+    };
+    Ok(InstructionWithLabel::new(replaced, label, ir))
+}
+
+pub fn assemble<P>(instructions: Vec<InstructionWithLabel>, dump_to: Option<P>) -> Result<Codes>
+where
+    P: AsRef<Path>,
+{
     use Instruction::*;
 
     let mut ctx = Context::new();
-    // TODO: Add label to instruction and remove ctx.
 
-    let insts = instructions
-        .into_iter()
-        .map(|inst| replace_labels(inst, &ctx))
-        .collect_vec();
+    for (idx, inst) in instructions.iter().enumerate() {
+        if let Some(label) = &inst.label {
+            ctx.label_addrs.insert(label.name.clone(), idx * 4);
+        }
+    }
 
-    let insts = insts
+    let insts: Vec<_> = instructions
         .into_iter()
         .enumerate()
-        .map(|(addr, InstrWithIr(inst, ir))| {
-            let addr = addr as i32;
-            let inst = match inst {
-                J(JInstruction {
-                    op: op @ JInstructionOp::Jal,
-                    imm: RelAddress::Label(label),
-                    rd,
-                }) => {
-                    let laddr = *ctx.label_addrs.get(&label.name).unwrap();
-
-                    J(JInstruction {
-                        op,
-                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4)),
-                        rd,
-                    })
-                }
-                SB(SBInstruction {
-                    op,
-                    imm: RelAddress::Label(label),
-                    rs1,
-                    rs2,
-                }) => {
-                    let laddr = *ctx.label_addrs.get(&label.name).unwrap();
-
-                    SB(SBInstruction {
-                        op,
-                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4)),
-                        rs1,
-                        rs2,
-                    })
-                }
-                _ => inst,
-            };
-            InstrWithIr(inst, ir)
+        .map(|(addr, inst)| {
+            let inst = replace_labels(inst, &ctx)?;
+            replace_reladdr_labels(inst, addr * 4, &ctx)
         })
-        .collect_vec();
+        .try_collect()?;
 
-    let mut asm = File::create("out.s")?;
-    for (addr, InstrWithIr(inst, ir)) in insts.iter().enumerate() {
-        let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
-            if *laddr == addr as i32 {
-                Some(label)
-            } else {
-                None
+    if let Some(dump_to) = dump_to {
+        let mut asm = File::create(dump_to)?;
+        for (
+            addr,
+            InstructionWithLabel {
+                inst,
+                label: _label,
+                ir,
+            },
+        ) in insts.iter().enumerate()
+        {
+            let label =
+                ctx.label_addrs.iter().find_map(
+                    |(label, laddr)| {
+                        if *laddr == addr {
+                            Some(label)
+                        } else {
+                            None
+                        }
+                    },
+                );
+            if let Some(label) = label {
+                writeln!(asm, "{}: # 0x{:x}", label, addr * 4)?;
             }
-        });
-        if let Some(label) = label {
-            writeln!(asm, "{}: # 0x{:x}", label, addr * 4)?;
+            if let Some(ir) = ir {
+                writeln!(asm, "  #{}", ir)?;
+            }
+            let a = match inst {
+                R(ri) => ri.generate_asm(),
+                I(ii) => ii.generate_asm(),
+                S(si) => si.generate_asm(),
+                J(ji) => ji.generate_asm(),
+                U(ui) => ui.generate_asm(),
+                SB(sbi) => sbi.generate_asm(),
+            };
+            writeln!(asm, "  {}", a)?;
         }
-        if let Some(ir) = ir {
-            writeln!(asm, "  #{}", ir)?;
-        }
-        let a = match inst {
-            R(ri) => ri.generate_asm(),
-            I(ii) => ii.generate_asm(),
-            S(si) => si.generate_asm(),
-            J(ji) => ji.generate_asm(),
-            U(ui) => ui.generate_asm(),
-            SB(sbi) => sbi.generate_asm(),
-        };
-        writeln!(asm, "  {}", a)?;
     }
 
     let result = insts
         .into_iter()
-        .map(|InstrWithIr(inst, _)| match inst {
+        .map(|InstructionWithLabel { inst, .. }| match inst {
             R(ri) => ri.generate_code(),
             I(ii) => ii.generate_code(),
             S(si) => si.generate_code(),

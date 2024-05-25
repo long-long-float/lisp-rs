@@ -6,6 +6,20 @@ type RegisterType = u32;
 pub const XLEN: u8 = 32;
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct InstructionWithLabel {
+    pub inst: Instruction,
+    pub label: Option<Label>,
+    /// This normally contains corresponded IR. This field is outputted to dump file.
+    pub ir: Option<String>,
+}
+
+impl InstructionWithLabel {
+    pub fn new(inst: Instruction, label: Option<Label>, ir: Option<String>) -> Self {
+        Self { inst, label, ir }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub enum Instruction {
     R(RInstruction),
     I(IInstruction),
