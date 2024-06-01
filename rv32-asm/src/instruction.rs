@@ -8,14 +8,24 @@ pub const XLEN: u8 = 32;
 #[derive(Clone, PartialEq, Debug)]
 pub struct InstructionWithLabel {
     pub inst: Instruction,
-    pub label: Option<Label>,
+    pub labels: Vec<Label>,
     /// This normally contains corresponded IR. This field is outputted to dump file.
     pub ir: Option<String>,
 }
 
 impl InstructionWithLabel {
-    pub fn new(inst: Instruction, label: Option<Label>, ir: Option<String>) -> Self {
-        Self { inst, label, ir }
+    pub fn new(inst: Instruction, labels: Vec<Label>, ir: Option<String>) -> Self {
+        Self { inst, labels, ir }
+    }
+
+    pub fn with_label(self, labels: Vec<Label>) -> Self {
+        Self { labels, ..self }
+    }
+}
+
+impl From<Instruction> for InstructionWithLabel {
+    fn from(value: Instruction) -> Self {
+        Self::new(value, vec![], None)
     }
 }
 
@@ -30,8 +40,8 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn with_ir(self, ir: Option<String>) -> InstrWithIr {
-        InstrWithIr(self, ir)
+    pub fn with_ir(self, ir: Option<String>) -> InstructionWithLabel {
+        InstructionWithLabel::new(self, vec![], ir)
     }
 
     // Pseudo instructions
@@ -128,24 +138,24 @@ impl Display for Instruction {
     }
 }
 
-pub struct InstrWithIr(pub Instruction, pub Option<String>);
+// pub struct InstrWithIr(pub Instruction, pub Option<String>);
 
-impl InstrWithIr {
-    pub fn with_ir(self, ir: Option<String>) -> Self {
-        let Self(inst, _) = self;
-        Self(inst, ir)
-    }
+// impl InstrWithIr {
+//     pub fn with_ir(self, ir: Option<String>) -> Self {
+//         let Self(inst, _) = self;
+//         Self(inst, ir)
+//     }
 
-    pub fn set_ir(&mut self, ir: Option<String>) {
-        self.1 = ir;
-    }
-}
+//     pub fn set_ir(&mut self, ir: Option<String>) {
+//         self.1 = ir;
+//     }
+// }
 
-impl From<Instruction> for InstrWithIr {
-    fn from(inst: Instruction) -> Self {
-        Self(inst, None)
-    }
-}
+// impl From<Instruction> for InstrWithIr {
+//     fn from(inst: Instruction) -> Self {
+//         Self(inst, None)
+//     }
+// }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct RInstruction {

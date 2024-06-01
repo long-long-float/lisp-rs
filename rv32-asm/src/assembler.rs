@@ -34,23 +34,14 @@ type Code = u32;
 type Codes = Vec<Code>;
 
 #[allow(dead_code)]
-fn dump_instructions(ctx: &mut Context, insts: &[InstrWithIr]) {
+fn dump_instructions(insts: &[InstructionWithLabel]) {
     println!("{}", "RISC-V Instructions:".red());
-    for (addr, InstrWithIr(inst, ir)) in insts.iter().enumerate() {
-        let label =
-            ctx.label_addrs.iter().find_map(
-                |(label, laddr)| {
-                    if *laddr == addr {
-                        Some(label)
-                    } else {
-                        None
-                    }
-                },
-            );
-        if let Some(label) = label {
+    for (addr, InstructionWithLabel { inst, labels, ir }) in insts.iter().enumerate() {
+        for label in labels {
             let addr = format!("; 0x{:x}", addr * 4);
-            println!("{}: {}", label, addr.dimmed());
+            println!("{}: {}", &label.name, addr.dimmed());
         }
+
         if let Some(ir) = ir {
             let ir = format!(";{}", ir);
             println!("  {}", ir.dimmed());
@@ -79,7 +70,7 @@ fn replace_redaddr_label(rel_addr: RelAddress, addr: usize, ctx: &Context) -> Re
 fn replace_labels(inst: InstructionWithLabel, ctx: &Context) -> Result<InstructionWithLabel> {
     use Instruction::*;
 
-    let InstructionWithLabel { inst, label, ir } = inst;
+    let InstructionWithLabel { inst, labels, ir } = inst;
     let replaced = match inst {
         R(_) => inst,
         I(IInstruction { op, imm, rs1, rd }) => I(IInstruction {
@@ -102,7 +93,7 @@ fn replace_labels(inst: InstructionWithLabel, ctx: &Context) -> Result<Instructi
         }),
         SB(_) => inst,
     };
-    Ok(InstructionWithLabel::new(replaced, label, ir))
+    Ok(InstructionWithLabel::new(replaced, labels, ir))
 }
 
 fn replace_reladdr_labels(
@@ -112,7 +103,7 @@ fn replace_reladdr_labels(
 ) -> Result<InstructionWithLabel> {
     use Instruction::*;
 
-    let InstructionWithLabel { inst, label, ir } = inst;
+    let InstructionWithLabel { inst, labels, ir } = inst;
     let replaced = match inst {
         J(JInstruction { op, imm, rd }) => J(JInstruction {
             op,
@@ -127,7 +118,7 @@ fn replace_reladdr_labels(
         }),
         _ => inst,
     };
-    Ok(InstructionWithLabel::new(replaced, label, ir))
+    Ok(InstructionWithLabel::new(replaced, labels, ir))
 }
 
 pub fn assemble<P>(instructions: Vec<InstructionWithLabel>, dump_to: Option<P>) -> Result<Codes>
@@ -139,7 +130,7 @@ where
     let mut ctx = Context::new();
 
     for (idx, inst) in instructions.iter().enumerate() {
-        if let Some(label) = &inst.label {
+        for label in &inst.labels {
             ctx.label_addrs.insert(label.name.clone(), idx * 4);
         }
     }
@@ -155,28 +146,11 @@ where
 
     if let Some(dump_to) = dump_to {
         let mut asm = File::create(dump_to)?;
-        for (
-            addr,
-            InstructionWithLabel {
-                inst,
-                label: _label,
-                ir,
-            },
-        ) in insts.iter().enumerate()
-        {
-            let label =
-                ctx.label_addrs.iter().find_map(
-                    |(label, laddr)| {
-                        if *laddr == addr {
-                            Some(label)
-                        } else {
-                            None
-                        }
-                    },
-                );
-            if let Some(label) = label {
-                writeln!(asm, "{}: # 0x{:x}", label, addr * 4)?;
+        for (addr, InstructionWithLabel { inst, ir, labels }) in insts.iter().enumerate() {
+            for label in labels {
+                writeln!(asm, "{}: # 0x{:x}", &label.name, addr * 4)?;
             }
+
             if let Some(ir) = ir {
                 writeln!(asm, "  #{}", ir)?;
             }

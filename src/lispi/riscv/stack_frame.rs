@@ -78,7 +78,7 @@ impl<'a> StackFrame<'a> {
         self.local_var_map.values().map(|(_, size)| size).sum()
     }
 
-    pub fn generate_fun_header(&self) -> Vec<InstrWithIr> {
+    pub fn generate_fun_header(&self) -> Vec<InstructionWithLabel> {
         let frame_size = 4
             * (self.callee_saved_registers.len()
                 + self.register_map.values().unique().count()
@@ -100,7 +100,7 @@ impl<'a> StackFrame<'a> {
         insts
     }
 
-    pub fn generate_fun_footer(&self) -> Vec<InstrWithIr> {
+    pub fn generate_fun_footer(&self) -> Vec<InstructionWithLabel> {
         let mut insts = Vec::new();
 
         insts.push(Instruction::mv(Register::t(0), Register::fp()).into());
@@ -120,7 +120,11 @@ impl<'a> StackFrame<'a> {
         args_count: usize,
         result_reg: Option<&Register>,
         preserve_result_reg: bool,
-    ) -> (Vec<InstrWithIr>, Vec<InstrWithIr>, Vec<InstrWithIr>) {
+    ) -> (
+        Vec<InstructionWithLabel>,
+        Vec<InstructionWithLabel>,
+        Vec<InstructionWithLabel>,
+    ) {
         let used_regs = self
             .register_map
             .values()

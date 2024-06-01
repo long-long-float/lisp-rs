@@ -1,10 +1,9 @@
 use core::panic;
+use rv32_asm::instruction as rv32i;
 use rv32_asm::instruction::*;
-use std::io::Write;
-use std::{collections::HashSet, fs::File};
+use std::collections::HashSet;
 
 use anyhow::Result;
-use colored::*;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
@@ -60,30 +59,6 @@ impl Context {
 type Code = u32;
 type Codes = Vec<Code>;
 
-#[allow(dead_code)]
-fn dump_instructions(ctx: &mut Context, insts: &[InstrWithIr]) {
-    println!("{}", "RISC-V Instructions:".red());
-    for (addr, InstrWithIr(inst, ir)) in insts.iter().enumerate() {
-        let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
-            if *laddr == addr as i32 {
-                Some(label)
-            } else {
-                None
-            }
-        });
-        if let Some(label) = label {
-            let addr = format!("; 0x{:x}", addr * 4);
-            println!("{}: {}", label, addr.dimmed());
-        }
-        if let Some(ir) = ir {
-            let ir = format!(";{}", ir);
-            println!("  {}", ir.dimmed());
-        }
-        println!("  {}", inst);
-    }
-    println!();
-}
-
 fn get_register_from_operand(
     ctx: &mut Context,
     register_map: &RegisterMap,
@@ -111,7 +86,7 @@ fn get_register_from_operand(
 
 fn load_operand_to(
     ctx: &mut Context,
-    insts: &mut Vec<InstrWithIr>,
+    insts: &mut Instructions,
     register_map: &RegisterMap,
     op: i::Operand,
     rd: Register,
@@ -119,7 +94,7 @@ fn load_operand_to(
     match op {
         i::Operand::Variable(_) => {
             let reg = get_register_from_operand(ctx, register_map, op).unwrap();
-            insts.push(InstrWithIr::from(Instruction::mv(rd, reg)));
+            insts.push(InstructionWithLabel::from(Instruction::mv(rd, reg)));
         }
         i::Operand::Immediate(imm) => {
             use i::Immediate::*;
@@ -131,7 +106,7 @@ fn load_operand_to(
                 Label(_) => {
                     // Replace this label to the real address.
                     // To load large addresses (larger than 12bits), we reserve for two instructions, lui and addi.
-                    insts.push(InstrWithIr::from(Instruction::nop()));
+                    insts.push(InstructionWithLabel::from(Instruction::nop()));
                     insts.push(Instruction::li(rd, imm.into()).into());
                 }
             }
@@ -139,7 +114,7 @@ fn load_operand_to(
     }
 }
 
-fn load_immediate(insts: &mut Vec<InstrWithIr>, imm: Immediate, rd: Register) {
+fn load_immediate(insts: &mut Instructions, imm: Immediate, rd: Register) {
     let mut last_set_bit = -1;
     for i in (0..=31).rev() {
         if imm.value() & (1 << i) != 0 {
@@ -156,7 +131,7 @@ fn load_immediate(insts: &mut Vec<InstrWithIr>, imm: Immediate, rd: Register) {
         } else {
             imm
         };
-        insts.push(InstrWithIr::from(Instruction::U(UInstruction {
+        insts.push(InstructionWithLabel::from(Instruction::U(UInstruction {
             op: UInstructionOp::Lui,
             imm: top,
             rd,
@@ -165,14 +140,14 @@ fn load_immediate(insts: &mut Vec<InstrWithIr>, imm: Immediate, rd: Register) {
             insts.push(Instruction::addi(rd, rd, bot).into());
         }
     } else {
-        insts.push(InstrWithIr::from(Instruction::li(rd, imm)));
+        insts.push(InstructionWithLabel::from(Instruction::li(rd, imm)));
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn generate_code_bin_op(
     ctx: &mut Context,
-    insts: &mut Vec<InstrWithIr>,
+    insts: &mut Instructions,
     register_map: &RegisterMap,
     left: i::Operand,
     right: i::Operand,
@@ -211,45 +186,6 @@ fn generate_code_bin_op(
     Ok(())
 }
 
-fn replace_label(imm: Immediate, ctx: &Context) -> Immediate {
-    match imm {
-        Immediate::Value(_) => imm,
-        Immediate::Label(label) => {
-            let addr = ctx.label_addrs.get(&label.name).unwrap();
-            Immediate::new(*addr * 4)
-        }
-    }
-}
-
-fn replace_labels(inst: InstrWithIr, ctx: &Context) -> InstrWithIr {
-    use Instruction::*;
-
-    let InstrWithIr(inst, ir) = inst;
-    let replaced = match inst {
-        R(_) => inst,
-        I(IInstruction { op, imm, rs1, rd }) => I(IInstruction {
-            op,
-            imm: replace_label(imm, ctx),
-            rs1,
-            rd,
-        }),
-        S(SInstruction { op, imm, rs1, rs2 }) => S(SInstruction {
-            op,
-            imm: replace_label(imm, ctx),
-            rs1,
-            rs2,
-        }),
-        J(_) => inst,
-        U(UInstruction { op, imm, rd }) => U(UInstruction {
-            op,
-            imm: replace_label(imm, ctx),
-            rd,
-        }),
-        SB(_) => inst,
-    };
-    InstrWithIr(replaced, ir)
-}
-
 fn get_type_size(ty: &Type, structs: &StructDefinitions, align: usize) -> Result<usize> {
     match ty {
         Type::Struct { name } => {
@@ -273,6 +209,34 @@ fn get_struct_def<'a>(ty: &Type, structs: &'a StructDefinitions) -> Option<&'a S
     }
 }
 
+#[derive(Default)]
+struct Instructions {
+    insts: Vec<InstructionWithLabel>,
+    labels: Vec<Label>,
+}
+
+impl Instructions {
+    fn add_label(&mut self, label: Label) {
+        self.labels.push(label);
+    }
+
+    fn push(&mut self, inst: InstructionWithLabel) {
+        self.insts
+            .push(inst.with_label(self.labels.drain(..).collect_vec()));
+    }
+
+    fn append(&mut self, insts: &mut Vec<InstructionWithLabel>) {
+        if let Some(inst) = insts.first_mut() {
+            inst.labels = self.labels.drain(..).collect_vec();
+        }
+        self.insts.append(insts);
+    }
+
+    fn len(&self) -> usize {
+        self.insts.len()
+    }
+}
+
 pub fn generate_code(
     program: IrProgram,
     register_maps: Vec<ra::RegisterMap>,
@@ -286,7 +250,7 @@ pub fn generate_code(
 
     fn load_argument(
         ctx: &mut Context,
-        insts: &mut Vec<InstrWithIr>,
+        insts: &mut Instructions,
         register_map: &RegisterMap,
         op: i::Operand,
     ) {
@@ -294,14 +258,10 @@ pub fn generate_code(
         load_operand_to(ctx, insts, register_map, op, rd);
     }
 
-    fn add_label(ctx: &mut Context, insts: &mut Vec<InstrWithIr>, label: String) {
-        ctx.label_addrs.insert(label, insts.len() as i32);
-    }
-
     use Instruction::*;
 
     let mut ctx = Context::new();
-    let mut insts: Vec<InstrWithIr> = Vec::new();
+    let mut insts: Instructions = Instructions::default();
 
     // Initialize specific registers
     load_immediate(
@@ -366,9 +326,8 @@ pub fn generate_code(
         for (bbi, bb) in fun.basic_blocks.into_iter().enumerate() {
             let bb = ir_ctx.bb_arena.get(bb).unwrap();
 
-            add_label(&mut ctx, &mut insts, bb.label.clone());
-
             if bbi == 0 {
+                insts.add_label(Label::new(bb.label.clone()));
                 insts.append(&mut frame.generate_fun_header());
             }
 
@@ -398,7 +357,7 @@ pub fn generate_code(
 
                 let ir_insertion_idx = insts.len();
 
-                match inst {
+                match inst.clone() {
                     Branch {
                         cond,
                         then_label,
@@ -407,7 +366,7 @@ pub fn generate_code(
                         else_bb: _,
                     } => {
                         let cond = get_register_from_operand(&mut ctx, &register_map, cond)?;
-                        insts.push(InstrWithIr::from(SB(SBInstruction {
+                        insts.push(InstructionWithLabel::from(SB(SBInstruction {
                             op: SBInstructionOp::Bne,
                             imm: RelAddress::Label(then_label.into()),
                             rs1: cond,
@@ -423,7 +382,7 @@ pub fn generate_code(
                         );
                     }
                     Jump(label, _) => {
-                        insts.push(InstrWithIr::from(J(JInstruction {
+                        insts.push(InstructionWithLabel::from(J(JInstruction {
                             op: JInstructionOp::Jal,
                             imm: RelAddress::Label(label.into()),
                             rd: Register::zero(),
@@ -992,104 +951,19 @@ pub fn generate_code(
                         load_operand_to(&mut ctx, &mut insts, &register_map, op, result_reg);
                     }
                     Label(label) => {
-                        add_label(&mut ctx, &mut insts, label.name);
+                        insts.add_label(label.into());
                     }
                     Nop => {}
                 }
 
-                if let Some(head) = insts.get_mut(ir_insertion_idx) {
-                    head.set_ir(ir);
+                if let Some(head) = insts.insts.get_mut(ir_insertion_idx) {
+                    head.ir = ir;
                 }
             }
         }
     }
 
-    // Resolving label addresses
-
-    let insts = insts
-        .into_iter()
-        .map(|inst| replace_labels(inst, &ctx))
-        .collect_vec();
-
-    let insts = insts
-        .into_iter()
-        .enumerate()
-        .map(|(addr, InstrWithIr(inst, ir))| {
-            let addr = addr as i32;
-            let inst = match inst {
-                J(JInstruction {
-                    op: op @ JInstructionOp::Jal,
-                    imm: RelAddress::Label(label),
-                    rd,
-                }) => {
-                    let laddr = *ctx.label_addrs.get(&label.name).unwrap();
-
-                    J(JInstruction {
-                        op,
-                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4)),
-                        rd,
-                    })
-                }
-                SB(SBInstruction {
-                    op,
-                    imm: RelAddress::Label(label),
-                    rs1,
-                    rs2,
-                }) => {
-                    let laddr = *ctx.label_addrs.get(&label.name).unwrap();
-
-                    SB(SBInstruction {
-                        op,
-                        imm: RelAddress::Immediate(Immediate::new((laddr - addr) * 4)),
-                        rs1,
-                        rs2,
-                    })
-                }
-                _ => inst,
-            };
-            InstrWithIr(inst, ir)
-        })
-        .collect_vec();
-
-    let mut asm = File::create("out.s")?;
-    for (addr, InstrWithIr(inst, ir)) in insts.iter().enumerate() {
-        let label = ctx.label_addrs.iter().find_map(|(label, laddr)| {
-            if *laddr == addr as i32 {
-                Some(label)
-            } else {
-                None
-            }
-        });
-        if let Some(label) = label {
-            writeln!(asm, "{}: # 0x{:x}", label, addr * 4)?;
-        }
-        if let Some(ir) = ir {
-            writeln!(asm, "  #{}", ir)?;
-        }
-        let a = match inst {
-            R(ri) => ri.generate_asm(),
-            I(ii) => ii.generate_asm(),
-            S(si) => si.generate_asm(),
-            J(ji) => ji.generate_asm(),
-            U(ui) => ui.generate_asm(),
-            SB(sbi) => sbi.generate_asm(),
-        };
-        writeln!(asm, "  {}", a)?;
-    }
-
-    let result = insts
-        .into_iter()
-        .map(|InstrWithIr(inst, _)| match inst {
-            R(ri) => ri.generate_code(),
-            I(ii) => ii.generate_code(),
-            S(si) => si.generate_code(),
-            J(ji) => ji.generate_code(),
-            U(ui) => ui.generate_code(),
-            SB(sbi) => sbi.generate_code(),
-        })
-        .collect();
-
-    Ok(result)
+    rv32_asm::assembler::assemble(insts.insts, Some("out.s"))
 }
 
 impl From<i::Immediate> for Immediate {
