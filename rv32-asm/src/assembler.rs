@@ -33,8 +33,7 @@ impl Context {
 type Code = u32;
 type Codes = Vec<Code>;
 
-#[allow(dead_code)]
-fn dump_instructions(insts: &[InstructionWithLabel]) {
+pub fn dump_instructions(insts: &[InstructionWithLabel]) {
     println!("{}", "RISC-V Instructions:".red());
     for (addr, InstructionWithLabel { inst, labels, ir }) in insts.iter().enumerate() {
         for label in labels {

@@ -74,4 +74,5 @@ pub enum DumpOptions {
     RemoveUncalledFunctions,
     RemovePhiNodes,
     RegisterAllocation,
+    MachineInstructions,
 }

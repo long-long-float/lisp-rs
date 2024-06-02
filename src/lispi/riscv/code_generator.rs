@@ -243,7 +243,7 @@ pub fn generate_code(
     ir_ctx: &mut IrContext,
     _opt: &CliOption,
     specs: HashSet<Spec>,
-) -> Result<Codes> {
+) -> Result<Vec<InstructionWithLabel>> {
     if !specs.contains(&Spec::Integer32) {
         return Err(Error::CompileError("RV32I must be needed.".to_string()).into());
     }
@@ -963,7 +963,7 @@ pub fn generate_code(
         }
     }
 
-    rv32_asm::assembler::assemble(insts.insts, Some("out.s"))
+    Ok(insts.insts)
 }
 
 impl From<i::Immediate> for Immediate {

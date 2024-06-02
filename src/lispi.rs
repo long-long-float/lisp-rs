@@ -296,11 +296,9 @@ pub fn compile(
         printlnuw("");
 
         dump_program("Register allocation (Spilled IR)", &program, &ir_ctx);
-
-        // ir::basic_block::dump_functions(&mut ir_ctx.bb_arena, &program.funcs, "ir.txt")?;
     }
 
-    let codes = riscv::code_generator::generate_code(
+    let machine_code = riscv::code_generator::generate_code(
         program,
         reg_maps,
         &mut ir_ctx,
@@ -308,9 +306,15 @@ pub fn compile(
         HashSet::from([riscv::Spec::Integer32, riscv::Spec::Multiplication]),
     )?;
 
+    if dump_opts.contains(&DumpOptions::MachineInstructions) {
+        rv32_asm::assembler::dump_instructions(&machine_code);
+    }
+
+    let bin_code = rv32_asm::assembler::assemble(machine_code, Some("out.s"))?;
+
     let big_endian = true;
 
-    let codes = codes
+    let codes = bin_code
         .into_iter()
         .flat_map(|code| {
             let mut codes = code.to_be_bytes();
