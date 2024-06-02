@@ -326,8 +326,9 @@ pub fn generate_code(
         for (bbi, bb) in fun.basic_blocks.into_iter().enumerate() {
             let bb = ir_ctx.bb_arena.get(bb).unwrap();
 
+            insts.add_label(Label::new(bb.label.clone()));
+
             if bbi == 0 {
-                insts.add_label(Label::new(bb.label.clone()));
                 insts.append(&mut frame.generate_fun_header());
             }
 
