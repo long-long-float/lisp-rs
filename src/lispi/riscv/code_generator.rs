@@ -1,5 +1,4 @@
 use core::panic;
-use rv32_asm::instruction as rv32i;
 use rv32_asm::instruction::*;
 use std::collections::HashSet;
 
@@ -29,8 +28,6 @@ struct Context {
     arg_reg_map: FxHashMap<String, Register>,
     arg_count: u32,
     vars: FxHashMap<String, Type>,
-
-    label_addrs: FxHashMap<String, i32>,
 }
 
 impl Context {
@@ -39,7 +36,6 @@ impl Context {
             arg_reg_map: FxHashMap::default(),
             arg_count: 0,
             vars: FxHashMap::default(),
-            label_addrs: FxHashMap::default(),
         }
     }
 
@@ -55,9 +51,6 @@ impl Context {
         reg
     }
 }
-
-type Code = u32;
-type Codes = Vec<Code>;
 
 fn get_register_from_operand(
     ctx: &mut Context,
