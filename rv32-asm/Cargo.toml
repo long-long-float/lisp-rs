@@ -8,6 +8,5 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 thiserror = "1.0"
-itertools = "0.13" 
 rustc-hash = "1.1"
 colored = "2.0"
