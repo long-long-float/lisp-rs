@@ -4,7 +4,6 @@ use std::path::Path;
 
 use anyhow::Result;
 use colored::*;
-use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
 use crate::error::*;
@@ -61,7 +60,7 @@ fn replace_redaddr_label(rel_addr: RelAddress, addr: usize, ctx: &Context) -> Re
     match rel_addr {
         RelAddress::Immediate(_) => Ok(rel_addr),
         RelAddress::Label(label) => Ok(RelAddress::Immediate(Immediate::Value(
-            (ctx.get_addr_by_label(&label.name)? - addr) as i32,
+            ctx.get_addr_by_label(&label.name)? as i32 - addr as i32,
         ))),
     }
 }
@@ -134,14 +133,11 @@ where
         }
     }
 
-    let insts: Vec<_> = instructions
-        .into_iter()
-        .enumerate()
-        .map(|(addr, inst)| {
-            let inst = replace_labels(inst, &ctx)?;
-            replace_reladdr_labels(inst, addr * 4, &ctx)
-        })
-        .try_collect()?;
+    let mut insts = Vec::with_capacity(instructions.len());
+    for (addr, inst) in instructions.into_iter().enumerate() {
+        let inst = replace_labels(inst, &ctx)?;
+        insts.push(replace_reladdr_labels(inst, addr * 4, &ctx)?);
+    }
 
     if let Some(dump_to) = dump_to {
         let mut asm = File::create(dump_to)?;
