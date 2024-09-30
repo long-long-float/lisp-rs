@@ -13,4 +13,9 @@ fn main() {
             panic!("make failed with status {}", output.status);
         }
     }
+
+    cc::Build::new()
+        .file("src/ext/malloc.c")
+        .out_dir(".")
+        .compile("ext");
 }

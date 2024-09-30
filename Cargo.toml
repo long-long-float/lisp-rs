@@ -29,6 +29,9 @@ strum = "0.25"
 strum_macros = "0.25"
 rv32-asm = { path = "./rv32-asm" }
 
+[build-dependencies]
+cc = "1.0"
+
 [dev-dependencies]
 serde_json = "1.0"
 function_name = "0.3"
