@@ -335,9 +335,13 @@ pub fn compile(
 
     let text_str = writer.add_section_name(".text".as_bytes());
     let main_str = writer.add_string("main".as_bytes());
+    let malloc_str = writer.add_string("_lispi_malloc".as_bytes());
+    let free_str = writer.add_string("_lispi_free".as_bytes());
 
     writer.reserve_symtab_section_index();
-    writer.reserve_symbol_index(None);
+    writer.reserve_symbol_index(None); // main
+    writer.reserve_symbol_index(None); // malloc
+    writer.reserve_symbol_index(None); // free
     writer.reserve_symtab();
 
     writer.reserve_strtab_section_index();
@@ -379,6 +383,24 @@ pub fn compile(
         st_shndx: 2, //TODO: Use variable rather than magic number
         st_value: 0,
         st_size: codes.len() as u64,
+    });
+    writer.write_symbol(&Sym {
+        name: Some(malloc_str),
+        section: None,
+        st_info: (STB_GLOBAL << 4) | STT_FUNC,
+        st_other: STV_DEFAULT,
+        st_shndx: SHN_UNDEF,
+        st_value: 0,
+        st_size: 0,
+    });
+    writer.write_symbol(&Sym {
+        name: Some(free_str),
+        section: None,
+        st_info: (STB_GLOBAL << 4) | STT_FUNC,
+        st_other: STV_DEFAULT,
+        st_shndx: SHN_UNDEF,
+        st_value: 0,
+        st_size: 0,
     });
 
     writer.write_strtab();
