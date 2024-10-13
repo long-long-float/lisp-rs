@@ -327,10 +327,18 @@ pub fn compile(
 
     let mut output = StreamingBuffer::new(BufWriter::new(File::create("out.elf")?));
     let mut writer = Writer::new(Endianness::Little, false, &mut output);
+
     // References: https://keens.github.io/blog/2020/04/12/saishougennoelf/
+
+    //
+    // Reserve data regions
+    //
+
+    // Headers
     writer.reserve_file_header();
     writer.reserve_program_headers(1);
 
+    // .text section
     let p_offset = writer.reserve(codes.len(), 4) as u64;
 
     let text_str = writer.add_section_name(".text".as_bytes());
@@ -338,21 +346,34 @@ pub fn compile(
     let malloc_str = writer.add_string("_lispi_malloc".as_bytes());
     let free_str = writer.add_string("_lispi_free".as_bytes());
 
-    writer.reserve_symtab_section_index();
+    // .symtab section
+    let symtab_idx = writer.reserve_symtab_section_index();
     writer.reserve_symbol_index(None); // main
     writer.reserve_symbol_index(None); // malloc
     writer.reserve_symbol_index(None); // free
     writer.reserve_symtab();
 
+    // .strtab section
     writer.reserve_strtab_section_index();
     writer.reserve_strtab();
 
+    // .shstrtab section
     writer.reserve_shstrtab_section_index();
     writer.reserve_shstrtab();
 
-    writer.reserve_section_index();
+    // writer.reserve_relocations(1, false);
+
+    // .text section
+    let text_idx = writer.reserve_section_index();
+
+    // Section headers
     writer.reserve_section_headers();
 
+    //
+    // Write data
+    //
+
+    // Headers
     writer.write_file_header(&FileHeader {
         os_abi: 0x00,
         abi_version: 0x00,
@@ -361,7 +382,6 @@ pub fn compile(
         e_entry: 0x000000,
         e_flags: 0x00,
     })?;
-    // This is needed for rv32emu
     writer.write_program_header(&ProgramHeader {
         p_type: PT_LOAD,
         p_flags: 0x05,
@@ -372,8 +392,11 @@ pub fn compile(
         p_memsz: codes.len() as u64,
         p_align: 0x200000,
     });
+
+    // .text section
     writer.write(&codes);
 
+    // .symtab section
     writer.write_null_symbol();
     writer.write_symbol(&Sym {
         name: Some(main_str),
@@ -407,10 +430,15 @@ pub fn compile(
 
     writer.write_shstrtab();
 
+    //
+    // Write section headers
+    //
+
     writer.write_null_section_header();
     writer.write_symtab_section_header(0);
     writer.write_strtab_section_header();
     writer.write_shstrtab_section_header();
+
     writer.write_section_header(&SectionHeader {
         name: Some(text_str),
         sh_type: SHT_PROGBITS,
@@ -423,6 +451,8 @@ pub fn compile(
         sh_addralign: 0x4,
         sh_entsize: 0,
     });
+
+    // writer.write_relocation_section_header(text_str, text_idx, symtab_idx, 0, count, false);
 
     let mut output = File::create("out.bin")?;
     output.write_all(&codes)?;
