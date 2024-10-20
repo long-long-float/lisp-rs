@@ -342,6 +342,7 @@ pub fn compile(
     let p_offset = writer.reserve(codes.len(), 4) as u64;
 
     let text_str = writer.add_section_name(".text".as_bytes());
+    let rel_str = writer.add_section_name(".text".as_bytes());
     let main_str = writer.add_string("main".as_bytes());
     let malloc_str = writer.add_string("_lispi_malloc".as_bytes());
     let free_str = writer.add_string("_lispi_free".as_bytes());
@@ -361,7 +362,7 @@ pub fn compile(
     writer.reserve_shstrtab_section_index();
     writer.reserve_shstrtab();
 
-    // writer.reserve_relocations(1, false);
+    writer.reserve_relocations(0, false);
 
     // .text section
     let text_idx = writer.reserve_section_index();
@@ -403,7 +404,7 @@ pub fn compile(
         section: None,
         st_info: (STB_GLOBAL << 4) | STT_FUNC,
         st_other: STV_DEFAULT,
-        st_shndx: 2, //TODO: Use variable rather than magic number
+        st_shndx: text_idx.0 as u16,
         st_value: 0,
         st_size: codes.len() as u64,
     });
@@ -435,10 +436,14 @@ pub fn compile(
     //
 
     writer.write_null_section_header();
+
     writer.write_symtab_section_header(0);
     writer.write_strtab_section_header();
     writer.write_shstrtab_section_header();
 
+    writer.write_relocation_section_header(rel_str, text_idx, symtab_idx, 0, 0, false);
+
+    // .text section
     writer.write_section_header(&SectionHeader {
         name: Some(text_str),
         sh_type: SHT_PROGBITS,
@@ -451,8 +456,6 @@ pub fn compile(
         sh_addralign: 0x4,
         sh_entsize: 0,
     });
-
-    // writer.write_relocation_section_header(text_str, text_idx, symtab_idx, 0, count, false);
 
     let mut output = File::create("out.bin")?;
     output.write_all(&codes)?;
