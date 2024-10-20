@@ -17,4 +17,4 @@ cargo run -- -c \
     -i remove-uncalled-functions \
     -i remove-phi-nodes \
     -i register-allocation \
-    $1 && ./rv32emu/build/rv32emu out.elf
+    $1 && echo "Finished compilation" && ./rv32emu/build/rv32emu out.elf
