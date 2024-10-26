@@ -20,18 +20,36 @@ impl Context {
         }
     }
 
-    fn get_addr_by_label_with_offset(&self, label: &Label, offset: usize) -> Result<i32> {
+    fn get_addr_by_label(
+        &self,
+        label: &Label,
+        inst_addr: usize,
+        label_addr: usize,
+    ) -> Result<(i32, Option<RelocationEntry>)> {
         if label.relocated_later {
-            Ok(0)
+            Ok((
+                0,
+                Some(RelocationEntry {
+                    addr: label_addr,
+                    name: label.name.clone(),
+                }),
+            ))
         } else {
-            Ok(self
+            let addr = self
                 .label_addrs
                 .get(&label.name)
                 .cloned()
                 .ok_or_else(|| Error::LabelNotDefined(label.name.to_string()))
-                .map(|addr| addr as i32 - offset as i32)?)
+                .map(|addr| addr as i32 - inst_addr as i32)?;
+            Ok((addr, None))
         }
     }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+struct RelocationEntry {
+    addr: usize,
+    name: String,
 }
 
 type Code = u32;
@@ -54,76 +72,87 @@ pub fn dump_instructions(insts: &[InstructionWithLabel]) {
     println!();
 }
 
-fn replace_label(imm: Immediate, ctx: &Context) -> Result<Immediate> {
+fn replace_label(
+    imm: Immediate,
+    imm_addr: usize,
+    ctx: &Context,
+) -> Result<(Immediate, Option<RelocationEntry>)> {
     match imm {
-        Immediate::Value(_) => Ok(imm),
-        Immediate::Label(label) => Ok(Immediate::new(
-            ctx.get_addr_by_label_with_offset(&label, 0)?,
-        )),
+        Immediate::Value(_) => Ok((imm, None)),
+        Immediate::Label(label) => {
+            let (addr, rel) = ctx.get_addr_by_label(
+                &label,
+                // This offset is not considered because the address as immediate is not relative.
+                0, imm_addr,
+            )?;
+            Ok((Immediate::new(addr), rel))
+        }
     }
 }
 
-fn replace_reladdr_label(rel_addr: RelAddress, addr: usize, ctx: &Context) -> Result<RelAddress> {
+fn replace_reladdr_label(
+    rel_addr: RelAddress,
+    rel_addr_addr: usize,
+    inst_addr: usize,
+    ctx: &Context,
+) -> Result<(RelAddress, Option<RelocationEntry>)> {
     match rel_addr {
-        RelAddress::Immediate(_) => Ok(rel_addr),
-        RelAddress::Label(label) => Ok(RelAddress::Immediate(Immediate::Value(
-            ctx.get_addr_by_label_with_offset(&label, addr)?,
-        ))),
+        RelAddress::Immediate(_) => Ok((rel_addr, None)),
+        RelAddress::Label(label) => {
+            let (addr, rel) = ctx.get_addr_by_label(&label, inst_addr, rel_addr_addr)?;
+            Ok((RelAddress::Immediate(Immediate::Value(addr)), rel))
+        }
     }
 }
 
-fn replace_labels(inst: InstructionWithLabel, ctx: &Context) -> Result<InstructionWithLabel> {
+fn replace_labels(
+    inst: InstructionWithLabel,
+    inst_addr: usize,
+    ctx: &Context,
+) -> Result<(InstructionWithLabel, Option<RelocationEntry>)> {
     use Instruction::*;
 
     let InstructionWithLabel { inst, labels, ir } = inst;
-    let replaced = match inst {
-        R(_) => inst,
-        I(IInstruction { op, imm, rs1, rd }) => I(IInstruction {
-            op,
-            imm: replace_label(imm, ctx)?,
-            rs1,
-            rd,
-        }),
-        S(SInstruction { op, imm, rs1, rs2 }) => S(SInstruction {
-            op,
-            imm: replace_label(imm, ctx)?,
-            rs1,
-            rs2,
-        }),
-        J(_) => inst,
-        U(UInstruction { op, imm, rd }) => U(UInstruction {
-            op,
-            imm: replace_label(imm, ctx)?,
-            rd,
-        }),
-        SB(_) => inst,
+    let (replaced, rel) = match inst {
+        R(_) => (inst, None),
+        I(IInstruction { op, imm, rs1, rd }) => {
+            let (imm, rel) = replace_label(imm, todo!(), ctx)?;
+            (I(IInstruction { op, imm, rs1, rd }), rel)
+        }
+        S(SInstruction { op, imm, rs1, rs2 }) => {
+            let (imm, rel) = replace_label(imm, todo!(), ctx)?;
+            (S(SInstruction { op, imm, rs1, rs2 }), rel)
+        }
+        J(_) => (inst, None),
+        U(UInstruction { op, imm, rd }) => {
+            let (imm, rel) = replace_label(imm, todo!(), ctx)?;
+            (U(UInstruction { op, imm, rd }), rel)
+        }
+        SB(_) => (inst, None),
     };
-    Ok(InstructionWithLabel::new(replaced, labels, ir))
+    Ok((InstructionWithLabel::new(replaced, labels, ir), rel))
 }
 
 fn replace_reladdr_labels(
     inst: InstructionWithLabel,
     addr: usize,
     ctx: &Context,
-) -> Result<InstructionWithLabel> {
+) -> Result<(InstructionWithLabel, Option<RelocationEntry>)> {
     use Instruction::*;
 
     let InstructionWithLabel { inst, labels, ir } = inst;
-    let replaced = match inst {
-        J(JInstruction { op, imm, rd }) => J(JInstruction {
-            op,
-            imm: replace_reladdr_label(imm, addr, ctx)?,
-            rd,
-        }),
-        SB(SBInstruction { op, imm, rs1, rs2 }) => SB(SBInstruction {
-            op,
-            imm: replace_reladdr_label(imm, addr, ctx)?,
-            rs1,
-            rs2,
-        }),
-        _ => inst,
+    let (replaced, rel) = match inst {
+        J(JInstruction { op, imm, rd }) => {
+            let (imm, rel) = replace_reladdr_label(imm, addr, todo!(), ctx)?;
+            (J(JInstruction { op, imm, rd }), rel)
+        }
+        SB(SBInstruction { op, imm, rs1, rs2 }) => {
+            let (imm, rel) = replace_reladdr_label(imm, addr, todo!(), ctx)?;
+            (SB(SBInstruction { op, imm, rs1, rs2 }), rel)
+        }
+        _ => (inst, None),
     };
-    Ok(InstructionWithLabel::new(replaced, labels, ir))
+    Ok((InstructionWithLabel::new(replaced, labels, ir), rel))
 }
 
 pub fn assemble<P>(instructions: Vec<InstructionWithLabel>, dump_to: Option<P>) -> Result<Codes>
@@ -134,6 +163,8 @@ where
 
     let mut ctx = Context::new();
 
+    let mut rel_entries = Vec::new();
+
     for (idx, inst) in instructions.iter().enumerate() {
         for label in &inst.labels {
             ctx.label_addrs.insert(label.name.clone(), idx * 4);
@@ -142,9 +173,22 @@ where
 
     let mut insts = Vec::with_capacity(instructions.len());
     for (addr, inst) in instructions.into_iter().enumerate() {
-        let inst = replace_labels(inst, &ctx)?;
-        insts.push(replace_reladdr_labels(inst, addr * 4, &ctx)?);
+        let addr = addr * 4;
+
+        let (inst, rel) = replace_labels(inst, addr, &ctx)?;
+        if let Some(rel) = rel {
+            rel_entries.push(rel);
+        }
+
+        let (inst, rel) = replace_reladdr_labels(inst, addr, &ctx)?;
+        if let Some(rel) = rel {
+            rel_entries.push(rel);
+        }
+
+        insts.push(inst);
     }
+
+    dbg!(rel_entries);
 
     if let Some(dump_to) = dump_to {
         let mut asm = File::create(dump_to)?;
