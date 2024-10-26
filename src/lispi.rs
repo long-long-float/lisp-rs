@@ -20,7 +20,7 @@ pub mod unique_generator;
 pub mod cli_option;
 
 use object::elf::*;
-use object::write::elf::{FileHeader, ProgramHeader, SectionHeader, Sym, Writer};
+use object::write::elf::{FileHeader, ProgramHeader, Rel, SectionHeader, Sym, Writer};
 use object::write::StreamingBuffer;
 use object::Endianness;
 use std::collections::HashSet;
@@ -350,7 +350,7 @@ pub fn compile(
     // .symtab section
     let symtab_idx = writer.reserve_symtab_section_index();
     writer.reserve_symbol_index(None); // main
-    writer.reserve_symbol_index(None); // malloc
+    let malloc_sym_index = writer.reserve_symbol_index(None); // malloc
     writer.reserve_symbol_index(None); // free
     writer.reserve_symtab();
 
@@ -362,7 +362,8 @@ pub fn compile(
     writer.reserve_shstrtab_section_index();
     writer.reserve_shstrtab();
 
-    writer.reserve_relocations(0, false);
+    let rel_count = 1;
+    writer.reserve_relocations(rel_count, false);
 
     // .text section
     let text_idx = writer.reserve_section_index();
@@ -431,6 +432,17 @@ pub fn compile(
 
     writer.write_shstrtab();
 
+    // .rel section
+    writer.write_relocation(
+        false,
+        &Rel {
+            r_offset: 0,
+            r_sym: malloc_sym_index.0,
+            r_type: R_RISCV_32,
+            r_addend: 0,
+        },
+    );
+
     //
     // Write section headers
     //
@@ -441,7 +453,7 @@ pub fn compile(
     writer.write_strtab_section_header();
     writer.write_shstrtab_section_header();
 
-    writer.write_relocation_section_header(rel_str, text_idx, symtab_idx, 0, 0, false);
+    writer.write_relocation_section_header(rel_str, text_idx, symtab_idx, 0, 1, false);
 
     // .text section
     writer.write_section_header(&SectionHeader {
