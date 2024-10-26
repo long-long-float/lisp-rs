@@ -319,7 +319,7 @@ pub fn generate_code(
         for (bbi, bb) in fun.basic_blocks.into_iter().enumerate() {
             let bb = ir_ctx.bb_arena.get(bb).unwrap();
 
-            insts.add_label(Label::new(bb.label.clone()));
+            insts.add_label(Label::new(bb.label.clone(), false));
 
             if bbi == 0 {
                 insts.append(&mut frame.generate_fun_header());
@@ -973,6 +973,6 @@ impl From<i::Immediate> for Immediate {
 
 impl From<i::Label> for Label {
     fn from(value: i::Label) -> Self {
-        Label::new(value.name)
+        Label::new(value.name, value.relocated_later)
     }
 }

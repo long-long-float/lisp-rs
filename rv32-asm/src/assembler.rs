@@ -20,12 +20,17 @@ impl Context {
         }
     }
 
-    fn get_addr_by_label(&self, name: &str) -> Result<usize> {
-        Ok(self
-            .label_addrs
-            .get(name)
-            .cloned()
-            .ok_or_else(|| Error::LabelNotDefined(name.to_string()))?)
+    fn get_addr_by_label_with_offset(&self, label: &Label, offset: usize) -> Result<i32> {
+        if label.relocated_later {
+            Ok(0)
+        } else {
+            Ok(self
+                .label_addrs
+                .get(&label.name)
+                .cloned()
+                .ok_or_else(|| Error::LabelNotDefined(label.name.to_string()))
+                .map(|addr| addr as i32 - offset as i32)?)
+        }
     }
 }
 
@@ -52,15 +57,17 @@ pub fn dump_instructions(insts: &[InstructionWithLabel]) {
 fn replace_label(imm: Immediate, ctx: &Context) -> Result<Immediate> {
     match imm {
         Immediate::Value(_) => Ok(imm),
-        Immediate::Label(label) => Ok(Immediate::new(ctx.get_addr_by_label(&label.name)? as i32)),
+        Immediate::Label(label) => Ok(Immediate::new(
+            ctx.get_addr_by_label_with_offset(&label, 0)?,
+        )),
     }
 }
 
-fn replace_redaddr_label(rel_addr: RelAddress, addr: usize, ctx: &Context) -> Result<RelAddress> {
+fn replace_reladdr_label(rel_addr: RelAddress, addr: usize, ctx: &Context) -> Result<RelAddress> {
     match rel_addr {
         RelAddress::Immediate(_) => Ok(rel_addr),
         RelAddress::Label(label) => Ok(RelAddress::Immediate(Immediate::Value(
-            ctx.get_addr_by_label(&label.name)? as i32 - addr as i32,
+            ctx.get_addr_by_label_with_offset(&label, addr)?,
         ))),
     }
 }
@@ -105,12 +112,12 @@ fn replace_reladdr_labels(
     let replaced = match inst {
         J(JInstruction { op, imm, rd }) => J(JInstruction {
             op,
-            imm: replace_redaddr_label(imm, addr, ctx)?,
+            imm: replace_reladdr_label(imm, addr, ctx)?,
             rd,
         }),
         SB(SBInstruction { op, imm, rs1, rs2 }) => SB(SBInstruction {
             op,
-            imm: replace_redaddr_label(imm, addr, ctx)?,
+            imm: replace_reladdr_label(imm, addr, ctx)?,
             rs1,
             rs2,
         }),

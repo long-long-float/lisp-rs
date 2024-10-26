@@ -105,9 +105,7 @@ impl<'a> Context<'a> {
     }
 
     fn gen_label(&mut self) -> Label {
-        Label {
-            name: format!("label{}", self.var_gen.gen()),
-        }
+        Label::new(format!("label{}", self.var_gen.gen()))
     }
 
     fn current_bb(&self) -> &BasicBlock {
@@ -469,6 +467,19 @@ fn compile_apply(vs: Vec<AnnotatedAst>, ast_ty: t::Type, ctx: &mut Context) -> R
                             panic!()
                         }
                     }
+                    "malloc" => {
+                        add_instr(
+                            ctx,
+                            I::Call {
+                                fun: Operand::Immediate(Immediate::Label(Label {
+                                    name: "malloc".to_string(),
+                                    relocated_later: true,
+                                })),
+                                args: Vec::new(),
+                            },
+                            ast_ty,
+                        );
+                    }
                     _ => {
                         if let Some((is_getter, field_type, index)) =
                             ctx.struct_accessors.get(fun_sym).cloned()
@@ -583,7 +594,7 @@ fn compile_lambda(
     let current_func_name: String = ctx.current_func_name.drain(..).collect();
 
     ctx.current_func_name = name.clone();
-    let label = Label { name: name.clone() };
+    let label = Label::new(name.clone());
 
     let mut free_vars = collect_free_vars(&body, args.clone());
     for id in ctx.preludes.current_local().variables.keys() {
@@ -729,9 +740,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
 
             let inst = add_instr(
                 ctx,
-                I::Operand(Operand::Immediate(Immediate::Label(Label {
-                    name: id.clone(),
-                }))),
+                I::Operand(Operand::Immediate(Immediate::Label(Label::new(id.clone())))),
                 ast_ty,
             );
             ctx.env.insert_var(id.clone(), inst.result);
@@ -886,9 +895,8 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
                 ctx.func_fvs.insert_var(proc_id.clone(), free_vars);
 
                 // This is needed for constants folding.
-                let lambda_label = Operand::Immediate(Immediate::Label(Label {
-                    name: proc_id.clone(),
-                }));
+                let lambda_label =
+                    Operand::Immediate(Immediate::Label(Label::new(proc_id.clone())));
                 ctx.push_inst(AnnotatedInstr::new(
                     Variable {
                         name: proc_id.clone(),
@@ -1034,7 +1042,7 @@ fn compile_ast(ast: AnnotatedAst, ctx: &mut Context) -> Result<()> {
 
             add_instr(
                 ctx,
-                I::Operand(Operand::Immediate(Immediate::Label(Label { name }))),
+                I::Operand(Operand::Immediate(Immediate::Label(Label::new(name)))),
                 ast_ty,
             );
         }
@@ -1206,9 +1214,7 @@ fn insert_phi_nodes_for_loops(program: IrProgram, ctx: &mut Context) -> IrProgra
                                         // TODO: Add ALL incoming basic blocks
                                         (
                                             Operand::Variable(update.result.clone()),
-                                            Label {
-                                                name: last_updated_label.clone(),
-                                            },
+                                            Label::new(last_updated_label.clone()),
                                         ),
                                     ])
                                 } else {
@@ -1322,12 +1328,8 @@ pub fn compile(
 
             predefined_funcs.push(ctor);
 
-            ctx.func_labels.insert_var(
-                name.to_owned(),
-                Label {
-                    name: name.to_owned(),
-                },
-            );
+            ctx.func_labels
+                .insert_var(name.to_owned(), Label::new(name.to_owned()));
         }
 
         for (field, idx) in def.fields.iter().zip(def.offsets((XLEN / 8) as usize)) {

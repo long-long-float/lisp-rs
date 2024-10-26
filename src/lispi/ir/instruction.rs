@@ -781,6 +781,18 @@ impl<'a> Display for CmpOperatorDisplay<'a> {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Label {
     pub name: String,
+    /// If true, this label is not resolved and placed at .rel section.
+    /// The address of this label will be relocated by a linker.
+    pub relocated_later: bool,
+}
+
+impl Label {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            relocated_later: false,
+        }
+    }
 }
 
 impl ColoredDisplay for Label {
