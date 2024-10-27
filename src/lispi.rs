@@ -342,7 +342,7 @@ pub fn compile(
     let p_offset = writer.reserve(codes.len(), 4) as u64;
 
     let text_str = writer.add_section_name(".text".as_bytes());
-    let rel_str = writer.add_section_name(".text".as_bytes());
+    let rel_str = writer.add_section_name(".rel".as_bytes());
     let main_str = writer.add_string("main".as_bytes());
     let malloc_str = writer.add_string("_lispi_malloc".as_bytes());
     let free_str = writer.add_string("_lispi_free".as_bytes());
@@ -363,6 +363,8 @@ pub fn compile(
     writer.reserve_shstrtab();
 
     let rel_count = 1;
+    // .rel section
+    writer.reserve_section_index();
     writer.reserve_relocations(rel_count, false);
 
     // .text section
@@ -438,7 +440,7 @@ pub fn compile(
         &Rel {
             r_offset: 0,
             r_sym: malloc_sym_index.0,
-            r_type: R_RISCV_32,
+            r_type: R_RISCV_CALL,
             r_addend: 0,
         },
     );
