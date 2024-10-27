@@ -30,7 +30,7 @@ impl Context {
             Ok((
                 0,
                 Some(RelocationEntry {
-                    addr: label_addr,
+                    addr: inst_addr,
                     name: label.name.clone(),
                 }),
             ))
@@ -116,16 +116,16 @@ fn replace_labels(
     let (replaced, rel) = match inst {
         R(_) => (inst, None),
         I(IInstruction { op, imm, rs1, rd }) => {
-            let (imm, rel) = replace_label(imm, todo!(), ctx)?;
+            let (imm, rel) = replace_label(imm, 0, ctx)?;
             (I(IInstruction { op, imm, rs1, rd }), rel)
         }
         S(SInstruction { op, imm, rs1, rs2 }) => {
-            let (imm, rel) = replace_label(imm, todo!(), ctx)?;
+            let (imm, rel) = replace_label(imm, 0, ctx)?;
             (S(SInstruction { op, imm, rs1, rs2 }), rel)
         }
         J(_) => (inst, None),
         U(UInstruction { op, imm, rd }) => {
-            let (imm, rel) = replace_label(imm, todo!(), ctx)?;
+            let (imm, rel) = replace_label(imm, 0, ctx)?;
             (U(UInstruction { op, imm, rd }), rel)
         }
         SB(_) => (inst, None),
@@ -143,11 +143,11 @@ fn replace_reladdr_labels(
     let InstructionWithLabel { inst, labels, ir } = inst;
     let (replaced, rel) = match inst {
         J(JInstruction { op, imm, rd }) => {
-            let (imm, rel) = replace_reladdr_label(imm, addr, todo!(), ctx)?;
+            let (imm, rel) = replace_reladdr_label(imm, addr, 0, ctx)?;
             (J(JInstruction { op, imm, rd }), rel)
         }
         SB(SBInstruction { op, imm, rs1, rs2 }) => {
-            let (imm, rel) = replace_reladdr_label(imm, addr, todo!(), ctx)?;
+            let (imm, rel) = replace_reladdr_label(imm, addr, 0, ctx)?;
             (SB(SBInstruction { op, imm, rs1, rs2 }), rel)
         }
         _ => (inst, None),
