@@ -436,6 +436,7 @@ pub fn compile(
 
     // .rel section
     // https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-elf.adoc#relocations
+    writer.write_align_relocation();
     writer.write_relocation(
         false,
         &Rel {
