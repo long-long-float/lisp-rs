@@ -365,7 +365,7 @@ pub fn compile(
     let rel_count = 1;
     // .rel section
     writer.reserve_section_index();
-    writer.reserve_relocations(rel_count, false);
+    let rel_offset = writer.reserve_relocations(rel_count, false);
 
     // .text section
     let text_idx = writer.reserve_section_index();
@@ -435,12 +435,13 @@ pub fn compile(
     writer.write_shstrtab();
 
     // .rel section
+    // https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-elf.adoc#relocations
     writer.write_relocation(
         false,
         &Rel {
             r_offset: 0,
             r_sym: malloc_sym_index.0,
-            r_type: R_RISCV_CALL,
+            r_type: R_RISCV_CALL, // S + A - P
             r_addend: 0,
         },
     );
@@ -455,7 +456,9 @@ pub fn compile(
     writer.write_strtab_section_header();
     writer.write_shstrtab_section_header();
 
-    writer.write_relocation_section_header(rel_str, text_idx, symtab_idx, 0, 1, false);
+    writer.write_relocation_section_header(
+        rel_str, text_idx, symtab_idx, rel_offset, rel_count, false,
+    );
 
     // .text section
     writer.write_section_header(&SectionHeader {
